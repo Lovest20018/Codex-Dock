@@ -533,6 +533,7 @@ Test("capturing current settings includes drafts, skips removed values and exclu
     Assert(TomlDocument.ValueAt(original, "model_context_window") is 100000L && draft.Count == 4);
 });
 
+MixedTests.Register(tests, runRoot);
 var failures = 0;
 foreach (var test in tests)
 {

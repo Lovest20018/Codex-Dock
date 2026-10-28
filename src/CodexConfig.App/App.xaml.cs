@@ -8,6 +8,13 @@ public partial class App : Application
 {
     protected override void OnStartup(StartupEventArgs e)
     {
+        if (e.Args is ["--model-bridge", var bridgeHome])
+        {
+            base.OnStartup(e);
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            RunBridge(bridgeHome);
+            return;
+        }
         try
         {
             base.OnStartup(e);
@@ -34,6 +41,12 @@ public partial class App : Application
         {
             WriteStartupError(error); Shutdown(1);
         }
+    }
+
+    private async void RunBridge(string home)
+    {
+        try { await BridgeProcess.RunAsync(home); Shutdown(0); }
+        catch (Exception) { Shutdown(1); }
     }
 
     private static void WriteStartupError(Exception error)

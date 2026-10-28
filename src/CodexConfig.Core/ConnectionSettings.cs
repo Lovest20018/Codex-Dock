@@ -6,7 +6,8 @@ namespace CodexConfig.Core;
 
 public enum AuthenticationChoice { Auto, Pat, ApiKey }
 public enum ConnectionKind { PatRelay, ResponsesApi }
-public enum AuthenticationMode { Pat, ApiKey }
+public enum AuthenticationMode { Pat, ApiKey, OfficialWithApi }
+public enum ConnectionMode { Direct, OfficialWithApi }
 public sealed record AuthenticationDecision(AuthenticationMode Mode, string ModelBaseUrl, string? ChatGptBaseUrl, string? AuthApiOrigin, string Reason);
 
 public sealed record ConnectionSettings(string BaseUrl, string ApiKey, string Model,
@@ -14,6 +15,7 @@ public sealed record ConnectionSettings(string BaseUrl, string ApiKey, string Mo
 {
     public AuthenticationChoice Authentication { get; init; } = AuthenticationChoice.Auto;
     public ConnectionKind Kind { get; init; } = ConnectionKind.PatRelay;
+    public ConnectionMode Mode { get; init; }
     public string? WebSearchMode { get; init; }
     // The settings UI edits these values explicitly, preserving absent defaults.
     public bool PreservePreferenceValues { get; init; }
@@ -66,6 +68,7 @@ public sealed record ConnectionSettings(string BaseUrl, string ApiKey, string Mo
 
     public string RenderAuth(bool masked = false)
     {
+        if (Mode == ConnectionMode.OfficialWithApi) throw new InvalidOperationException("混合连接由官方登录凭据和独立模型连接组成，不能生成 API Key 登录文件。");
         var key = masked ? "••••••••" : Normalize().ApiKey;
         object fields = Decide().Mode == AuthenticationMode.Pat
             ? new { personal_access_token = key, OPENAI_API_KEY = key }
@@ -75,7 +78,13 @@ public sealed record ConnectionSettings(string BaseUrl, string ApiKey, string Mo
     }
 }
 
-public sealed record ConfigSnapshot(string Home, byte[]? Config, byte[]? Auth, string? AuthApiBaseUrl);
+public sealed record ConfigSnapshot(string Home, byte[]? Config, byte[]? Auth, string? AuthApiBaseUrl)
+{
+    public byte[]? Bridge { get; init; }
+}
 public sealed record ConfigPlan(ConfigSnapshot Before, byte[] Config, byte[]? Auth, string? AuthApiBaseUrl,
     string ConfigPreview, string AuthPreview, IReadOnlyList<string> Notes,
-    AuthenticationMode Mode = AuthenticationMode.Pat, string AuthenticationReason = "");
+    AuthenticationMode Mode = AuthenticationMode.Pat, string AuthenticationReason = "")
+{
+    public byte[]? Bridge { get; init; }
+}

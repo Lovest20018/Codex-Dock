@@ -34,10 +34,14 @@ public partial class MainWindow : Window
     private bool initializing = true;
     private bool busy;
     private bool closing;
+    private byte[]? pendingOfficialAuth;
+    private string? codexExecutable = CodexLoginClient.FindExecutable();
+    private CancellationTokenSource? loginCancellation;
     private IInputElement? overlayFocus;
-    private bool Dirty => detailedChanges.Count > 0 || Fields() != baselineFields;
+    private bool Dirty => pendingOfficialAuth is not null || detailedChanges.Count > 0 || Fields() != baselineFields;
     private bool ConnectionChanged => BaseUrlBox.Text != loadedSettings.BaseUrl || ApiKeyBox.Password != loadedSettings.ApiKey ||
-        KindBox.SelectedIndex != (int)loadedSettings.Kind || AuthenticationBox.SelectedIndex != (int)loadedSettings.Authentication;
+        KindBox.SelectedIndex != (int)loadedSettings.Kind || AuthenticationBox.SelectedIndex != (int)loadedSettings.Authentication ||
+        ConnectionModeBox.SelectedIndex != (int)loadedSettings.Mode || pendingOfficialAuth is not null;
 
     public MainWindow(ConfigStore store, string home, string? smokeOutput, IUserEnvironment environment)
     {
@@ -87,6 +91,7 @@ public partial class MainWindow : Window
     private bool Reload()
     {
         initializing = true;
+        ClearPendingLogin();
         snapshot = null;
         try
         {
@@ -99,6 +104,8 @@ public partial class MainWindow : Window
             ApiKeyBox.Password = loadedSettings.ApiKey; VisibleKeyBox.Text = loadedSettings.ApiKey;
             ModelBox.Text = loadedSettings.Model;
             KindBox.SelectedIndex = (int)loadedSettings.Kind; AuthenticationBox.SelectedIndex = (int)loadedSettings.Authentication;
+            ConnectionModeBox.SelectedIndex = (int)loadedSettings.Mode;
+            UpdateModeControls();
             SynchronizeLinePreset();
             detailedChanges.Clear();
             lastTemplate = null;
@@ -114,16 +121,21 @@ public partial class MainWindow : Window
             return true;
         }
         catch (Exception error) { snapshot = null; ShowError(error); return false; }
-        finally { initializing = false; UpdateActions(); UpdatePreview(); }
+        finally
+        {
+            initializing = false; UpdateActions(); UpdatePreview();
+            if (smokeOutput is null && snapshot?.Bridge is not null && loadedSettings.Mode == ConnectionMode.OfficialWithApi) _ = RefreshBridgeAsync();
+        }
     }
 
-    private string Fields() => JsonSerializer.Serialize(new { url = BaseUrlBox.Text, key = ApiKeyBox.Password, model = ModelBox.Text, kind = KindBox.SelectedIndex, auth = AuthenticationBox.SelectedIndex });
+    private string Fields() => JsonSerializer.Serialize(new { url = BaseUrlBox.Text, key = ApiKeyBox.Password, model = ModelBox.Text, kind = KindBox.SelectedIndex, auth = AuthenticationBox.SelectedIndex, mode = ConnectionModeBox.SelectedIndex });
     private ConnectionSettings Settings(bool placeholder = false) => loadedSettings with
     {
         BaseUrl = placeholder && string.IsNullOrWhiteSpace(BaseUrlBox.Text) ? "https://relay.example.com" : BaseUrlBox.Text,
         ApiKey = placeholder && string.IsNullOrWhiteSpace(ApiKeyBox.Password) ? "preview-placeholder" : ApiKeyBox.Password,
         Model = ModelBox.Text,
         Kind = (ConnectionKind)Math.Max(0, KindBox.SelectedIndex), Authentication = (AuthenticationChoice)Math.Max(0, AuthenticationBox.SelectedIndex),
+        Mode = (ConnectionMode)Math.Max(0, ConnectionModeBox.SelectedIndex),
         PreservePreferenceValues = true
     };
 
@@ -162,6 +174,11 @@ public partial class MainWindow : Window
         SaveButton.IsEnabled = usable && Dirty && !busy;
         UndoButton.IsEnabled = usable && Dirty && !busy;
         ProbeButton.IsEnabled = usable && !busy;
+        OfficialLoginButton.IsEnabled = usable && !busy;
+        SelectCodexButton.IsEnabled = usable && !busy;
+        BridgeStatusButton.IsEnabled = usable && !busy && !Dirty && snapshot?.Bridge is not null;
+        StopBridgeButton.IsEnabled = BridgeStatusButton.IsEnabled;
+        ConnectionModeBox.IsEnabled = !busy;
         TemplatesNav.IsEnabled = usable && !busy;
         ServiceTemplateButton.IsEnabled = usable && !busy;
         UndoTemplateButton.Visibility = lastTemplate is { Count: > 0 } ? Visibility.Visible : Visibility.Collapsed;
@@ -202,6 +219,7 @@ public partial class MainWindow : Window
         SetStatus($"已撤销 {result.Restored} 项模板设置。" + (result.Preserved > 0 ? $"保留 {result.Preserved} 项后续修改。" : ""));
     }
     private int DraftCount() => detailedChanges.Count +
+        (pendingOfficialAuth is not null ? 1 : 0) + (ConnectionModeBox.SelectedIndex != (int)loadedSettings.Mode ? 1 : 0) +
         (BaseUrlBox.Text != loadedSettings.BaseUrl ? 1 : 0) + (ApiKeyBox.Password != loadedSettings.ApiKey ? 1 : 0) +
         (ModelBox.Text != loadedSettings.Model ? 1 : 0) + (KindBox.SelectedIndex != (int)loadedSettings.Kind ? 1 : 0) +
         (AuthenticationBox.SelectedIndex != (int)loadedSettings.Authentication ? 1 : 0);
@@ -246,6 +264,12 @@ public partial class MainWindow : Window
     }
     private void UpdateCredentialHint()
     {
+        if (ConnectionModeBox.SelectedIndex == (int)ConnectionMode.OfficialWithApi)
+        {
+            CredentialLabel.Text = "模型访问凭据";
+            CredentialHint.Text = "仅用于模型请求，可填写入口支持的 Krill PAT 或 API Key。";
+            return;
+        }
         CredentialLabel.Text = AuthenticationBox.SelectedIndex switch { 1 => "PAT", 2 => "API Key", _ => "访问凭据" };
         var loginTokens = false;
         if (snapshot?.Auth is not null)
@@ -256,6 +280,76 @@ public partial class MainWindow : Window
         CredentialHint.Text = loginTokens && loadedSettings.ApiKey.Length == 0
             ? "已读取登录认证结构，修改普通设置无需填写。"
             : "修改服务连接时填写，普通设置无需填写。";
+    }
+
+    private void ConnectionModeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (initializing || OfficialLoginPanel is null) return;
+        if (ConnectionModeBox.SelectedIndex == 0) ClearPendingLogin();
+        UpdateModeControls(); UpdateCredentialHint(); MarkDirty();
+    }
+    private void UpdateModeControls()
+    {
+        var mixed = ConnectionModeBox.SelectedIndex == (int)ConnectionMode.OfficialWithApi;
+        OfficialLoginPanel.Visibility = mixed ? Visibility.Visible : Visibility.Collapsed;
+        AuthenticationRow.Visibility = mixed ? Visibility.Collapsed : Visibility.Visible;
+        OfficialLoginStatus.Text = pendingOfficialAuth is not null ? "新登录已完成，保存配置后应用。" :
+            OfficialCredentials.HasLogin(snapshot?.Auth) ? "已读取官方登录凭据，实际有效状态由 Codex 验证。" : "尚未读取完整的官方登录，请先在浏览器登录。";
+        CodexExecutableHint.Text = codexExecutable is null ? "未在 PATH 找到 codex.exe，请选择 Codex 原生程序。" : "登录程序：" + codexExecutable;
+    }
+    private void ClearPendingLogin()
+    {
+        if (pendingOfficialAuth is not null) CryptographicOperations.ZeroMemory(pendingOfficialAuth);
+        pendingOfficialAuth = null;
+    }
+    private void SelectCodexClicked(object sender, RoutedEventArgs e)
+    {
+        var picker = new OpenFileDialog { Title = "选择 Codex 原生程序", Filter = "Codex 程序 (codex.exe)|codex.exe", CheckFileExists = true };
+        if (picker.ShowDialog(this) == true) { codexExecutable = picker.FileName; UpdateModeControls(); }
+    }
+    private async void OfficialLoginClicked(object sender, RoutedEventArgs e)
+    {
+        if (busy || smokeOutput is not null) return;
+        if (codexExecutable is null) { SelectCodexClicked(sender, e); if (codexExecutable is null) return; }
+        busy = true; loginCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        CancelLoginButton.Visibility = Visibility.Visible; UpdateActions();
+        OfficialLoginStatus.Text = "请在系统浏览器中完成官方登录，最长等待 5 分钟。";
+        try
+        {
+            var bytes = await new CodexLoginClient().LoginAsync(codexExecutable,
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexConfig", "login"), loginCancellation.Token);
+            if (closing) { CryptographicOperations.ZeroMemory(bytes); return; }
+            ClearPendingLogin(); pendingOfficialAuth = bytes; MarkDirty(); UpdateModeControls();
+        }
+        catch (OperationCanceledException) { if (!closing) OfficialLoginStatus.Text = "登录已取消或超时，原有登录未更改。"; }
+        catch (Exception error) { if (!closing) { OfficialLoginStatus.Text = "登录未完成，原有登录未更改。"; ShowError(error); } }
+        finally
+        {
+            loginCancellation.Dispose(); loginCancellation = null; busy = false;
+            if (!closing) { CancelLoginButton.Visibility = Visibility.Collapsed; UpdateActions(); }
+        }
+    }
+    private void CancelLoginClicked(object sender, RoutedEventArgs e) => loginCancellation?.Cancel();
+    private async void BridgeStatusClicked(object sender, RoutedEventArgs e) => await RefreshBridgeAsync();
+    private async void StopBridgeClicked(object sender, RoutedEventArgs e)
+    {
+        if (busy || snapshot?.Bridge is not { } bytes || smokeOutput is not null) return;
+        busy = true; UpdateActions();
+        try { await BridgeProcess.StopAsync(bytes); BridgeStatusText.Text = "本地连接已停止。再次使用 Codex 前，请启动连接。"; }
+        catch (Exception) { BridgeStatusText.Text = "本地连接未运行，或未能响应停止请求。"; }
+        finally { busy = false; if (!closing) UpdateActions(); }
+    }
+    private async Task RefreshBridgeAsync()
+    {
+        if (snapshot?.Bridge is not { } bytes || smokeOutput is not null) return;
+        var expectedHome = home;
+        try
+        {
+            var status = await BridgeProcess.EnsureAsync(expectedHome, bytes);
+            if (!closing && expectedHome == home)
+                BridgeStatusText.Text = $"本地连接运行中 · 已转发 {status.Requests} 次，携带加速参数 {status.FastRequests} 次，自动审核 {status.AutoReviewRequests} 次。参数转发不代表上游能力已验证。";
+        }
+        catch (Exception error) { if (!closing && expectedHome == home) BridgeStatusText.Text = error.Message; }
     }
     private void PasswordChanged(object sender, RoutedEventArgs e)
     {
@@ -280,7 +374,7 @@ public partial class MainWindow : Window
     private void UpdatePreview()
     {
         if (snapshot is null) { PreviewBox.Text = "请先读取有效的配置目录。"; return; }
-        try { preview = store.Plan(snapshot, Settings(placeholder: true), detailedChanges, updateConnection: ConnectionChanged, updateModel: ModelBox.Text != loadedSettings.Model); RenderPreview(); }
+        try { preview = store.Plan(snapshot, Settings(placeholder: true), detailedChanges, updateConnection: ConnectionChanged, updateModel: ModelBox.Text != loadedSettings.Model, officialAuth: pendingOfficialAuth); RenderPreview(); }
         catch (Exception) { preview = null; PreviewBox.Text = "配置预览暂不可用，请检查字段格式与未保存的设置。"; }
     }
     private void RenderPreview()
@@ -313,6 +407,7 @@ public partial class MainWindow : Window
             lines.Add(ConfigHelp.Name(path) + "\n" + path + "\n  " + Display(path, previous) + "\n→ " + Display(path, next));
         }
         if (!(snapshot.Auth ?? []).SequenceEqual(preview.Auth ?? [])) lines.Add("认证文件\n  将更新（凭据内容已隐藏）");
+        if (!(snapshot.Bridge ?? []).SequenceEqual(preview.Bridge ?? [])) lines.Add("模型连接\n  将更新本地连接配置与加密模型凭据（内容已隐藏）");
         if (snapshot.AuthApiBaseUrl != preview.AuthApiBaseUrl) lines.Add("用户环境变量 CODEX_AUTHAPI_BASE_URL\n  " + (snapshot.AuthApiBaseUrl ?? "未设置") + "\n→ " + (preview.AuthApiBaseUrl ?? "移除"));
         return lines.Count == 0 ? "没有需要保存的更改。" : string.Join("\n\n", lines) + "\n\n保存后，重新打开 Codex 读取配置。";
     }
@@ -333,6 +428,7 @@ public partial class MainWindow : Window
     private void SaveClicked(object sender, RoutedEventArgs e) => SaveCurrent();
     private bool SaveCurrent()
     {
+        if (busy) return false;
         try
         {
             if (snapshot is null || store.HasPending(home)) throw new InvalidOperationException("请先读取配置或恢复未完成的保存。");
@@ -342,8 +438,17 @@ public partial class MainWindow : Window
                 var first = Editor.Errors.First(); ShowPage("catalog"); Editor.Filter(ConfigSchema.Instance.Find(first.Key)?.Path ?? first.Key);
                 throw new ArgumentException("有配置项尚未填写正确，请检查行内提示。");
             }
-            var plan = store.Plan(snapshot, Settings(), detailedChanges, updateConnection: ConnectionChanged, updateModel: ModelBox.Text != loadedSettings.Model);
+            var plan = store.Plan(snapshot, Settings(), detailedChanges, updateConnection: ConnectionChanged, updateModel: ModelBox.Text != loadedSettings.Model, officialAuth: pendingOfficialAuth);
             store.Apply(plan);
+            if (smokeOutput is null && plan.Bridge is not null)
+            {
+                try { BridgeProcess.EnsureAsync(home, plan.Bridge).GetAwaiter().GetResult(); }
+                catch (Exception error)
+                {
+                    store.Restore(store.Load(home));
+                    throw new IOException("本地连接启动失败，已回滚本次保存。" + error.Message);
+                }
+            }
             if (!Reload()) return false;
             var note = plan.Notes.FirstOrDefault(n => n.StartsWith("保留现有", StringComparison.Ordinal));
             SetStatus("已保存，重新打开 Codex 后生效。" + (note is null ? "" : " " + note));
@@ -394,12 +499,14 @@ public partial class MainWindow : Window
     }
     private void ChooseHomeClicked(object sender, RoutedEventArgs e)
     {
+        if (busy) return;
         if (!ResolveUnsaved()) return;
         var dialog = new OpenFolderDialog { Title = "选择 Codex 配置目录", InitialDirectory = Directory.Exists(home) ? home : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) };
         if (dialog.ShowDialog(this) == true) { home = dialog.FolderName; CloseOverlay(); Reload(); }
     }
     private void ReloadClicked(object sender, RoutedEventArgs e)
     {
+        if (busy) return;
         if (!ResolveUnsaved()) return;
         CloseOverlay(); Reload();
     }
@@ -414,6 +521,7 @@ public partial class MainWindow : Window
     }
     private void RestoreClicked(object sender, RoutedEventArgs e)
     {
+        if (busy) return;
         if (!ResolveUnsaved()) return;
         if (smokeOutput is null && MessageBox.Show(this, "将恢复上次保存前的配置文件和相关用户环境变量。当前状态也会加密备份。继续？", "恢复配置", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         try
@@ -447,6 +555,7 @@ public partial class MainWindow : Window
     {
         if (!ResolveUnsaved()) { e.Cancel = true; return; }
         closing = true; lifetime.Cancel(); previewTimer.Stop(); SystemEvents.UserPreferenceChanged -= SystemPreferenceChanged;
+        ClearPendingLogin();
         if (!busy) probe.Dispose();
     }
 
@@ -698,6 +807,30 @@ public partial class MainWindow : Window
         ShowPage("preferences"); SelectValue("analytics.enabled", "false");
         Assert(SaveCurrent() && store.Load(home).Auth!.SequenceEqual(loginAuth) && environment.Read() is null, "Config-only edit preserves login authentication");
         checks.AddRange(["Blank service tier follows default", "Existing login structure shown without rewriting", "Config-only UI save preserves login authentication"]);
+        // Mixed mode stages login in memory; the smoke suite never opens a browser or starts a real bridge process.
+        pendingOfficialAuth = System.Text.Encoding.UTF8.GetBytes("{\"auth_mode\":\"chatgpt\",\"tokens\":{\"id_token\":\"fake-id-token\",\"access_token\":\"fake-mixed-official-access\",\"refresh_token\":\"fake-refresh-token\"}}");
+        var mixedAuth = pendingOfficialAuth.ToArray();
+        ConnectionModeBox.SelectedIndex = (int)ConnectionMode.OfficialWithApi;
+        BaseUrlBox.Text = "https://relay.example/backend-api/codex"; ApiKeyBox.Password = "fake-mixed-krill-pat";
+        KindBox.SelectedIndex = (int)ConnectionKind.PatRelay;
+        detailedChanges["service_tier"] = "\"fast\""; detailedChanges["features.fast_mode"] = "true";
+        detailedChanges["approval_policy"] = "\"on-request\""; detailedChanges["approvals_reviewer"] = "\"auto_review\"";
+        Editor.Configure(snapshot!.Config, detailedChanges); MarkDirty(); UpdateModeControls(); UpdatePreview();
+        Assert(OfficialLoginPanel.Visibility == Visibility.Visible && AuthenticationRow.Visibility == Visibility.Collapsed && SaveButton.IsEnabled, "Mixed login controls");
+        Assert(preview is not null && !preview.ConfigPreview.Contains("fake-mixed-krill-pat") && !RenderChanges().Contains("fake-mixed-official-access"), "Mixed preview masks both credentials");
+        ShowPage("connection"); ConnectionPage.ScrollToTop(); await Settle(); Capture(output, "connection-mixed.png");
+        Assert(SaveCurrent(), "Mixed connection save");
+        var mixedSnapshot = store.Load(home);
+        Assert(mixedSnapshot.Bridge is not null && mixedSnapshot.Auth!.SequenceEqual(mixedAuth) && environment.Read() is null, "Mixed identity stored separately");
+        Assert(loadedSettings.Mode == ConnectionMode.OfficialWithApi && ApiKeyBox.Password == "fake-mixed-krill-pat" && !Dirty, "Mixed connection reload");
+        ModelBox.Text = "mixed-model-after-edit";
+        Assert(SaveCurrent() && store.Load(home).Bridge!.SequenceEqual(mixedSnapshot.Bridge!) && store.Load(home).Auth!.SequenceEqual(mixedAuth), "Mixed model-only save preserves encrypted connection and official login");
+        ConnectionModeBox.SelectedIndex = 0; KindBox.SelectedIndex = (int)ConnectionKind.ResponsesApi;
+        BaseUrlBox.Text = "https://api.example/v1"; ApiKeyBox.Password = "fake-direct-after-mixed";
+        Assert(SaveCurrent() && store.Load(home).Bridge is null, "Explicit direct mode clears mixed connection");
+        store.Restore(store.Load(home)); Reload();
+        Assert(loadedSettings.Mode == ConnectionMode.OfficialWithApi && store.Load(home).Bridge!.SequenceEqual(mixedSnapshot.Bridge!) && store.Load(home).Auth!.SequenceEqual(mixedAuth), "UI restore returns to mixed identity and encrypted connection");
+        checks.AddRange(["Mixed login draft and mode controls", "Mixed credential redaction", "Mixed save/reload and model-only preservation", "Mixed-to-direct switch and encrypted connection restore"]);
         Assert(Environment.GetEnvironmentVariable(WindowsUserEnvironment.Variable, EnvironmentVariableTarget.User) == originalEnvironment, "Real environment changed");
         checks.AddRange(["External change conflict protection", "Reload after invalid source repair", "Real user environment unchanged"]);
         await File.WriteAllTextAsync(Path.Combine(output, "report.json"), JsonSerializer.Serialize(new

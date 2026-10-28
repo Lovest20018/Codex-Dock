@@ -17,12 +17,19 @@ public sealed class ConfigStore(IUserEnvironment environment)
     public ConfigSnapshot Load(string home)
     {
         home = Path.GetFullPath(home);
-        return new(home, ReadFile(Path.Combine(home, "config.toml")), ReadFile(Path.Combine(home, "auth.json")), environment.Read());
+        return new(home, ReadFile(Path.Combine(home, "config.toml")), ReadFile(Path.Combine(home, "auth.json")), environment.Read())
+        { Bridge = ReadFile(Path.Combine(home, MixedConnection.FileName)) };
     }
 
     public ConnectionSettings ReadSettings(ConfigSnapshot snapshot)
     {
         var doc = new TomlDocument(snapshot.Config);
+        if (doc.String("model_provider") == MixedConnection.Provider)
+        {
+            var connection = snapshot.Bridge is null ? throw new InvalidDataException("缺少混合连接文件，请从备份恢复或重新配置连接。") : MixedConnection.Read(snapshot.Bridge);
+            return new(connection.BaseUrl, connection.ApiKey, doc.String("model") ?? "gpt-6.1-sol")
+            { Mode = ConnectionMode.OfficialWithApi, Kind = connection.Kind, PreservePreferenceValues = true };
+        }
         string key = "";
         var choice = AuthenticationChoice.Auto;
         if (snapshot.Auth is not null)
@@ -41,7 +48,7 @@ public sealed class ConfigStore(IUserEnvironment environment)
         { Authentication = choice, Kind = relay ? ConnectionKind.PatRelay : ConnectionKind.ResponsesApi, WebSearchMode = doc.String("web_search") };
     }
 
-    public ConfigPlan Plan(ConfigSnapshot before, ConnectionSettings settings, IReadOnlyDictionary<string, string?>? edits = null, bool updateConnection = true, bool updateModel = false)
+    public ConfigPlan Plan(ConfigSnapshot before, ConnectionSettings settings, IReadOnlyDictionary<string, string?>? edits = null, bool updateConnection = true, bool updateModel = false, byte[]? officialAuth = null)
     {
         var doc = new TomlDocument(before.Config);
         if (before.Auth is not null) using (ParseAuth(before.Auth)) { }
@@ -59,9 +66,16 @@ public sealed class ConfigStore(IUserEnvironment environment)
             doc.Set("model", model);
         }
         if (!updateConnection)
+        {
+            if (before.Bridge is not null && new TomlDocument(before.Config).String("model_provider") == MixedConnection.Provider)
+                ValidateMixedRoute(doc, MixedConnection.Read(before.Bridge));
             return new(before, doc.Bytes, before.Auth, before.AuthApiBaseUrl, doc.Masked(),
-                before.Auth is null ? "尚无认证文件。" : "认证配置保持现值（内容已隐藏）。", ["仅保存配置项，认证配置保持现值。"]);
+                before.Auth is null ? "尚无认证文件。" : "认证配置保持现值（内容已隐藏）。", ["仅保存配置项，认证配置保持现值。"])
+            { Bridge = before.Bridge };
+        }
         settings = settings.Normalize();
+        if (settings.Mode == ConnectionMode.OfficialWithApi)
+            return PlanMixed(before, settings, doc, officialAuth);
         foreach (var name in new[] { "profile", "forced_login_method", "forced_chatgpt_workspace_id" })
             if (doc.Get(name) is not null) notes.Add($"保留现有 {name}；它可能覆盖当前设置，请核查生效配置。");
         if (doc.String("cli_auth_credentials_store") is { } credentials && credentials != "file")
@@ -70,6 +84,8 @@ public sealed class ConfigStore(IUserEnvironment environment)
         doc.Set("model", settings.Model);
         doc.Set("model_provider", "openai");
         doc.Set("openai_base_url", decision.ModelBaseUrl);
+        if (before.Bridge is not null)
+            foreach (var path in TomlDocument.ValuePaths(doc.Model).Where(path => path.StartsWith("model_providers." + MixedConnection.Provider + ".", StringComparison.Ordinal)).ToArray()) doc.Remove(path);
         if (decision.ChatGptBaseUrl is not null) doc.Set("chatgpt_base_url", decision.ChatGptBaseUrl);
         var search = settings.WebSearchMode ?? (settings.WebSearch ? "live" : "disabled");
         if (!settings.PreservePreferenceValues)
@@ -85,7 +101,63 @@ public sealed class ConfigStore(IUserEnvironment environment)
             doc.Masked(), settings.RenderAuth(true), notes, decision.Mode, decision.Reason);
     }
 
-    public string Apply(ConfigPlan plan) => Commit(plan.Before, plan.Config, plan.Auth, plan.AuthApiBaseUrl, "save");
+    private static ConfigPlan PlanMixed(ConfigSnapshot before, ConnectionSettings settings, TomlDocument doc, byte[]? officialAuth)
+    {
+        ValidateMixedRestrictions(doc);
+        if (before.Bridge is null && doc.Get("model_providers." + MixedConnection.Provider) is { } reserved && reserved is not Tomlyn.Model.TomlTable { Count: 0 })
+            throw new InvalidOperationException("混合连接的保留供应商名称已被占用，请先更名。");
+        var auth = OfficialCredentials.ForMixed(officialAuth ?? before.Auth);
+        var previous = before.Bridge is null ? null : MixedConnection.Read(before.Bridge);
+        var bridge = MixedConnection.Create(settings, previous);
+        doc.Set("model", settings.Model);
+        doc.Set("model_provider", MixedConnection.Provider);
+        doc.Set("openai_base_url", bridge.LocalBaseUrl);
+        doc.Remove("chatgpt_base_url");
+        doc.Set("cli_auth_credentials_store", "file");
+        var provider = "model_providers." + MixedConnection.Provider + ".";
+        doc.Set(provider + "name", "Codex Config connection");
+        doc.Set(provider + "base_url", bridge.LocalBaseUrl);
+        doc.Set(provider + "wire_api", "responses");
+        doc.Set(provider + "requires_openai_auth", true);
+        doc.Set(provider + "experimental_bearer_token", bridge.LocalToken);
+        doc.Set(provider + "supports_websockets", false);
+        ValidateMixedRoute(doc, bridge);
+        var notes = new List<string>
+        {
+            "保留官方 OAuth 登录；主对话与后台模型请求经本地连接服务转发到所选模型入口。",
+            "Krill 凭据单独加密保存；本地连接服务替换认证头，不转发官方 OAuth Token。",
+            "官方登录使用文件凭据存储；移除 ChatGPT 后端地址覆盖和 PAT 身份环境变量。",
+            "Fast、自动审核、搜索与压缩仍由当前客户端、凭据和模型入口决定；模型目录不代表能力已验证。"
+        };
+        if (doc.String("forced_chatgpt_workspace_id") is not null) notes.Add("保留现有 forced_chatgpt_workspace_id；Codex 会检查账号是否属于指定工作区。");
+        return new(before, doc.Bytes, auth, null, doc.Masked(), "官方登录凭据保留或更新（内容已隐藏）。\n模型访问凭据另行加密保存。", notes,
+            AuthenticationMode.OfficialWithApi, "官方账号 + 独立模型连接") { Bridge = bridge.Protect() };
+    }
+
+    private static void ValidateMixedRestrictions(TomlDocument doc)
+    {
+        if (doc.String("profile") is { Length: > 0 })
+            throw new InvalidOperationException("当前启用了 profile。请先在常用设置中移除 profile 覆盖后保存混合连接，避免模型请求走其他入口。");
+        if (doc.String("forced_login_method") is { } restriction && restriction != "chatgpt")
+            throw new InvalidOperationException("forced_login_method 限制了官方账号登录，请先调整此项。");
+        if (doc.Get("model_providers.openai") is not null)
+            throw new InvalidOperationException("当前自定义了内置 openai 供应商，请先移除此覆盖，避免后台模型请求走其他入口。");
+    }
+
+    private static void ValidateMixedRoute(TomlDocument doc, MixedConnection bridge)
+    {
+        ValidateMixedRestrictions(doc);
+        var prefix = "model_providers." + MixedConnection.Provider + ".";
+        if (doc.String("model_provider") != MixedConnection.Provider || doc.String("openai_base_url") != bridge.LocalBaseUrl ||
+            doc.Get(prefix + "base_url") as string != bridge.LocalBaseUrl || doc.Get(prefix + "experimental_bearer_token") as string != bridge.LocalToken ||
+            doc.Get(prefix + "requires_openai_auth") is not true || doc.Get(prefix + "supports_websockets") is not false ||
+            doc.Get(prefix + "wire_api") as string != "responses" || doc.String("chatgpt_base_url") is not null || doc.String("cli_auth_credentials_store") != "file")
+            throw new InvalidOperationException("混合连接的路由或认证方式被更改，请到服务连接页重新保存连接。");
+        foreach (var name in new[] { "env_key", "env_http_headers", "http_headers", "auth" })
+            if (doc.Get(prefix + name) is not null) throw new InvalidOperationException("混合连接使用独立的认证头，不能额外覆盖供应商认证。");
+    }
+
+    public string Apply(ConfigPlan plan) => Commit(plan.Before, plan.Config, plan.Auth, plan.AuthApiBaseUrl, "save", plan.Bridge);
 
     public string? LatestBackup(string home) => Directory.Exists(DataDir(home))
         ? Directory.EnumerateFiles(DataDir(home), "*.backup").OrderByDescending(Path.GetFileName, StringComparer.Ordinal).FirstOrDefault() : null;
@@ -112,24 +184,25 @@ public sealed class ConfigStore(IUserEnvironment environment)
         if (HasPending(current.Home)) throw new InvalidOperationException("请先恢复未完成的保存。");
         var path = LatestBackup(current.Home) ?? throw new InvalidOperationException("尚无可恢复的备份。");
         var record = ReadBackup(path);
-        if (Hash(current.Config) != record.AfterConfigHash || Hash(current.Auth) != record.AfterAuthHash || current.AuthApiBaseUrl != record.AfterEnv)
+        if (Hash(current.Config) != record.AfterConfigHash || Hash(current.Auth) != record.AfterAuthHash || current.AuthApiBaseUrl != record.AfterEnv ||
+            record.AfterBridgeHash is not null && Hash(current.Bridge) != record.AfterBridgeHash)
             throw new InvalidOperationException("配置或环境变量已被其他程序修改，不能直接覆盖恢复。请先检查源文件。");
-        return Commit(current, record.BeforeConfig, record.BeforeAuth, record.BeforeEnv, "restore");
+        return Commit(current, record.BeforeConfig, record.BeforeAuth, record.BeforeEnv, "restore", record.AfterBridgeHash is null ? current.Bridge : record.BeforeBridge);
     }
 
-    private string Commit(ConfigSnapshot before, byte[]? config, byte[]? auth, string? authApiUrl, string action)
+    private string Commit(ConfigSnapshot before, byte[]? config, byte[]? auth, string? authApiUrl, string action, byte[]? bridge)
     {
         using var writeLock = Lock(before.Home);
         if (HasPending(before.Home)) throw new InvalidOperationException("发现未完成的保存，请先点击恢复未完成保存。");
         EnsureUnchanged(before);
-        foreach (var file in new[] { "config.toml", "auth.json" })
+        foreach (var file in new[] { "config.toml", "auth.json", MixedConnection.FileName })
         {
             var target = Path.Combine(before.Home, file);
             if (File.Exists(target) && File.GetAttributes(target).HasFlag(FileAttributes.ReparsePoint))
                 throw new IOException("配置文件是符号链接，请选择实际配置目录后再保存。");
         }
         var record = new Backup(DateTimeOffset.UtcNow, action, before.Config, before.Auth, before.AuthApiBaseUrl,
-            Hash(config), Hash(auth), authApiUrl);
+            Hash(config), Hash(auth), authApiUrl, BeforeBridge: before.Bridge, AfterBridgeHash: Hash(bridge));
         var name = $"{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss-fffffff}-{Guid.NewGuid():N}.backup";
         var path = Path.Combine(DataDir(before.Home), name);
         AtomicWrite(path, Protect(record));
@@ -140,9 +213,10 @@ public sealed class ConfigStore(IUserEnvironment environment)
         {
             if (Hash(config) != Hash(before.Config)) AtomicWrite(Path.Combine(before.Home, "config.toml"), config);
             if (Hash(auth) != Hash(before.Auth)) AtomicWrite(Path.Combine(before.Home, "auth.json"), auth);
+            if (Hash(bridge) != Hash(before.Bridge)) AtomicWrite(Path.Combine(before.Home, MixedConnection.FileName), bridge);
             if (before.AuthApiBaseUrl != authApiUrl) environment.Write(authApiUrl);
             var after = Load(before.Home);
-            if (Hash(after.Config) != record.AfterConfigHash || Hash(after.Auth) != record.AfterAuthHash || after.AuthApiBaseUrl != record.AfterEnv)
+            if (Hash(after.Config) != record.AfterConfigHash || Hash(after.Auth) != record.AfterAuthHash || after.AuthApiBaseUrl != record.AfterEnv || Hash(after.Bridge) != record.AfterBridgeHash)
                 throw new IOException("保存后的内容校验未通过。");
             File.Delete(PendingPath(before.Home));
             return path;
@@ -163,11 +237,13 @@ public sealed class ConfigStore(IUserEnvironment environment)
         static bool Expected(byte[]? value, byte[]? before, string afterHash) => Hash(value) == Hash(before) || Hash(value) == afterHash;
         if (!Expected(current.Config, record.BeforeConfig, record.AfterConfigHash) ||
             !Expected(current.Auth, record.BeforeAuth, record.AfterAuthHash) ||
+            (record.AfterBridgeHash is not null && !Expected(current.Bridge, record.BeforeBridge, record.AfterBridgeHash)) ||
             (current.AuthApiBaseUrl != record.BeforeEnv && current.AuthApiBaseUrl != record.AfterEnv) ||
             (record.AfterTestBaselineHash is not null && !Expected(baselineCurrent, record.BeforeTestBaseline, record.AfterTestBaselineHash)))
             throw new IOException("恢复前发现其他程序修改了配置，已停止恢复以保留这些修改。");
         if (Hash(current.Config) != Hash(record.BeforeConfig)) AtomicWrite(Path.Combine(home, "config.toml"), record.BeforeConfig);
         if (Hash(current.Auth) != Hash(record.BeforeAuth)) AtomicWrite(Path.Combine(home, "auth.json"), record.BeforeAuth);
+        if (record.AfterBridgeHash is not null && Hash(current.Bridge) != Hash(record.BeforeBridge)) AtomicWrite(Path.Combine(home, MixedConnection.FileName), record.BeforeBridge);
         if (environment.Read() != record.BeforeEnv) environment.Write(record.BeforeEnv);
         if (record.AfterTestBaselineHash is not null && Hash(baselineCurrent) != Hash(record.BeforeTestBaseline))
             AtomicWrite(TestBaselinePath(home), record.BeforeTestBaseline);
@@ -176,7 +252,7 @@ public sealed class ConfigStore(IUserEnvironment environment)
     private void EnsureUnchanged(ConfigSnapshot snapshot)
     {
         var current = Load(snapshot.Home);
-        if (Hash(current.Config) != Hash(snapshot.Config) || Hash(current.Auth) != Hash(snapshot.Auth) || current.AuthApiBaseUrl != snapshot.AuthApiBaseUrl)
+        if (Hash(current.Config) != Hash(snapshot.Config) || Hash(current.Auth) != Hash(snapshot.Auth) || current.AuthApiBaseUrl != snapshot.AuthApiBaseUrl || Hash(current.Bridge) != Hash(snapshot.Bridge))
             throw new InvalidOperationException("文件或环境变量已被其他程序修改，请重新读取后再保存。");
     }
 
@@ -245,7 +321,8 @@ public sealed class ConfigStore(IUserEnvironment environment)
 
     private sealed record Backup(DateTimeOffset CreatedUtc, string Action, byte[]? BeforeConfig, byte[]? BeforeAuth,
         string? BeforeEnv, string AfterConfigHash, string AfterAuthHash, string? AfterEnv,
-        byte[]? BeforeTestBaseline = null, string? AfterTestBaselineHash = null);
+        byte[]? BeforeTestBaseline = null, string? AfterTestBaselineHash = null,
+        byte[]? BeforeBridge = null, string? AfterBridgeHash = null);
 
 }
 

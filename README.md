@@ -2,6 +2,8 @@
 
 Windows 原生 Codex 配置编辑器，提供配置作用说明、可选社区模板与 PAT / API Key 连接助手。当前版本 **0.8.0**。
 
+`feature/official-login-krill` 分支增加 **官方账号 + API**：沿用 Codex 原生官方登录，模型请求由本机转发使用独立 Krill PAT / API Key。模型凭据加密保存，并纳入备份与恢复。Fast 参数和自动审核模型原样转发，后端实际能力需分别确认。使用方法、验证范围及后台连接说明见 [官方账号 + Krill 模型连接](docs/official-login-krill.md)。本分支尚未发布正式安装包。
+
 ## 使用
 
 运行 `CodexConfig-0.8.0-Setup-win-x64.exe` 安装，或解压便携包后运行 `CodexConfig.exe`。支持 Windows 10 1809 及以上 x64，内置 .NET 运行时。
