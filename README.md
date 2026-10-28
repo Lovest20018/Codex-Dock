@@ -1,6 +1,6 @@
 # Codex Dock
 
-Windows 原生 Codex 本地连接与配置中心，提供配置作用说明、可选社区模板与 PAT / API Key 连接助手。当前版本 **0.10.0**。应用及本地网关进程名均为 `CodexDock.exe`。
+Windows 原生 Codex 本地连接与配置中心，提供配置作用说明、可选社区模板与 PAT / API Key 连接助手。当前版本 **0.10.1**。应用及本地网关进程名均为 `CodexDock.exe`。
 
 [下载最新版本](https://github.com/Lovest20018/Codex-Dock/releases/latest) · [更新与发布说明](docs/github-releases.md)
 
@@ -8,7 +8,7 @@ Windows 原生 Codex 本地连接与配置中心，提供配置作用说明、�
 
 ## 使用
 
-运行 `CodexDock-0.10.0-Setup-win-x64.exe` 安装，或解压便携包后运行 `CodexDock.exe`。支持 Windows 10 1809 及以上 x64，内置 .NET 运行时。
+运行 `CodexDock-0.10.1-Setup-win-x64.exe` 安装，或解压便携包后运行 `CodexDock.exe`。支持 Windows 10 1809 及以上 x64，内置 .NET 运行时。
 
 界面采用状态总览结构，详见 [Codex Dock 改版交付](docs/codex-dock-delivery.md)。主要入口：
 
@@ -59,7 +59,7 @@ PAT 中转使用模型入口 `<origin>/backend-api/codex`，`chatgpt_base_url` �
 
 字段维护入口是 [`config/config-schema.json`](config/config-schema.json)。条目对应 `config.toml`，包含历史中文说明、分类、类型、枚举和必要的取值约束。人工核对的作用说明独立维护于 [`config/config-help.json`](config/config-help.json)，避免更新字段表时覆盖文案。两份数据均在构建时嵌入程序。
 
-后续按 Codex 的配置变化维护字段与帮助来源；没有上游仓库同步、Codex 安装扫描或多版本目录。新增字段在目录尚未更新时也能通过 TOML 值编辑。维护方式见 [`docs/schema-maintenance.md`](docs/schema-maintenance.md)，本版变化见 [`docs/release-0.10.0.md`](docs/release-0.10.0.md)。
+后续按 Codex 的配置变化维护字段与帮助来源；没有上游仓库同步、Codex 安装扫描或多版本目录。新增字段在目录尚未更新时也能通过 TOML 值编辑。维护方式见 [`docs/schema-maintenance.md`](docs/schema-maintenance.md)，本版变化见 [`docs/release-0.10.1.md`](docs/release-0.10.1.md)。
 
 ## 构建和检查
 

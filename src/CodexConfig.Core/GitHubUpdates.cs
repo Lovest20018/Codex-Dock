@@ -40,6 +40,7 @@ public sealed class GitHubUpdates : IDisposable
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation); timeout.CancelAfter(TimeSpan.FromSeconds(25));
         using var response = await GetAsync(new(LatestApi), timeout.Token).ConfigureAwait(false);
+        if ((int)response.StatusCode is 403 or 429) return await CheckReleasePageAsync(current, timeout.Token).ConfigureAwait(false);
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         response.EnsureSuccessStatusCode();
         using var json = JsonDocument.Parse(await ReadBoundedAsync(response, 1024 * 1024, timeout.Token).ConfigureAwait(false));
@@ -67,6 +68,22 @@ public sealed class GitHubUpdates : IDisposable
         if (size <= 0 || size > MaxInstaller) throw new InvalidDataException("安装器大小无效。");
         return new(version, new($"{Repository}/releases/tag/{tag}"), AssetUri(installer, installerName), size, AssetUri(checksum, checksumName),
             installer.TryGetProperty("digest", out var digest) ? digest.GetString() : null);
+    }
+
+    private async Task<ReleaseUpdate?> CheckReleasePageAsync(Version current, CancellationToken cancellation)
+    {
+        using var page = await GetAsync(new(Repository + "/releases/latest"), cancellation).ConfigureAwait(false);
+        page.EnsureSuccessStatusCode();
+        var resolved = page.RequestMessage?.RequestUri?.AbsoluteUri ?? "";
+        var match = Regex.Match(resolved, "^" + Regex.Escape(Repository) + @"/releases/tag/v(\d{1,4}\.\d{1,4}\.\d{1,4})$");
+        if (!match.Success || !Version.TryParse(match.Groups[1].Value, out var version)) throw new InvalidDataException("无法从 GitHub 发布页读取正式版本，请稍后重试。");
+        if (version <= new Version(current.Major, current.Minor, Math.Max(0, current.Build))) return null;
+        var prefix = $"{Repository}/releases/download/v{version}/";
+        var installer = new Uri(prefix + $"CodexDock-{version}-Setup-win-x64.exe");
+        using var headers = await GetAsync(installer, cancellation, HttpMethod.Head).ConfigureAwait(false); headers.EnsureSuccessStatusCode();
+        var size = headers.Content.Headers.ContentLength ?? 0;
+        if (size <= 0 || size > MaxInstaller) throw new InvalidDataException("安装器大小无效。");
+        return new(version, new(resolved), installer, size, new(prefix + $"SHA256SUMS-{version}.txt"), null);
     }
 
     public async Task<VerifiedInstaller> DownloadAsync(ReleaseUpdate update, string directory, IProgress<int>? progress = null, CancellationToken cancellation = default)
@@ -106,13 +123,15 @@ public sealed class GitHubUpdates : IDisposable
         finally { if (File.Exists(stage)) File.Delete(stage); }
     }
 
-    private async Task<HttpResponseMessage> GetAsync(Uri uri, CancellationToken cancellation)
+    private async Task<HttpResponseMessage> GetAsync(Uri uri, CancellationToken cancellation, HttpMethod? method = null)
     {
         for (var i = 0; i < 6; i++)
         {
             if (uri.Scheme != "https" || !uri.IsDefaultPort || uri.UserInfo.Length > 0 || uri.Host is not ("api.github.com" or "github.com" or "release-assets.githubusercontent.com" or "objects.githubusercontent.com"))
                 throw new InvalidDataException("更新下载跳转到了不受支持的地址。");
-            var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellation).ConfigureAwait(false);
+            using var request = new HttpRequestMessage(method ?? HttpMethod.Get, uri);
+            var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation).ConfigureAwait(false);
+            response.RequestMessage ??= request;
             if ((int)response.StatusCode is < 300 or >= 400) return response;
             var next = response.Headers.Location; response.Dispose();
             uri = next is null ? throw new InvalidDataException("更新下载跳转无效。") : new Uri(uri, next);

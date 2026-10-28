@@ -1,6 +1,6 @@
 ﻿#requires -Version 7.2
 param(
-    [string]$Exe = (Join-Path $PSScriptRoot '..\artifacts\CodexDock-0.10.0-win-x64\CodexDock.exe'),
+    [string]$Exe = (Join-Path $PSScriptRoot '..\artifacts\CodexDock-0.10.1-win-x64\CodexDock.exe'),
     [string]$UiOutput = (Join-Path $PSScriptRoot '..\.ui-test-v0.10')
 )
 $ErrorActionPreference = 'Stop'

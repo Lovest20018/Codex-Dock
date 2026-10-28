@@ -50,6 +50,20 @@ internal static class UpdateTests
             File.WriteAllText(result.Path, "changed after verification");
             try { using var file = result.OpenVerified(); throw new InvalidOperationException("Modified installer accepted."); } catch (InvalidDataException) { }
         }));
+        tests.Add(("updater falls back to GitHub latest page when the REST API is rate limited", async () =>
+        {
+            using var client = new GitHubUpdates(new FakeHandler(request =>
+            {
+                if (request.RequestUri!.AbsoluteUri == GitHubUpdates.LatestApi) return new(HttpStatusCode.Forbidden);
+                if (request.RequestUri.AbsoluteUri == GitHubUpdates.Repository + "/releases/latest")
+                { var redirect = new HttpResponseMessage(HttpStatusCode.Redirect); redirect.Headers.Location = new(GitHubUpdates.Repository + "/releases/tag/v1.2.3"); return redirect; }
+                if (request.Method == HttpMethod.Head) return new(HttpStatusCode.OK) { Content = new ByteArrayContent(installer) };
+                return Text("release page HTML ignored");
+            }));
+            var update = (await client.CheckAsync(new(1, 2, 2)))!;
+            Assert(update.Version == new Version(1, 2, 3) && update.Size == installer.Length && update.Digest is null);
+            Assert(await client.CheckAsync(new(1, 2, 3)) is null);
+        }));
         tests.Add(("updater rejects corrupt downloads and untrusted redirects without leaving partial executables", async () =>
         {
             var directory = Path.Combine(root, "corrupt-update");

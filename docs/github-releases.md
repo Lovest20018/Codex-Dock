@@ -4,6 +4,8 @@
 
 软件点击“检查更新”后读取 GitHub REST 的 `/releases/latest`。只接受 `v主版本.次版本.修订号` 的正式版本，不读取草稿或预发布；同版与旧版不提示升级。
 
+REST API 返回 403/429 时改读同一仓库的 `/releases/latest` 页面跳转，再验证安装器地址及校验清单，避免共享网络出口的 API 限流阻断检查。
+
 每个正式 Release 必须上传：
 
 - `CodexDock-X.Y.Z-Setup-win-x64.exe`
