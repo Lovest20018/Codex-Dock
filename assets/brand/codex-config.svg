@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Codex Config</title>
+  <desc id="desc">Two open brackets joined by a mint configuration switch.</desc>
+  <rect x="0" y="0" width="128" height="128" rx="32" fill="#6256F5"/>
+  <path d="M45 34 20 64l25 30" fill="none" stroke="#FFF" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m83 34 25 30-25 30" fill="none" stroke="#C7C2FF" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="44" y="55" width="40" height="18" rx="9" fill="#69E8CF"/>
+  <circle cx="74" cy="64" r="5" fill="#222245"/>
+</svg>

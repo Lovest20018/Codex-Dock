@@ -1,0 +1,320 @@
+[
+  {
+    "path": "model_reasoning_effort",
+    "name": "推理强度",
+    "summary": "调整模型思考的力度。",
+    "effect": "选择模型的思考档位。",
+    "valueHelp": "low：低；medium：中；high：高。可用档位取决于模型。",
+    "usage": "复杂问题可调高；简单任务用默认即可。",
+    "limitations": "调高可能增加等待时间和用量，不保证答案更准确。",
+    "defaultBehavior": "未设置时由模型和客户端决定。",
+    "relatedKeys": [
+      "model"
+    ],
+    "sources": [
+      {
+        "title": "OpenAI 配置基础",
+        "url": "https://learn.chatgpt.com/docs/config-file/config-basic"
+      }
+    ],
+    "verifiedAt": "2026-10-28",
+    "verificationStatus": "verified"
+  },
+  {
+    "path": "web_search",
+    "name": "联网搜索",
+    "summary": "选择是否搜索网页，以及使用哪种搜索方式。",
+    "effect": "决定网页搜索使用缓存结果还是实时网页。",
+    "valueHelp": "关闭：不搜索；缓存：使用已收录结果；实时：获取最新网页；索引约束：由搜索索引限制访问范围。",
+    "usage": "需要最新资料时选“实时搜索”。",
+    "limitations": "模型不一定每次都搜索；此项不改变命令行的联网权限。",
+    "defaultBehavior": "通常为缓存搜索，完全访问等场景可能使用实时搜索；以 Codex 实际设置为准。",
+    "relatedKeys": [],
+    "sources": [
+      {
+        "title": "OpenAI 配置基础",
+        "url": "https://learn.chatgpt.com/docs/config-file/config-basic"
+      }
+    ],
+    "verifiedAt": "2026-10-28",
+    "verificationStatus": "verified"
+  },
+  {
+    "path": "features.fast_mode",
+    "name": "允许 Fast 模式",
+    "summary": "允许选择 Fast 快速模式。",
+    "effect": "打开 Fast 选项，不等于已经切换到快速档位。",
+    "valueHelp": "开启：允许选择 Fast；关闭：不提供该选项。",
+    "usage": "想默认使用 Fast，还需将“服务档位”填为 fast。",
+    "limitations": "需模型、账户和服务支持，可能增加用量。Ultrafast 使用单独开关。",
+    "defaultBehavior": "官方文档标为默认开启，仍可能受其他配置和策略影响。",
+    "relatedKeys": [
+      "service_tier",
+      "features.ultrafast_mode"
+    ],
+    "sources": [
+      {
+        "title": "OpenAI Fast 模式",
+        "url": "https://learn.chatgpt.com/docs/agent-configuration/speed"
+      }
+    ],
+    "verifiedAt": "2026-10-28",
+    "verificationStatus": "verified"
+  },
+  {
+    "path": "service_tier",
+    "name": "服务档位",
+    "summary": "选择请求使用的服务档位。",
+    "effect": "向服务端请求指定的服务档位。",
+    "valueHelp": "需要 Fast 时填写 fast，其他值以服务商说明为准。",
+    "usage": "通常留空；使用 Fast 时还需开启“允许 Fast 模式”。",
+    "limitations": "档位需服务支持，可能增加费用或用量。",
+    "defaultBehavior": "留空时由客户端、会话和服务端决定。",
+    "relatedKeys": [
+      "features.fast_mode"
+    ],
+    "sources": [
+      {
+        "title": "OpenAI Fast 模式",
+        "url": "https://learn.chatgpt.com/docs/agent-configuration/speed"
+      }
+    ],
+    "verifiedAt": "2026-10-28",
+    "verificationStatus": "verified"
+  },
+  {
+    "path": "model_context_window",
+    "name": "上下文窗口",
+    "summary": "模型一次能处理的内容量，通常无需修改。",
+    "effect": "告诉 Codex 当前模型能容纳多少对话和工具结果。",
+    "valueHelp": "填写 Token 数；Token 是计算文本长度的单位，留空使用默认值。",
+    "usage": "通常保留默认，确认模型支持的容量后再修改。",
+    "limitations": "填大数字不会扩容，也不是输出字数或账单上限。",
+    "defaultBehavior": "由模型和客户端决定。",
+    "relatedKeys": [
+      "model_auto_compact_token_limit"
+    ],
+    "sources": [
+      {
+        "title": "OpenAI 配置参考",
+        "url": "https://learn.chatgpt.com/docs/config-file/config-reference"
+      }
+    ],
+    "verifiedAt": "2026-10-28",
+    "verificationStatus": "verified"
+  },
+  {
+    "path": "model_auto_compact_token_limit",
+    "name": "自动压缩阈值",
+    "summary": "对话积累到多少内容时，自动整理历史。",
+    "effect": "达到阈值后压缩对话历史，腾出空间。",
+    "valueHelp": "填写触发压缩的 Token 数，留空使用模型默认值。",
+    "usage": "通常无需修改；设得太低会频繁压缩。",
+    "limitations": "压缩会减少历史细节；此项不是总用量上限。",
+    "defaultBehavior": "使用模型默认值。",
+    "relatedKeys": [
+      "model_context_window",
+      "model_auto_compact_token_limit_scope"
+    ],
+    "sources": [
+      {
+        "title": "OpenAI 配置参考",
+        "url": "https://learn.chatgpt.com/docs/config-file/config-reference"
+      }
+    ],
+    "verifiedAt": "2026-10-28",
+    "verificationStatus": "verified"
+  },
+  {
+    "path": "analytics.enabled",
+    "name": "使用统计",
+    "summary": "选择是否启用 Codex 使用统计。",
+    "effect": "开启或关闭使用分析统计。",
+    "valueHelp": "开启：允许统计；关闭：停止此项统计。",
+    "usage": "按个人偏好选择。",
+    "limitations": "关闭不代表停止所有遥测或联网；CLI 也会停用自定义 OTLP 指标导出。",
+    "defaultBehavior": "由客户端决定。",
+    "relatedKeys": [
+      "otel.metrics_exporter"
+    ],
+    "sources": [
+      {
+        "title": "OpenAI 配置参考",
+        "url": "https://learn.chatgpt.com/docs/config-file/config-reference"
+      }
+    ],
+    "verifiedAt": "2026-10-28",
+    "verificationStatus": "verified"
+  },
+  {
+    "path": "suppress_unstable_features_warning",
+    "name": "隐藏实验功能提示",
+    "summary": "隐藏实验功能的警告提示。",
+    "effect": "隐藏提示，功能本身不变。",
+    "valueHelp": "开启：隐藏警告；关闭：保留警告。",
+    "usage": "了解实验功能的限制后再按需隐藏。",
+    "limitations": "隐藏警告不会解决兼容问题。",
+    "defaultBehavior": "由客户端决定。",
+    "relatedKeys": [],
+    "sources": [
+      {
+        "title": "OpenAI 配置参考",
+        "url": "https://learn.chatgpt.com/docs/config-file/config-reference"
+      }
+    ],
+    "verifiedAt": "2026-10-28",
+    "verificationStatus": "verified"
+  },
+  {
+    "path": "features.context_management",
+    "name": "旧上下文管理",
+    "summary": "旧版的上下文管理开关。",
+    "effect": "旧版将上下文预算和历史笔记功能组合在此开关下。",
+    "valueHelp": "保留原有开关或表格写法，不自动转换。",
+    "usage": "通常无需新增，先确认所用版本支持。",
+    "limitations": "当前文档只列出 experimental_mode 子项且标为不可用，旧写法尚未验证。",
+    "defaultBehavior": "当前默认值未知。",
+    "relatedKeys": [
+      "features.token_budget.enabled",
+      "features.token_budget.use_history_notes_extension"
+    ],
+    "sources": [
+      {
+        "title": "当前 OpenAI 配置参考（用于核对差异）",
+        "url": "https://learn.chatgpt.com/docs/config-file/config-reference"
+      }
+    ],
+    "verifiedAt": "2026-10-28",
+    "verificationStatus": "historical"
+  },
+  {
+    "path": "features.token_budget.enabled",
+    "name": "旧上下文预算",
+    "summary": "旧版用于向模型提供上下文用量信息。",
+    "effect": "让模型看到当前上下文用了多少。此为旧版说明。",
+    "valueHelp": "开启或关闭此旧功能。",
+    "usage": "确认所用版本支持后再启用。",
+    "limitations": "当前文档未收录；不是账单上限，也不保证省 Token。",
+    "defaultBehavior": "当前默认值未知。",
+    "relatedKeys": [
+      "features.token_budget.use_history_notes_extension"
+    ],
+    "sources": [
+      {
+        "title": "当前 OpenAI 配置参考（未收录此旧字段）",
+        "url": "https://learn.chatgpt.com/docs/config-file/config-reference"
+      }
+    ],
+    "verifiedAt": "2026-10-28",
+    "verificationStatus": "historical"
+  },
+  {
+    "path": "features.token_budget.use_history_notes_extension",
+    "name": "旧历史与笔记扩展",
+    "summary": "旧版用于让模型查看历史和读写笔记。",
+    "effect": "旧版的历史与笔记扩展，当前行为未验证。",
+    "valueHelp": "开启或关闭此旧功能。",
+    "usage": "确认客户端与服务支持后再启用。",
+    "limitations": "当前文档未收录，不代表无限上下文或永久记忆。",
+    "defaultBehavior": "当前默认值未知。",
+    "relatedKeys": [
+      "features.token_budget.enabled"
+    ],
+    "sources": [
+      {
+        "title": "当前 OpenAI 配置参考（未收录此旧字段）",
+        "url": "https://learn.chatgpt.com/docs/config-file/config-reference"
+      }
+    ],
+    "verifiedAt": "2026-10-28",
+    "verificationStatus": "historical"
+  },
+  {
+    "path": "connection.provider",
+    "name": "服务商与线路",
+    "summary": "选择服务商和线路。",
+    "effect": "预设会填入服务地址和认证方式。",
+    "valueHelp": "自定义：手动填写；Krill：选择预设线路。",
+    "usage": "选好线路后仍可调整连接设置。",
+    "limitations": "选择线路不会测速、验证账户或应用模板。",
+    "defaultBehavior": "空白配置默认使用自定义服务。",
+    "relatedKeys": [
+      "openai_base_url",
+      "chatgpt_base_url"
+    ],
+    "sources": [],
+    "verifiedAt": "2026-10-28",
+    "verificationStatus": "local"
+  },
+  {
+    "path": "connection.address",
+    "name": "服务地址",
+    "summary": "填写 Codex 连接的服务地址。",
+    "effect": "决定请求发送到哪个服务。",
+    "valueHelp": "Responses API 填完整地址，如 https://example.com/v1；PAT 中转可填根地址。",
+    "usage": "按服务商提供的接入方式填写。",
+    "limitations": "“获取模型”只读取模型列表，不验证完整使用能力。",
+    "defaultBehavior": "不改连接时保留现有地址和认证。",
+    "relatedKeys": [
+      "connection.protocol"
+    ],
+    "sources": [],
+    "verifiedAt": "2026-10-28",
+    "verificationStatus": "local"
+  },
+  {
+    "path": "connection.credential",
+    "name": "访问凭据",
+    "summary": "填写服务提供的 API Key 或 PAT。",
+    "effect": "保存连接时，将凭据写入本机 auth.json。",
+    "valueHelp": "在“更多连接选项”中选择 PAT、API Key 或自动。",
+    "usage": "只改普通设置时无需填写，会保留已有登录。",
+    "limitations": "预览会隐藏凭据，实际认证文件仍包含凭据。",
+    "defaultBehavior": "不改连接时保留现有认证。",
+    "relatedKeys": [
+      "connection.protocol"
+    ],
+    "sources": [],
+    "verifiedAt": "2026-10-28",
+    "verificationStatus": "local"
+  },
+  {
+    "path": "connection.protocol",
+    "name": "服务类型与认证",
+    "summary": "选择服务使用的接入和认证方式。",
+    "effect": "决定请求路径和凭据格式。",
+    "valueHelp": "按服务商说明选择 PAT 中转或 Responses API，以及对应认证方式。",
+    "usage": "不清楚时先核对服务商提供的接入说明。",
+    "limitations": "保存成功不代表服务端一定兼容。",
+    "defaultBehavior": "读取现有连接；只改普通设置时不重写认证。",
+    "relatedKeys": [
+      "connection.address",
+      "connection.credential"
+    ],
+    "sources": [],
+    "verifiedAt": "2026-10-28",
+    "verificationStatus": "local"
+  },
+  {
+    "path": "model",
+    "name": "默认模型",
+    "summary": "设置新会话默认使用的模型。",
+    "effect": "设置 Codex 读取配置时使用的默认模型。",
+    "valueHelp": "填写服务支持的模型 ID，也可点击“获取模型”选择。",
+    "usage": "按服务提供的名称填写。",
+    "limitations": "会话选择、项目设置等可能覆盖此值。",
+    "defaultBehavior": "保留读取到的模型；空白配置中的初始名称需服务支持。",
+    "relatedKeys": [
+      "model_reasoning_effort",
+      "service_tier"
+    ],
+    "sources": [
+      {
+        "title": "OpenAI 配置基础",
+        "url": "https://learn.chatgpt.com/docs/config-file/config-basic"
+      }
+    ],
+    "verifiedAt": "2026-10-28",
+    "verificationStatus": "verified"
+  }
+]

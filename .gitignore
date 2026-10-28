@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+artifacts/
+.test-home/
+.ui-test/
+.ui-test-*/
+.installer-check-*/
+*.user
+.packages/
+.dotnet-home/

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>CodexConfig</AssemblyName>
+    <Version>0.8.0</Version>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Product>Codex Config</Product>
+    <Description>Codex 本地配置编辑器</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../CodexConfig.Core/CodexConfig.Core.csproj" />
+  </ItemGroup>
+</Project>

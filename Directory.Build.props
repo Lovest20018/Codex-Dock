@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RuntimeFrameworkVersion>8.0.31</RuntimeFrameworkVersion>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+</Project>
