@@ -11,14 +11,17 @@ using Microsoft.Extensions.Configuration;
 
 namespace CodexConfig.Core;
 
-public sealed record BridgeStatus(long Requests, long FastRequests, long AutoReviewRequests);
+public sealed record BridgeStatus(long Requests, long FastRequests, long AutoReviewRequests, int ProtocolVersion = 0);
 
 // A narrow inference bridge. Account, plugin and login endpoints are intentionally absent.
 public sealed class ModelBridge : IAsyncDisposable
 {
+    public const int ProtocolVersion = 2;
     private readonly Func<MixedConnection> readConnection;
     private readonly Func<byte[]?> readAuth;
     private readonly HttpClient client;
+    private readonly HttpClient proxyClient;
+    private readonly IWebProxy proxy;
     private readonly SemaphoreSlim slots = new(16);
     private WebApplication? app;
     private long requests, fastRequests, autoReviewRequests;
@@ -29,11 +32,14 @@ public sealed class ModelBridge : IAsyncDisposable
     private static readonly HashSet<string> ExcludedHeaders = new(StringComparer.OrdinalIgnoreCase)
     { "Connection", "Keep-Alive", "Transfer-Encoding", "TE", "Trailer", "Upgrade", "Proxy-Authenticate", "Proxy-Authorization", "Set-Cookie", "Content-Length" };
 
-    public ModelBridge(Func<MixedConnection> readConnection, Func<byte[]?> readAuth, HttpMessageHandler? handler = null)
+    public ModelBridge(Func<MixedConnection> readConnection, Func<byte[]?> readAuth, HttpMessageHandler? handler = null, IWebProxy? proxy = null)
     {
         this.readConnection = readConnection; this.readAuth = readAuth;
-        client = handler is null ? new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false }) : new(handler);
+        this.proxy = proxy ?? new SystemHttpProxy();
+        client = handler is null ? new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = false }) : new(handler);
+        proxyClient = handler is null ? new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = true, Proxy = this.proxy }) : client;
         client.Timeout = Timeout.InfiniteTimeSpan;
+        proxyClient.Timeout = Timeout.InfiniteTimeSpan;
     }
 
     public async Task StartAsync(CancellationToken cancellation = default)
@@ -69,7 +75,7 @@ public sealed class ModelBridge : IAsyncDisposable
             if (context.Request.Path == "/codex-config/health" && HttpMethods.IsGet(context.Request.Method))
             {
                 context.Response.ContentType = "application/json";
-                await JsonSerializer.SerializeAsync(context.Response.Body, new BridgeStatus(Interlocked.Read(ref requests), Interlocked.Read(ref fastRequests), Interlocked.Read(ref autoReviewRequests)), cancellationToken: context.RequestAborted);
+                await JsonSerializer.SerializeAsync(context.Response.Body, new BridgeStatus(Interlocked.Read(ref requests), Interlocked.Read(ref fastRequests), Interlocked.Read(ref autoReviewRequests), ProtocolVersion), cancellationToken: context.RequestAborted);
                 return;
             }
             if (context.Request.Path == "/codex-config/stop" && HttpMethods.IsPost(context.Request.Method))
@@ -126,7 +132,7 @@ public sealed class ModelBridge : IAsyncDisposable
         }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         timeout.CancelAfter(TimeSpan.FromMinutes(15));
-        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        using var response = await (settings.UseSystemProxy ? proxyClient : client).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         if ((int)response.StatusCode is >= 300 and < 400 || response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
             // A Krill authentication failure must not trigger an official-account token refresh.
@@ -151,6 +157,7 @@ public sealed class ModelBridge : IAsyncDisposable
     {
         var uri = new UriBuilder(target) { Scheme = new Uri(target).Scheme == "https" ? "wss" : "ws" };
         using var upstream = new ClientWebSocket();
+        upstream.Options.Proxy = settings.UseSystemProxy ? proxy : null;
         upstream.Options.SetRequestHeader("Authorization", "Bearer " + settings.ApiKey);
         CopyRequestHeaders(context, (key, value) => { if (key != "Accept") upstream.Options.SetRequestHeader(key, value); });
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
@@ -205,6 +212,7 @@ public sealed class ModelBridge : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         if (app is not null) { await app.StopAsync(); await app.DisposeAsync(); }
+        if (!ReferenceEquals(proxyClient, client)) proxyClient.Dispose();
         client.Dispose(); slots.Dispose();
     }
 }

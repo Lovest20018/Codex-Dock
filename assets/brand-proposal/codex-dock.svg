@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Codex Dock proposal">
+  <rect width="128" height="128" rx="28" fill="#23364D"/>
+  <path d="M32 32V84Q32 96 44 96H84Q96 96 96 84V76" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="square" stroke-linejoin="round"/>
+  <rect x="56" y="44" width="48" height="16" rx="4" fill="#62D2DD"/>
+</svg>

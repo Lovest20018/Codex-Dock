@@ -42,7 +42,9 @@ public sealed class TemplateBrowser : UserControl
     public TemplateBrowser()
     {
         var layout = new Grid(); layout.RowDefinitions.Add(new()); layout.RowDefinitions.Add(new() { Height = GridLength.Auto });
-        scroll.SetResourceReference(StyleProperty, "PageScroll"); scroll.Padding = new(0, 0, 10, 18); scroll.Content = body; layout.Children.Add(scroll);
+        scroll.SetResourceReference(StyleProperty, "PageScroll"); scroll.Padding = new(0, 0, 10, 18);
+        var surface = new Border { Child = body, Padding = new(20) }; surface.SetResourceReference(StyleProperty, "SurfacePanel");
+        scroll.Content = surface; layout.Children.Add(scroll);
         var footer = new Grid { Margin = new(0, 10, 10, 12) }; footer.ColumnDefinitions.Add(new()); footer.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         selectedCount.VerticalAlignment = VerticalAlignment.Center; selectedCount.Margin = new(0, 0, 18, 0);
         footer.Children.Add(selectedCount); Grid.SetColumn(footerActions, 1); footer.Children.Add(footerActions);

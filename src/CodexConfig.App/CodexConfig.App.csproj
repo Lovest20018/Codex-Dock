@@ -2,14 +2,18 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <UseWPF>true</UseWPF>
-    <AssemblyName>CodexConfig</AssemblyName>
-    <Version>0.8.0</Version>
+    <AssemblyName>CodexDock</AssemblyName>
+    <RootNamespace>CodexConfig.App</RootNamespace>
+    <Version>0.10.0</Version>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Product>Codex Config</Product>
+    <Product>Codex Dock</Product>
     <Description>Codex 本地配置编辑器</Description>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="Assets\tray-dark.png" />
+    <Resource Include="Assets\tray-light.png" />
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
     <ProjectReference Include="../CodexConfig.Core/CodexConfig.Core.csproj" />
   </ItemGroup>
 </Project>

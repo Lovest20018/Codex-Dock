@@ -8,3 +8,12 @@ artifacts/
 *.user
 .packages/
 .dotnet-home/
+**/.codex/
+**/auth.json
+**/config.toml
+**/codex-config-connection.dat
+**/codex-dock-details.dat
+**/codex-config-backups/
+**/*.backup
+**/.env
+**/.env.*

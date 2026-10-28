@@ -1,19 +1,25 @@
-# Codex Config
+# Codex Dock
 
-Windows 原生 Codex 配置编辑器，提供配置作用说明、可选社区模板与 PAT / API Key 连接助手。当前版本 **0.8.0**。
+Windows 原生 Codex 本地连接与配置中心，提供配置作用说明、可选社区模板与 PAT / API Key 连接助手。当前版本 **0.10.0**。应用及本地网关进程名均为 `CodexDock.exe`。
 
-`feature/official-login-krill` 分支增加 **官方账号 + API**：沿用 Codex 原生官方登录，模型请求由本机转发使用独立 Krill PAT / API Key。模型凭据加密保存，并纳入备份与恢复。Fast 参数和自动审核模型原样转发，后端实际能力需分别确认。使用方法、验证范围及后台连接说明见 [官方账号 + Krill 模型连接](docs/official-login-krill.md)。本分支尚未发布正式安装包。
+[下载最新版本](https://github.com/Lovest20018/Codex-Dock/releases/latest) · [更新与发布说明](docs/github-releases.md)
+
+支持 **官方账号 + API**：沿用 Codex 原生官方登录，模型请求由本机转发使用独立 Krill PAT / API Key。模型凭据加密保存，并纳入备份与恢复。Fast 参数和自动审核模型原样转发，后端实际能力需分别确认。使用方法、验证范围及后台连接说明见 [官方账号 + Krill 模型连接](docs/official-login-krill.md)。PAT / API Key 模式无需登录 ChatGPT。
 
 ## 使用
 
-运行 `CodexConfig-0.8.0-Setup-win-x64.exe` 安装，或解压便携包后运行 `CodexConfig.exe`。支持 Windows 10 1809 及以上 x64，内置 .NET 运行时。
+运行 `CodexDock-0.10.0-Setup-win-x64.exe` 安装，或解压便携包后运行 `CodexDock.exe`。支持 Windows 10 1809 及以上 x64，内置 .NET 运行时。
 
-界面包含四个页面：
+界面采用状态总览结构，详见 [Codex Dock 改版交付](docs/codex-dock-delivery.md)。主要入口：
 
-- **常用设置**：常用 / 全部 / 已修改切换，可搜索中文名称和字段。每项显示一句用途，点击“了解更多”查看怎么选；“更多选项”中可显示高级项或添加设置。
-- **服务连接**：选择服务商和线路，填写地址、PAT / API Key 与模型。只改普通设置时无需填写凭据。
+- **模型与行为 / 全部配置**：常用 / 全部 / 已修改切换，可搜索中文名称和字段。每项显示一句用途，点击“了解更多”查看怎么选；“更多选项”中可显示高级项或添加设置。
+- **连接与账号**：选择服务商和线路，填写地址、PAT / API Key 与模型。只改普通设置时无需填写凭据。
+- **连接名称与备注**：支持可选名称和多行备注，保存后在概览显示，信息随当前配置目录加密备份；只改这些信息不需要重新填写凭据。PAT / API Key 模式无需登录 ChatGPT。
+- **本地网关**：显示本机模型转发地址、状态及请求计数，提供启停和自动读取本机 HTTP 代理的开关。关闭窗口收起到系统托盘，托盘退出会停止网关；普通最小化保留任务栏入口。
 - **配置模板**：新增、编辑、复制、删除模板，也可保存当前设置。内置模板可编辑、移除或恢复。打开模板先看当前值与模板值，勾选后应用。
 - **备份恢复**：每次保存前自动加密备份，可还原上次保存前的状态，仅当前 Windows 用户可读取。
+- **应用设置与帮助**：可开启登录 Windows 后自动启动，立即生效。自动启动使用开启时的程序位置和配置目录，并收起到托盘。
+- **软件更新**：在应用页检查 GitHub 正式版，下载并校验安装器后可安装更新。检查只发送版本请求，不上传配置或密钥。
 
 修改设置后点击“保存配置”，再重新打开 Codex。点击“查看更改”可先检查已隐藏密钥的差异。`Ctrl+S` 保存、`Ctrl+F` 搜索、`Esc` 关闭面板。
 
@@ -53,14 +59,14 @@ PAT 中转使用模型入口 `<origin>/backend-api/codex`，`chatgpt_base_url` �
 
 字段维护入口是 [`config/config-schema.json`](config/config-schema.json)。条目对应 `config.toml`，包含历史中文说明、分类、类型、枚举和必要的取值约束。人工核对的作用说明独立维护于 [`config/config-help.json`](config/config-help.json)，避免更新字段表时覆盖文案。两份数据均在构建时嵌入程序。
 
-后续按 Codex 的配置变化维护字段与帮助来源；没有上游仓库同步、Codex 安装扫描或多版本目录。新增字段在目录尚未更新时也能通过 TOML 值编辑。维护方式见 [`docs/schema-maintenance.md`](docs/schema-maintenance.md)，本版变化见 [`docs/release-0.8.0.md`](docs/release-0.8.0.md)。
+后续按 Codex 的配置变化维护字段与帮助来源；没有上游仓库同步、Codex 安装扫描或多版本目录。新增字段在目录尚未更新时也能通过 TOML 值编辑。维护方式见 [`docs/schema-maintenance.md`](docs/schema-maintenance.md)，本版变化见 [`docs/release-0.10.0.md`](docs/release-0.10.0.md)。
 
 ## 构建和检查
 
 ```powershell
 dotnet build src/CodexConfig.App/CodexConfig.App.csproj -c Release
 dotnet run --project tests/CodexConfig.Tests/CodexConfig.Tests.csproj -c Release
-dotnet run --project src/CodexConfig.App/CodexConfig.App.csproj -c Release -- --smoke-test .ui-test-v0.8
+dotnet run --project src/CodexConfig.App/CodexConfig.App.csproj -c Release -- --smoke-test .ui-test-v0.10
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-package.ps1
 ```

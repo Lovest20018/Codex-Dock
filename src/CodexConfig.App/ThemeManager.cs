@@ -19,10 +19,12 @@ internal static class ThemeManager
         IsDark = dark;
         var colors = new Dictionary<string, string>
         {
-            ["Ink"] = dark ? "#EBEDF0" : "#20242B", ["Muted"] = dark ? "#A6ADB9" : "#69717D",
-            ["Accent"] = dark ? "#94B4FF" : "#2F63D8", ["AccentOn"] = dark ? "#16233F" : "#FFFFFF",
-            ["AccentSoft"] = dark ? "#29344A" : "#EAF0FC", ["Line"] = dark ? "#363A40" : "#E6E8EB",
-            ["Canvas"] = dark ? "#202225" : "#FFFFFF", ["Sidebar"] = dark ? "#191B1E" : "#F6F7F9",
+            ["Ink"] = dark ? "#E8EDF3" : "#202A36", ["Muted"] = dark ? "#A8B4C3" : "#596779",
+            ["Accent"] = dark ? "#9BBEFF" : "#245CC5", ["AccentOn"] = dark ? "#172233" : "#FFFFFF",
+            ["AccentSoft"] = dark ? "#273951" : "#EAF1FE", ["Line"] = dark ? "#38424E" : "#DDE3EB",
+            ["Canvas"] = dark ? "#171B22" : "#F5F7FB", ["Sidebar"] = dark ? "#1C212A" : "#FFFFFF",
+            ["Surface"] = dark ? "#202630" : "#FFFFFF", ["Success"] = dark ? "#89D7B4" : "#267252",
+            ["SuccessSoft"] = dark ? "#243E36" : "#E8F5EE",
             ["Field"] = dark ? "#202225" : "#FFFFFF", ["Hover"] = dark ? "#2B2E34" : "#EDF0F4",
             ["Error"] = dark ? "#FF9C9C" : "#B53636", ["Code"] = dark ? "#191B1E" : "#F6F7F9",
             ["ScrollThumbBrush"] = dark ? "#616875" : "#BFC5CE"

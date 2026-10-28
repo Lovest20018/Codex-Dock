@@ -534,6 +534,8 @@ Test("capturing current settings includes drafts, skips removed values and exclu
 });
 
 MixedTests.Register(tests, runRoot);
+DetailsAndStartupTests.Register(tests, runRoot);
+UpdateTests.Register(tests, runRoot);
 var failures = 0;
 foreach (var test in tests)
 {

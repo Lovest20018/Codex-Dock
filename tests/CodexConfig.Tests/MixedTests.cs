@@ -32,6 +32,70 @@ internal static class MixedTests
         string Home() { var directory = Path.Combine(root, Guid.NewGuid().ToString("N")); Directory.CreateDirectory(directory); return directory; }
         ConnectionSettings Settings() => new("https://krill.example/backend-api/codex", "fake-krill-pat", "gpt-6.1-sol") { Mode = ConnectionMode.OfficialWithApi, PreservePreferenceValues = true };
 
+        Test("system HTTP proxy parsing supports Windows per-protocol values without accepting credentials", () =>
+        {
+            Assert(SystemHttpProxy.Parse("127.0.0.1:7890")?.AbsoluteUri == "http://127.0.0.1:7890/");
+            Assert(SystemHttpProxy.Parse("http=localhost:7891;https=127.0.0.1:7892;socks=localhost:7893")?.Port == 7892);
+            Assert(SystemHttpProxy.Parse("http=localhost:7891;https=127.0.0.1:7892", "http")?.Port == 7891);
+            Assert(SystemHttpProxy.Parse("http=localhost:7891", "wss")?.Port == 7891);
+            foreach (var value in new[] { "", "socks=localhost:7893", "socks5://localhost:7893", "http://user:password@localhost:7890", "http://localhost:7890/?key=hidden", "http://localhost:7890/route" })
+                Assert(SystemHttpProxy.Parse(value) is null);
+        });
+
+        Test("gateway proxy preference persists, survives ordinary edits and participates in restore", () =>
+        {
+            var store = new ConfigStore(new FakeEnvironment()); var home = Home();
+            store.Apply(store.Plan(store.Load(home), Settings(), officialAuth: Auth()));
+            Assert(!store.ReadSettings(store.Load(home)).UseSystemProxy);
+            store.Apply(store.Plan(store.Load(home), Settings() with { UseSystemProxy = true }));
+            var proxy = store.Load(home);
+            Assert(store.ReadSettings(proxy).UseSystemProxy && MixedConnection.Read(proxy.Bridge!).UseSystemProxy);
+            store.Apply(store.Plan(proxy, store.ReadSettings(proxy), new Dictionary<string, string?> { ["analytics.enabled"] = "false" }, updateConnection: false));
+            Assert(store.ReadSettings(store.Load(home)).UseSystemProxy && store.Load(home).Bridge!.SequenceEqual(proxy.Bridge!));
+            store.Apply(store.Plan(store.Load(home), Settings() with { UseSystemProxy = false }));
+            store.Restore(store.Load(home));
+            Assert(store.ReadSettings(store.Load(home)).UseSystemProxy);
+        });
+
+        tests.Add(("gateway proxy routes HTTP and HTTPS CONNECT without exposing official credentials", async () =>
+        {
+            var port = MixedConnection.Create(Settings()).Port;
+            var builder = WebApplication.CreateSlimBuilder(); builder.Logging.ClearProviders();
+            builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
+            await using var proxy = builder.Build();
+            var paths = new List<string>();
+            proxy.Run(async context =>
+            {
+                paths.Add(context.Request.Method + " " + context.Request.Host);
+                Assert(!context.Request.Headers.ContainsKey("chatgpt-account-id") && !context.Request.Headers.ContainsKey("Cookie"));
+                if (context.Request.Method == "CONNECT")
+                {
+                    Assert(!context.Request.Headers.ContainsKey("Authorization"));
+                    context.Response.StatusCode = 502; return;
+                }
+                Assert(context.Request.Headers.Authorization == "Bearer fake-krill-pat");
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync("{\"proxy\":true}");
+            });
+            await proxy.StartAsync();
+            var connection = MixedConnection.Create(Settings() with { BaseUrl = "http://unresolvable.invalid/upstream", Kind = ConnectionKind.ResponsesApi, UseSystemProxy = true });
+            await using var bridge = new ModelBridge(() => connection, Auth, proxy: new WebProxy($"http://127.0.0.1:{port}"));
+            await bridge.StartAsync();
+            using var client = new HttpClient(new HttpClientHandler { UseProxy = false }) { BaseAddress = new Uri(connection.LocalBaseUrl + "/"), Timeout = TimeSpan.FromSeconds(10) };
+            client.DefaultRequestHeaders.Authorization = new("Bearer", "fake-official-access");
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Cookie", "must-not-leave");
+            using (var response = await client.PostAsync("responses", new StringContent("{}")))
+                Assert(response.IsSuccessStatusCode && (await response.Content.ReadAsStringAsync()).Contains("\"proxy\":true"));
+            Assert(paths.Count == 1 && paths[0] == "POST unresolvable.invalid");
+            connection = MixedConnection.Create(Settings() with { BaseUrl = "https://secure.invalid/upstream", Kind = ConnectionKind.ResponsesApi, UseSystemProxy = true }, connection);
+            using (var response = await client.PostAsync("responses", new StringContent("{}"))) Assert(response.StatusCode == HttpStatusCode.BadGateway);
+            Assert(paths.Any(path => path == "CONNECT secure.invalid:443"));
+            connection = MixedConnection.Create(Settings() with { BaseUrl = "http://127.0.0.1:9/upstream", Kind = ConnectionKind.ResponsesApi, UseSystemProxy = false }, connection);
+            var proxyCalls = paths.Count;
+            using (var response = await client.PostAsync("responses", new StringContent("{}"))) Assert(response.StatusCode == HttpStatusCode.BadGateway);
+            Assert(paths.Count == proxyCalls, "Disabling the gateway proxy still used it.");
+        }));
+
         Test("mixed identity and model credentials are separate, encrypted and masked", () =>
         {
             var home = Home(); var auth = Auth();

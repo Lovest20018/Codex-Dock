@@ -16,6 +16,8 @@ public sealed record ConnectionSettings(string BaseUrl, string ApiKey, string Mo
     public AuthenticationChoice Authentication { get; init; } = AuthenticationChoice.Auto;
     public ConnectionKind Kind { get; init; } = ConnectionKind.PatRelay;
     public ConnectionMode Mode { get; init; }
+    public bool UseSystemProxy { get; init; }
+    public ConnectionDetails Details { get; init; } = new();
     public string? WebSearchMode { get; init; }
     // The settings UI edits these values explicitly, preserving absent defaults.
     public bool PreservePreferenceValues { get; init; }
@@ -42,7 +44,7 @@ public sealed record ConnectionSettings(string BaseUrl, string ApiKey, string Mo
     public string Fingerprint()
     {
         var settings = Normalize();
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{settings.Kind}\0{settings.BaseUrl}\0{settings.ApiKey}")));
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{settings.Kind}\0{settings.BaseUrl}\0{settings.ApiKey}\0{settings.UseSystemProxy}\0{settings.Mode}")));
     }
 
     public AuthenticationDecision Decide()
@@ -81,10 +83,12 @@ public sealed record ConnectionSettings(string BaseUrl, string ApiKey, string Mo
 public sealed record ConfigSnapshot(string Home, byte[]? Config, byte[]? Auth, string? AuthApiBaseUrl)
 {
     public byte[]? Bridge { get; init; }
+    public byte[]? Details { get; init; }
 }
 public sealed record ConfigPlan(ConfigSnapshot Before, byte[] Config, byte[]? Auth, string? AuthApiBaseUrl,
     string ConfigPreview, string AuthPreview, IReadOnlyList<string> Notes,
     AuthenticationMode Mode = AuthenticationMode.Pat, string AuthenticationReason = "")
 {
     public byte[]? Bridge { get; init; }
+    public byte[]? Details { get; init; }
 }

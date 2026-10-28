@@ -18,6 +18,7 @@ public sealed class MixedConnection
     public ConnectionKind Kind { get; init; }
     public string LocalToken { get; init; } = "";
     public int Port { get; init; }
+    public bool UseSystemProxy { get; init; }
     public string LocalBaseUrl => $"http://127.0.0.1:{Port}/v1";
 
     public static MixedConnection Create(ConnectionSettings settings, MixedConnection? previous = null)
@@ -25,7 +26,7 @@ public sealed class MixedConnection
         settings = settings.Normalize();
         var port = previous?.Port ?? FreePort();
         var token = previous?.LocalToken ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-        return new() { BaseUrl = settings.BaseUrl, ApiKey = settings.ApiKey, Kind = settings.Kind, Port = port, LocalToken = token };
+        return new() { BaseUrl = settings.BaseUrl, ApiKey = settings.ApiKey, Kind = settings.Kind, Port = port, LocalToken = token, UseSystemProxy = settings.UseSystemProxy };
     }
 
     public byte[] Protect()

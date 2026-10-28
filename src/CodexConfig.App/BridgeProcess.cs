@@ -27,9 +27,17 @@ internal static class BridgeProcess
     public static async Task<BridgeStatus> EnsureAsync(string home, byte[] bytes)
     {
         var connection = MixedConnection.Read(bytes);
-        if (await StatusAsync(connection).ConfigureAwait(false) is { } existing) return existing;
+        if (await StatusAsync(connection).ConfigureAwait(false) is { } existing)
+        {
+            if (existing.ProtocolVersion >= ModelBridge.ProtocolVersion) return existing;
+            // Replace legacy relays that cannot honor the new proxy setting.
+            await StopAsync(bytes).ConfigureAwait(false);
+        }
         var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = AppContext.BaseDirectory };
         start.ArgumentList.Add("--model-bridge"); start.ArgumentList.Add(Path.GetFullPath(home));
+        using var owner = Process.GetCurrentProcess();
+        start.ArgumentList.Add("--owner-process"); start.ArgumentList.Add(owner.Id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        start.ArgumentList.Add(owner.StartTime.ToUniversalTime().Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture));
         using var process = Process.Start(start) ?? throw new IOException("无法启动本地模型连接服务。");
         for (var i = 0; i < 40; i++)
         {
@@ -56,8 +64,19 @@ internal static class BridgeProcess
         throw new IOException("本地连接尚未停止，请稍后重试。");
     }
 
-    public static async Task RunAsync(string home)
+    public static async Task RunAsync(string home, int? ownerId = null, long? ownerStarted = null)
     {
+        bool OwnerAlive()
+        {
+            if (ownerId is null) return true; // Older standalone callers remain supported.
+            try
+            {
+                using var owner = Process.GetProcessById(ownerId.Value);
+                return !owner.HasExited && owner.StartTime.ToUniversalTime().Ticks == ownerStarted;
+            }
+            catch (Exception error) when (error is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { return false; }
+        }
+        if (!OwnerAlive()) return;
         home = Path.GetFullPath(home);
         var path = Path.Combine(home, MixedConnection.FileName);
         var initial = MixedConnection.Read(await File.ReadAllBytesAsync(path));
@@ -78,6 +97,7 @@ internal static class BridgeProcess
         var failures = 0;
         while (await timer.WaitForNextTickAsync())
         {
+            if (!OwnerAlive()) break;
             if (bridge.StopRequested) break;
             if (!File.Exists(path)) break;
             try

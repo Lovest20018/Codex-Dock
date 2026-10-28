@@ -14,6 +14,8 @@ public sealed class SettingsEditor : UserControl
     private readonly ConfigSchema catalog = ConfigSchema.Instance;
     private readonly Grid toolbar = new();
     private readonly StackPanel rows = new();
+    private readonly StackPanel scrollBody = new();
+    private readonly Grid searchShell = new();
     private readonly ScrollViewer scroll = new();
     private readonly StackPanel paging = new();
     private readonly DispatcherTimer searchTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
@@ -45,12 +47,11 @@ public sealed class SettingsEditor : UserControl
     public event Action? Changed;
     public event Action? ConnectionRequested;
     internal int VisibleCount { get; private set; }
-    private static readonly string[] CommonPaths = ["model_reasoning_effort", "web_search", "features.fast_mode", "service_tier", "model_context_window", "model_auto_compact_token_limit", "analytics.enabled"];
+    private static readonly string[] CommonPaths = ["model_reasoning_effort", "features.fast_mode", "service_tier", "web_search", "model_context_window", "model_auto_compact_token_limit", "approval_policy", "approvals_reviewer", "sandbox_mode", "analytics.enabled"];
 
     public SettingsEditor()
     {
         var layout = new Grid();
-        layout.RowDefinitions.Add(new() { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new());
         layout.RowDefinitions.Add(new() { Height = GridLength.Auto });
         toolbar.RowDefinitions.Add(new() { Height = GridLength.Auto });
@@ -60,7 +61,7 @@ public sealed class SettingsEditor : UserControl
         toolbar.ColumnDefinitions.Add(new()); toolbar.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         AutomationProperties.SetName(Search, "搜索配置名称、说明或字段");
         Search.ToolTip = "搜索配置名称、说明或字段；Ctrl+F";
-        var searchShell = new Grid { Margin = new(0, 0, 12, 0) };
+        searchShell.Margin = new(0, 0, 12, 0);
         var searchPlaceholder = HelpContent.Note("搜索设置…", new(12, 0, 12, 0));
         searchPlaceholder.IsHitTestVisible = false; searchPlaceholder.VerticalAlignment = VerticalAlignment.Center;
         searchShell.Children.Add(Search); searchShell.Children.Add(searchPlaceholder);
@@ -111,13 +112,15 @@ public sealed class SettingsEditor : UserControl
         Grid.SetRow(options, 1); Grid.SetColumn(options, 1); toolbar.Children.Add(options);
         Grid.SetRow(add, 2); Grid.SetColumnSpan(add, 2); toolbar.Children.Add(add);
         count.SetResourceReference(StyleProperty, "Helper"); count.Margin = new(0, 0, 0, 5); Grid.SetRow(count, 3); Grid.SetColumnSpan(count, 2); count.Visibility = Visibility.Collapsed; toolbar.Children.Add(count);
-        layout.Children.Add(toolbar);
+        scrollBody.Children.Add(toolbar);
         scroll.SetResourceReference(StyleProperty, "PageScroll"); scroll.Padding = new(0, 0, 10, 24);
-        var body = new StackPanel(); body.Children.Add(rows); body.Children.Add(empty); scroll.Content = body;
-        Grid.SetRow(scroll, 1); layout.Children.Add(scroll); Content = layout;
+        var body = new StackPanel(); body.Children.Add(rows); body.Children.Add(empty);
+        var surface = new Border { Child = body, Padding = new(20, 0, 20, 4) };
+        surface.SetResourceReference(StyleProperty, "SurfacePanel"); scrollBody.Children.Add(surface); scroll.Content = scrollBody;
+        layout.Children.Add(scroll); Content = layout;
         paging.Orientation = Orientation.Horizontal; paging.HorizontalAlignment = HorizontalAlignment.Right; paging.Margin = new(0, 8, 10, 8);
         paging.Children.Add(PreviousPage); paging.Children.Add(pageLabel); paging.Children.Add(NextPage);
-        Grid.SetRow(paging, 2); layout.Children.Add(paging);
+        Grid.SetRow(paging, 1); layout.Children.Add(paging);
         PreviousPage.Click += (_, _) => { pageIndex--; RenderPage(); };
         NextPage.Click += (_, _) => { pageIndex++; RenderPage(); };
         empty.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
@@ -127,6 +130,8 @@ public sealed class SettingsEditor : UserControl
         advanced.Checked += (_, _) => Refresh(); advanced.Unchecked += (_, _) => Refresh();
         loading = false;
     }
+
+    internal void SetHeader(FrameworkElement header) => scrollBody.Children.Insert(0, header);
 
     internal void Configure(byte[]? config, Dictionary<string, string?> edits)
     {
@@ -185,6 +190,9 @@ public sealed class SettingsEditor : UserControl
             button.SetResourceReference(ForegroundProperty, id == scope ? "Accent" : "Muted");
         }
         category.IsEnabled = !preferences;
+        category.Visibility = preferences ? Visibility.Collapsed : Visibility.Visible;
+        Grid.SetColumnSpan(searchShell, preferences ? 2 : 1);
+        searchShell.Margin = preferences ? new(0) : new(0, 0, 12, 0);
         filteredEntries = entries.ToArray();
         VisibleCount = filteredEntries.Length; count.Text = $"{VisibleCount} 项 · 本地配置目录";
         scopeButtons["changed"].Content = $"已修改 {changes.Count}";
@@ -204,7 +212,15 @@ public sealed class SettingsEditor : UserControl
         paging.Visibility = pages > 1 ? Visibility.Visible : Visibility.Collapsed;
         pageIndex = Math.Clamp(pageIndex, 0, pages - 1);
         rows.Children.Clear(); inputs.Clear();
-        foreach (var entry in filteredEntries.Skip(pageIndex * PageSize).Take(PageSize)) rows.Children.Add(BuildRow(entry));
+        foreach (var entry in filteredEntries.Skip(pageIndex * PageSize).Take(PageSize))
+        {
+            if (preferences && entry.Path is "model_reasoning_effort" or "web_search" or "approval_policy" or "analytics.enabled")
+            {
+                var title = new TextBlock { Text = entry.Path switch { "model_reasoning_effort" => "模型与速度", "web_search" => "搜索与上下文", "approval_policy" => "执行与权限", _ => "隐私与统计" }, Margin = new(0, 18, 0, 8), FontSize = 16, FontWeight = FontWeights.SemiBold };
+                rows.Children.Add(title);
+            }
+            rows.Children.Add(BuildRow(entry));
+        }
         pageLabel.Text = $"{pageIndex + 1} / {pages}";
         PreviousPage.IsEnabled = pageIndex > 0; NextPage.IsEnabled = pageIndex + 1 < pages;
         scroll.ScrollToTop();
@@ -212,10 +228,11 @@ public sealed class SettingsEditor : UserControl
 
     private FrameworkElement BuildRow(CatalogEntry entry)
     {
-        var shell = new Border { BorderThickness = new(0, 0, 0, 1), Padding = new(0, 10, 0, 10) };
+        var shell = new Border { BorderThickness = new(0, 0, 0, 1), Padding = new(0, 14, 0, 14) };
         shell.SetResourceReference(Border.BorderBrushProperty, "Line");
         var body = new StackPanel(); shell.Child = body;
-        var line = new Grid(); line.ColumnDefinitions.Add(new()); line.ColumnDefinitions.Add(new() { Width = new(220) });
+        var line = new Grid(); line.ColumnDefinitions.Add(new()); line.ColumnDefinitions.Add(new() { Width = new(260) });
+        line.RowDefinitions.Add(new() { Height = GridLength.Auto }); line.RowDefinitions.Add(new() { Height = GridLength.Auto });
         var label = new StackPanel { Margin = new(0, 3, 18, 0) };
         var displayName = ConfigHelp.Name(entry.Path);
         var title = new TextBlock { Text = displayName, FontSize = 14, FontWeight = FontWeights.Medium };
@@ -223,6 +240,14 @@ public sealed class SettingsEditor : UserControl
         label.Children.Add(Helper(ConfigHelp.Summary(entry), new(0, 5, 0, 0)));
         line.Children.Add(label); body.Children.Add(line);
         var right = new StackPanel(); Grid.SetColumn(right, 1); line.Children.Add(right);
+        line.SizeChanged += (_, _) =>
+        {
+            var compact = line.ActualWidth < 580;
+            Grid.SetColumnSpan(label, compact ? 2 : 1); Grid.SetColumnSpan(right, compact ? 2 : 1);
+            Grid.SetRow(right, compact ? 1 : 0); Grid.SetColumn(right, compact ? 0 : 1);
+            right.Margin = compact ? new(0, 12, 0, 0) : new(0);
+            label.Margin = compact ? new(0) : new(0, 3, 24, 0);
+        };
         var editable = entry.CanEdit || ConfigSchema.PreferencePaths.Contains(entry.Path) && entry.Stage != "removed";
         var path = dynamicPaths.GetValueOrDefault(entry.Path) ?? entry.Path;
         var details = new Expander { Header = "了解更多", Margin = new(0, 10, 0, 0) };

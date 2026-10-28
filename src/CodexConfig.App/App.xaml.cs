@@ -6,13 +6,17 @@ namespace CodexConfig.App;
 
 public partial class App : Application
 {
+    private DesktopInstance? desktopInstance;
     protected override void OnStartup(StartupEventArgs e)
     {
-        if (e.Args is ["--model-bridge", var bridgeHome])
+        if (e.Args is ["--model-bridge", var bridgeHome, ..])
         {
             base.OnStartup(e);
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            RunBridge(bridgeHome);
+            if (e.Args.Length == 2) RunBridge(bridgeHome);
+            else if (e.Args is [_, _, "--owner-process", var pid, var started] && int.TryParse(pid, out var ownerId) && long.TryParse(started, out var ownerStarted))
+                RunBridge(bridgeHome, ownerId, ownerStarted);
+            else Shutdown(1);
             return;
         }
         try
@@ -20,20 +24,26 @@ public partial class App : Application
             base.OnStartup(e);
             DispatcherUnhandledException += (_, args) => { WriteStartupError(args.Exception); args.Handled = true; Shutdown(1); };
             ThemeManager.ApplySystemTheme();
-            string? home = null, smoke = null;
+            string? home = null, smoke = null; var startInTray = false;
             for (var i = 0; i < e.Args.Length; i++)
             {
                 if (e.Args[i] == "--home" && i + 1 < e.Args.Length) home = e.Args[++i];
                 else if (e.Args[i] == "--smoke-test" && i + 1 < e.Args.Length) smoke = Path.GetFullPath(e.Args[++i]);
+                else if (e.Args[i] == "--start-in-tray") startInTray = true;
             }
             IUserEnvironment environment = new WindowsUserEnvironment();
+            if (smoke is null)
+            {
+                desktopInstance = new DesktopInstance(() => Dispatcher.BeginInvoke(() => (MainWindow as MainWindow)?.RestoreWindow()), startInTray);
+                if (!desktopInstance.IsPrimary) { Shutdown(); return; }
+            }
             if (smoke is not null)
             {
                 // Smoke runs can never load the user's actual Codex home or registry.
                 home = Path.Combine(smoke, "isolated-home-" + Guid.NewGuid().ToString("N"));
                 environment = new MemoryUserEnvironment();
             }
-            var window = new MainWindow(new ConfigStore(environment), home ?? ConfigStore.DefaultHome, smoke, environment);
+            var window = new MainWindow(new ConfigStore(environment), home ?? ConfigStore.DefaultHome, smoke, environment) { StartInTray = startInTray };
             MainWindow = window;
             window.Show();
         }
@@ -43,15 +53,21 @@ public partial class App : Application
         }
     }
 
-    private async void RunBridge(string home)
+    protected override void OnExit(ExitEventArgs e)
     {
-        try { await BridgeProcess.RunAsync(home); Shutdown(0); }
+        desktopInstance?.Dispose();
+        base.OnExit(e);
+    }
+
+    private async void RunBridge(string home, int? ownerId = null, long? ownerStarted = null)
+    {
+        try { await BridgeProcess.RunAsync(home, ownerId, ownerStarted); Shutdown(0); }
         catch (Exception) { Shutdown(1); }
     }
 
     private static void WriteStartupError(Exception error)
     {
-        try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "CodexConfig-startup.txt"), error.ToString()); } catch { }
+        try { File.WriteAllText(Path.Combine(Path.GetTempPath(), "CodexDock-startup.txt"), error.ToString()); } catch { }
     }
 
     private sealed class MemoryUserEnvironment : IUserEnvironment

@@ -1,15 +1,18 @@
 ﻿param(
-    [string]$Version = '0.8.0',
+    [string]$Version = '0.10.0',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $taskArtifacts = Join-Path $taskRoot 'artifacts'
-$taskRelease = Join-Path $taskArtifacts "CodexConfig-$Version-win-x64"
-if (Test-Path -LiteralPath $taskRelease) { Remove-Item -LiteralPath $taskRelease -Recurse -Force }
-New-Item -ItemType Directory -Path $taskRelease -Force | Out-Null
+$taskCommit = (git -C $taskRoot rev-parse HEAD).Trim()
+if (git -C $taskRoot status --porcelain) { throw 'Commit reviewed changes before producing a release package.' }
+$taskRelease = Join-Path $taskArtifacts "CodexDock-$Version-win-x64"
+if (-not ([IO.Path]::GetFullPath($taskRelease).StartsWith($taskArtifacts + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase))) { throw 'Release path escapes artifacts.' }
 if (-not $SkipPublish) {
+    if (Test-Path -LiteralPath $taskRelease) { Remove-Item -LiteralPath $taskRelease -Recurse -Force }
+    New-Item -ItemType Directory -Path $taskRelease -Force | Out-Null
     $env:DOTNET_CLI_HOME = Join-Path $taskRoot '.dotnet-home'
     $env:NUGET_PACKAGES = Join-Path $taskRoot '.packages'
     $taskFallback = Join-Path $env:USERPROFILE '.nuget\packages'
@@ -19,12 +22,12 @@ if (-not $SkipPublish) {
         -p:PublishSingleFile=false -p:DebugType=None @taskRestoreArgs -o $taskRelease
     if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
 }
-$taskExe = Join-Path $taskRelease 'CodexConfig.exe'
+$taskExe = Join-Path $taskRelease 'CodexDock.exe'
 if (-not (Test-Path -LiteralPath $taskExe)) { throw 'Missing published executable.' }
 if (-not (Test-Path -LiteralPath $InnoCompiler)) { throw 'Inno Setup 6 compiler not found.' }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'README.md'),(Join-Path $taskRoot 'LICENSE'),(Join-Path $taskRoot 'THIRD-PARTY-NOTICES.md') -Destination $taskRelease -Force
 foreach ($taskFolder in @('docs','third_party','brand')) { New-Item -ItemType Directory -Path (Join-Path $taskRelease $taskFolder) -Force | Out-Null }
-Copy-Item -LiteralPath (Join-Path $taskRoot "docs\release-$Version.md"),(Join-Path $taskRoot 'docs\schema-maintenance.md') -Destination (Join-Path $taskRelease 'docs') -Force
+Copy-Item -LiteralPath (Join-Path $taskRoot "docs\release-$Version.md"),(Join-Path $taskRoot 'docs\schema-maintenance.md'),(Join-Path $taskRoot 'docs\codex-dock-delivery.md'),(Join-Path $taskRoot 'docs\ui-layout-review.md'),(Join-Path $taskRoot 'docs\process-rename-review.md'),(Join-Path $taskRoot 'docs\github-releases.md'),(Join-Path $taskRoot 'docs\review-0.10.0.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Get-ChildItem -LiteralPath (Join-Path $taskRoot 'third_party') -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $taskRelease 'third_party') -Force }
 Get-ChildItem -LiteralPath (Join-Path $taskRoot 'assets\brand') -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $taskRelease 'brand') -Force }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'src\CodexConfig.App\Assets\app.ico') -Destination (Join-Path $taskRelease 'brand') -Force
@@ -34,12 +37,16 @@ if ($taskRun.ExitCode -ne 0) { throw "Published EXE UI check failed. See $taskUi
 $taskUiReport = Join-Path $taskUiOutput 'report.json'
 if (-not (Test-Path -LiteralPath $taskUiReport) -or (Get-Content -LiteralPath $taskUiReport -Raw | ConvertFrom-Json).status -ne 'PASS') { throw 'The published EXE must pass its isolated UI check before packaging.' }
 $taskExeHash = (Get-FileHash -LiteralPath $taskExe -Algorithm SHA256).Hash.ToLowerInvariant()
-if ((Get-Content -LiteralPath $taskUiReport -Raw | ConvertFrom-Json).executableSha256 -ne $taskExeHash) { throw 'The UI report must be produced by this exact published executable.' }
-foreach ($taskImage in @('main-window.png','preferences.png','detailed-settings.png','preview-drawer.png','advanced-settings.png','template-details.png','setting-help.png','connection-custom.png','changes-preview.png','template-list.png','template-edit.png')) { Copy-Item -LiteralPath (Join-Path $taskUiOutput $taskImage) -Destination $taskRelease -Force }
+$taskAssemblyHash = (Get-FileHash -LiteralPath (Join-Path $taskRelease 'CodexDock.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
+$taskReport = Get-Content -LiteralPath $taskUiReport -Raw | ConvertFrom-Json
+if ($taskReport.executableName -ne 'CodexDock.exe' -or $taskReport.executableSha256 -ne $taskExeHash -or $taskReport.applicationAssemblySha256 -ne $taskAssemblyHash) { throw 'The UI report must match this published executable and application assembly.' }
+New-Item -ItemType Directory -Path (Join-Path $taskRelease 'verification') -Force | Out-Null
+Copy-Item -LiteralPath $taskUiReport -Destination (Join-Path $taskRelease 'verification\ui-report.json') -Force
+
 @(
-    "Codex Config $Version / Windows x64"
+    "Codex Dock $Version / Windows x64"
     ''
-    '运行 Setup EXE 安装；也可解压便携包并打开 CodexConfig.exe。无需安装 .NET。'
+    '运行 Setup EXE 安装；也可解压便携包并打开 CodexDock.exe。无需安装 .NET。'
     '常用设置、服务连接、配置模板、备份恢复在同一窗口。保存配置后重新打开 Codex。'
     'Ctrl+S 保存；Ctrl+F 搜索；Esc 关闭面板。'
     '模型目录获取为可选操作，不会改变所选认证方式。'
@@ -50,8 +57,8 @@ foreach ($taskImage in @('main-window.png','preferences.png','detailed-settings.
 ) | Set-Content -LiteralPath (Join-Path $taskRelease '使用说明.txt') -Encoding utf8
 $taskExeHash = (Get-FileHash -LiteralPath $taskExe -Algorithm SHA256).Hash.ToLowerInvariant()
 @{
-    name='CodexConfig'; version=$Version; platform='win-x64'; selfContained=$true
-    createdAtUtc=[DateTimeOffset]::UtcNow.ToString('o'); executableSha256=$taskExeHash
+    name='CodexDock'; version=$Version; platform='win-x64'; selfContained=$true
+    createdAtUtc=[DateTimeOffset]::UtcNow.ToString('o'); sourceCommit=$taskCommit; executableSha256=$taskExeHash; applicationAssemblySha256=$taskAssemblyHash
     installer='Inno Setup, per-user'; settings='Shared draft and one save action'
     configSchema=(Get-Content -LiteralPath (Join-Path $taskRoot 'config\config-schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json).schema_version
     configSchemaSha256=(Get-FileHash -LiteralPath (Join-Path $taskRoot 'config\config-schema.json') -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -59,12 +66,12 @@ $taskExeHash = (Get-FileHash -LiteralPath $taskExe -Algorithm SHA256).Hash.ToLow
 } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $taskRelease 'manifest.json') -Encoding utf8
 & $InnoCompiler "/DAppVersion=$Version" "/DPayloadDir=$taskRelease" (Join-Path $PSScriptRoot 'installer.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Installer compile failed.' }
-$taskSetup = Join-Path $taskArtifacts "CodexConfig-$Version-Setup-win-x64.exe"
-$taskZip = Join-Path $taskArtifacts "CodexConfig-$Version-win-x64.zip"
+$taskSetup = Join-Path $taskArtifacts "CodexDock-$Version-Setup-win-x64.exe"
+$taskZip = Join-Path $taskArtifacts "CodexDock-$Version-win-x64.zip"
 Compress-Archive -LiteralPath $taskRelease -DestinationPath $taskZip -Force
 
 Add-Type -AssemblyName System.IO.Compression
-$taskSourceZip = Join-Path $taskArtifacts "CodexConfig-$Version-source.zip"
+$taskSourceZip = Join-Path $taskArtifacts "CodexDock-$Version-source.zip"
 $taskSourceFiles = @()
 foreach ($taskFolder in @('src','config','tests','scripts','docs','third_party','assets')) {
     $taskSourceFiles += Get-ChildItem -LiteralPath (Join-Path $taskRoot $taskFolder) -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' }
@@ -82,6 +89,8 @@ try {
         }
     } finally { $taskArchive.Dispose() }
 } finally { $taskStream.Dispose() }
+& pwsh -NoProfile -File (Join-Path $PSScriptRoot 'verify-release-privacy.ps1') -PayloadDir $taskRelease -SourceArchive $taskSourceZip -History
+if ($LASTEXITCODE -ne 0) { throw 'Release privacy scan failed.' }
 $taskChecksumLines = foreach ($taskFile in @($taskSetup,$taskZip,$taskSourceZip,$taskExe)) {
     $taskHash = (Get-FileHash -LiteralPath $taskFile -Algorithm SHA256).Hash.ToLowerInvariant()
     '{0}  {1}' -f $taskHash, ($taskFile.Substring($taskArtifacts.Length + 1).Replace('\','/'))
