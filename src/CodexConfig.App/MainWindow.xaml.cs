@@ -68,6 +68,7 @@ public partial class MainWindow : Window
         InitializeDockLayout();
         SystemEvents.UserPreferenceChanged += SystemPreferenceChanged;
         InitializeGatewayUi();
+        InitializeLocalCodexState();
         RefreshStartupSetting();
         AppVersionText.Text = "当前版本 " + CurrentVersion.ToString(3);
         initializing = false;
@@ -82,6 +83,8 @@ public partial class MainWindow : Window
         if (smokeOutput is null)
         {
             UpdatePreview();
+            localStateTimer.Start();
+            await RefreshLocalCodexStateAsync();
         }
         else
         {
@@ -95,17 +98,18 @@ public partial class MainWindow : Window
         }
     }
 
-    private bool Reload()
+    private bool Reload(ConfigSnapshot? source = null)
     {
         initializing = true;
         ClearPendingLogin();
         snapshot = null;
         try
         {
-            var loaded = store.Load(home);
+            var loaded = source ?? store.Load(home);
             loadedSettings = store.ReadSettings(loaded);
             if (loaded.Config is null && loaded.Auth is null && loaded.AuthApiBaseUrl is null) loadedSettings = loadedSettings with { Kind = ConnectionKind.ResponsesApi };
             snapshot = loaded;
+            externalConfigurationChanged = false; localStateError = "";
             HomePath.Text = home;
             CurrentDirectoryText.Text = home; CurrentDirectoryText.ToolTip = home;
             BaseUrlBox.Text = loadedSettings.BaseUrl;
@@ -585,6 +589,7 @@ public partial class MainWindow : Window
         await Settle(); Capture(output, "main-window.png");
         ShowPage("connection"); await Settle(); Capture(output, "connection-custom.png");
         checks.AddRange(["Neutral default common page", "Blank custom connection without provider selection"]);
+        await RunLocalStateSmokeAsync(output, checks);
         ShowPage("preferences"); Editor.Search.Text = ""; Editor.SetMode(true);
         Editor.NewPath.Text = "future_config.answer"; Editor.NewValue.Text = "42";
         Editor.AddSetting.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

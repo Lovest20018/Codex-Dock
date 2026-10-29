@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace CodexConfig.Core;
 
-public sealed class ConfigStore(IUserEnvironment environment)
+public sealed class ConfigStore(IUserEnvironment environment, Func<string, string?>? readEnvironment = null)
 {
     private const int MaxBytes = 8 * 1024 * 1024;
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("CodexConfig.backup.v1");
@@ -24,29 +24,65 @@ public sealed class ConfigStore(IUserEnvironment environment)
     public ConnectionSettings ReadSettings(ConfigSnapshot snapshot)
     {
         var doc = new TomlDocument(snapshot.Config);
+        var model = doc.Model;
+        object? Value(Tomlyn.Model.TomlTable? table, string name) => table?.TryGetValue(name, out var entry) == true ? entry : null;
+        string? Text(Tomlyn.Model.TomlTable? table, string name) => Value(table, name) as string;
+        string? Variable(string name) => (readEnvironment ?? Environment.GetEnvironmentVariable)(name);
+        var providerId = doc.String("model_provider") ?? "openai";
+        var providers = Value(model, "model_providers") as Tomlyn.Model.TomlTable;
+        var provider = Value(providers, providerId) as Tomlyn.Model.TomlTable;
+        var providerName = Text(provider, "name") ?? (providerId == "openai" ? "OpenAI" : providerId);
         var details = ConnectionDetails.Read(snapshot.Details);
         if (doc.String("model_provider") == MixedConnection.Provider)
         {
             var connection = snapshot.Bridge is null ? throw new InvalidDataException("缺少混合连接文件，请从备份恢复或重新配置连接。") : MixedConnection.Read(snapshot.Bridge);
             return new(connection.BaseUrl, connection.ApiKey, doc.String("model") ?? "gpt-6.1-sol")
-            { Details = details, Mode = ConnectionMode.OfficialWithApi, Kind = connection.Kind, PreservePreferenceValues = true, UseSystemProxy = connection.UseSystemProxy };
+            { Details = details, Mode = ConnectionMode.OfficialWithApi, Kind = connection.Kind, PreservePreferenceValues = true, UseSystemProxy = connection.UseSystemProxy,
+                ProviderId = providerId, ProviderName = providerName, CredentialSource = "本地加密模型凭据" };
         }
         string key = "";
+        string credentialSource = "未读取模型凭据";
         var choice = AuthenticationChoice.Auto;
         if (snapshot.Auth is not null)
         {
             using var auth = ParseAuth(snapshot.Auth);
             var isKey = auth.RootElement.TryGetProperty("auth_mode", out var discriminator) && discriminator.ValueKind == JsonValueKind.String && discriminator.GetString() == "apikey";
-            foreach (var field in isKey ? new[] { "OPENAI_API_KEY" } : new[] { "personal_access_token", "OPENAI_API_KEY" })
+            var isOfficial = auth.RootElement.TryGetProperty("auth_mode", out var mode) && mode.ValueKind == JsonValueKind.String && mode.GetString() == "chatgpt";
+            foreach (var field in isOfficial ? Array.Empty<string>() : isKey ? new[] { "OPENAI_API_KEY" } : new[] { "personal_access_token", "OPENAI_API_KEY" })
                 if (auth.RootElement.TryGetProperty(field, out var token) && token.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(token.GetString()))
-                { key = token.GetString()!; choice = field == "personal_access_token" ? AuthenticationChoice.Pat : AuthenticationChoice.ApiKey; break; }
+                { key = token.GetString()!; choice = field == "personal_access_token" ? AuthenticationChoice.Pat : AuthenticationChoice.ApiKey; credentialSource = "auth.json · " + (choice == AuthenticationChoice.Pat ? "PAT" : "API Key"); break; }
         }
+        var environmentKey = Text(provider, "env_key");
+        var bearer = Text(provider, "experimental_bearer_token");
+        if (environmentKey is { Length: > 0 })
+        {
+            key = Variable(environmentKey) ?? ""; choice = AuthenticationChoice.ApiKey;
+            credentialSource = "环境变量 " + environmentKey + (key.Length > 0 ? " · 已读取" : " · 当前进程未设置");
+        }
+        else if (bearer is { Length: > 0 })
+        {
+            key = bearer; choice = AuthenticationChoice.ApiKey; credentialSource = "供应商配置 · Bearer Token";
+        }
+        else if (providerId != "openai" && Value(provider, "requires_openai_auth") is not true)
+        {
+            key = ""; choice = AuthenticationChoice.Auto;
+            credentialSource = provider?.ContainsKey("auth") == true ? "供应商外部认证命令 · 未执行" : "由供应商或客户端管理";
+        }
+        else if (key.Length == 0 && !OfficialCredentials.HasLogin(snapshot.Auth) && Variable("OPENAI_API_KEY") is { Length: > 0 } environmentToken)
+        {
+            key = environmentToken; choice = AuthenticationChoice.ApiKey; credentialSource = "环境变量 OPENAI_API_KEY · 已读取";
+        }
+        if (key.Length == 0 && string.IsNullOrEmpty(environmentKey) &&
+            (providerId == "openai" || Value(provider, "requires_openai_auth") is true) && OfficialCredentials.HasLogin(snapshot.Auth))
+            credentialSource = "官方账号登录凭据 · 未在线验证";
         var features = doc.Model.TryGetValue("features", out var value) ? value as Tomlyn.Model.TomlTable : null;
         bool Feature(string name) => features is null || !features.TryGetValue(name, out var enabled) || enabled is not false;
-        var url = doc.String("openai_base_url") ?? doc.String("chatgpt_base_url") ?? snapshot.AuthApiBaseUrl ?? "";
-        var relay = string.IsNullOrEmpty(url) || (Uri.TryCreate(url, UriKind.Absolute, out var address) && address.AbsolutePath.TrimEnd('/') is "/backend-api/codex" or "/codex/v1");
+        var url = providerId == "openai" ? doc.String("openai_base_url") ?? Text(provider, "base_url") ?? Variable("OPENAI_BASE_URL") ?? doc.String("chatgpt_base_url") ?? snapshot.AuthApiBaseUrl ?? ""
+            : Text(provider, "base_url") ?? "";
+        var relay = providerId == "openai" && (string.IsNullOrEmpty(url) || (Uri.TryCreate(url, UriKind.Absolute, out var address) && address.AbsolutePath.TrimEnd('/') is "/backend-api/codex" or "/codex/v1"));
         return new(url, key, doc.String("model") ?? "gpt-6.1-sol", Feature("fast_mode"), Feature("context_management"), doc.String("web_search") != "disabled")
-        { Details = details, Authentication = choice, Kind = relay ? ConnectionKind.PatRelay : ConnectionKind.ResponsesApi, WebSearchMode = doc.String("web_search") };
+        { Details = details, Authentication = choice, Kind = relay ? ConnectionKind.PatRelay : ConnectionKind.ResponsesApi, WebSearchMode = doc.String("web_search"),
+            ProviderId = providerId, ProviderName = providerName, CredentialSource = credentialSource };
     }
 
     public ConfigPlan Plan(ConfigSnapshot before, ConnectionSettings settings, IReadOnlyDictionary<string, string?>? edits = null, bool updateConnection = true, bool updateModel = false, byte[]? officialAuth = null, bool updateDetails = false)

@@ -7,7 +7,7 @@ namespace CodexConfig.App;
 
 public partial class MainWindow
 {
-    private (ConfigSnapshot? Snapshot, ConnectionSettings Settings, string Gateway, bool Running, bool Dirty)? overviewState;
+    private (ConfigSnapshot? Snapshot, ConnectionSettings Settings, string Gateway, bool Running, bool Dirty, CodexRuntimeStatus? Runtime, bool ExternalChange, string Error, string Home)? overviewState;
     private void ModelPageClicked(object sender, RoutedEventArgs e) => ShowPage("preferences");
     private void LibraryTemplatesClicked(object sender, RoutedEventArgs e) => ShowPage("templates");
     private void LibraryBackupClicked(object sender, RoutedEventArgs e) => ShowPage("backup");
@@ -62,10 +62,11 @@ public partial class MainWindow
     private void RefreshOverview()
     {
         if (OverviewBody is null) return;
-        var state = (snapshot, loadedSettings, GatewayStateText.Text, gatewayRunning, Dirty);
+        var state = (snapshot, loadedSettings, GatewayStateText.Text, gatewayRunning, Dirty, codexRuntime, externalConfigurationChanged, localStateError, home);
         if (overviewState is { } previous && previous == state) return;
         overviewState = state;
         OverviewBody.Children.Clear();
+        AddLocalCodexStatus();
         if (snapshot is null)
         {
             OverviewBody.Children.Add(OverviewText("配置暂不可用", size: 20));
@@ -82,7 +83,7 @@ public partial class MainWindow
         }
         var mixed = loadedSettings.Mode == ConnectionMode.OfficialWithApi;
         var summary = new StackPanel(); summary.Children.Add(OverviewText("当前连接", "Muted", 12));
-        var mode = OverviewText(mixed ? "官方账号 + API" : loadedSettings.ApiKey.Length > 0 ? "PAT / API Key" : "已有登录与配置", size: 22);
+        var mode = OverviewText(mixed ? "官方账号 + API" : loadedSettings.ApiKey.Length > 0 ? loadedSettings.Authentication == AuthenticationChoice.Pat ? "PAT 连接" : "API Key 连接" : OfficialCredentials.HasLogin(snapshot.Auth) ? "官方账号登录" : "已有配置", size: 22);
         mode.FontWeight = FontWeights.SemiBold; mode.Margin = new(0, 8, 0, 20); summary.Children.Add(mode);
         var route = new Grid();
         var stages = mixed ? new[] { ("Codex", "官方身份"), ("本地网关", "本机转发"), ("模型服务", "独立模型凭据") } : new[] { ("Codex", "读取本地配置"), ("模型入口", "由客户端连接") };
@@ -114,7 +115,9 @@ public partial class MainWindow
             panel.Children.Add(OverviewText(label, "Muted", 12));
             var text = OverviewText(value, size: size); text.Margin = new(0, 6, 0, 18); panel.Children.Add(text);
         }
-        Title(left, "模型与连接"); Detail(left, "默认模型 · 已保存", string.IsNullOrEmpty(loadedSettings.Model) ? "沿用客户端默认值" : loadedSettings.Model, 20);
+        var config = new TomlDocument(snapshot.Config);
+        Title(left, "模型与连接"); Detail(left, "默认模型 · 配置文件", config.String("model") is { Length: > 0 } model ? model : "沿用客户端默认值", 20);
+        Detail(left, "模型服务商", loadedSettings.ProviderName + " · " + loadedSettings.ProviderId);
         if (loadedSettings.Details.Name.Length > 0) Detail(left, "连接名称", loadedSettings.Details.Name);
         if (loadedSettings.Details.Note.Length > 0) Detail(left, "备注", loadedSettings.Details.Note, 12);
         Detail(left, "模型服务", string.IsNullOrEmpty(loadedSettings.BaseUrl) ? "沿用现有客户端配置" : loadedSettings.BaseUrl);
@@ -122,6 +125,9 @@ public partial class MainWindow
         Title(right, "网关与身份"); Detail(right, "本地网关", mixed ? GatewayStateText.Text : "当前连接无需网关");
         Detail(right, "模型上游网络", mixed ? loadedSettings.UseSystemProxy ? "使用本机 HTTP 代理" : "直接连接" : "由 Codex 客户端连接");
         Detail(right, "官方身份", OfficialCredentials.HasLogin(snapshot.Auth) ? "已读取登录凭据 · 未在线验证" : "未读取官方登录凭据");
+        Detail(right, "模型凭据来源", loadedSettings.CredentialSource);
+        Detail(right, "凭据存储", config.String("cli_auth_credentials_store") ?? "客户端默认存储");
+        if (config.String("profile") is { Length: > 0 } profile) Detail(right, "配置中的 profile", profile + " · 可能覆盖本地默认设置");
         right.Children.Add(OverviewAction("查看网关与网络", "gateway"));
         var leftCard = OverviewSurface(left, new(0, 0, 8, 0)); var rightCard = OverviewSurface(right, new(8, 0, 0, 0));
         Grid.SetColumn(rightCard, 1); columns.Children.Add(leftCard); columns.Children.Add(rightCard);
@@ -133,7 +139,7 @@ public partial class MainWindow
             leftCard.Margin = compact ? new(0, 0, 0, 16) : new(0, 0, 8, 0); rightCard.Margin = compact ? new(0) : new(8, 0, 0, 0);
         };
         OverviewBody.Children.Add(columns);
-        var footer = OverviewText("状态基于本地配置与网关检查；上游推理尚未检测。", "Muted", 12); footer.Margin = new(2, 16, 0, 0); OverviewBody.Children.Add(footer);
+        var footer = OverviewText("每 5 秒刷新本地状态。配置显示当前目录的文件值；会话、项目或 profile 覆盖由 Codex 决定。进程状态不代表正在执行任务，登录凭据未在线验证。", "Muted", 12); footer.Margin = new(2, 16, 0, 0); OverviewBody.Children.Add(footer);
         if (mixed && !gatewayRunning)
         {
             var note = OverviewText("网关尚未确认运行，使用模型前请检查“网关与网络”。", "Muted", 12); note.Margin = new(2, 8, 0, 0); OverviewBody.Children.Add(note);

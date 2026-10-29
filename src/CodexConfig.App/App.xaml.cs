@@ -43,7 +43,7 @@ public partial class App : Application
                 home = Path.Combine(smoke, "isolated-home-" + Guid.NewGuid().ToString("N"));
                 environment = new MemoryUserEnvironment();
             }
-            var window = new MainWindow(new ConfigStore(environment), home ?? ConfigStore.DefaultHome, smoke, environment) { StartInTray = startInTray };
+            var window = new MainWindow(new ConfigStore(environment, smoke is null ? null : _ => null), home ?? ConfigStore.DefaultHome, smoke, environment) { StartInTray = startInTray };
             MainWindow = window;
             window.Show();
         }

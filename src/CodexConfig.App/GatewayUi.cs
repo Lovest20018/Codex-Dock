@@ -181,7 +181,7 @@ public partial class MainWindow
     {
         if (exitReady || smokeOutput is not null && !smokeLifecycle)
         {
-            closing = true; lifetime.Cancel(); previewTimer.Stop(); gatewayTimer.Stop();
+            closing = true; lifetime.Cancel(); previewTimer.Stop(); gatewayTimer.Stop(); localStateTimer.Stop();
             SystemEvents.UserPreferenceChanged -= SystemPreferenceChanged;
             ClearPendingLogin(); if (!busy) probe.Dispose();
             return;
@@ -190,7 +190,7 @@ public partial class MainWindow
         if (!exitRequested && tray is not null) { Hide(); return; }
         if (closing) return;
         if (!ResolveUnsaved()) { exitRequested = false; return; }
-        closing = true; gatewayTimer.Stop(); MainShell.IsEnabled = false;
+        closing = true; gatewayTimer.Stop(); localStateTimer.Stop(); MainShell.IsEnabled = false;
         SetStatus("正在停止网关并退出…"); UpdateGatewayActions();
         try
         {
@@ -208,7 +208,7 @@ public partial class MainWindow
         {
             pendingInstaller = null; await gateways.ResumeAsync();
             closing = false; exitRequested = false; MainShell.IsEnabled = true;
-            gatewayTimer.Start(); RestoreWindow(); ShowError(error); UpdateGatewayActions();
+            gatewayTimer.Start(); localStateTimer.Start(); RestoreWindow(); ShowError(error); UpdateGatewayActions();
         }
     }
 

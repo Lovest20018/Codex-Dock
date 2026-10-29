@@ -18,6 +18,9 @@ public sealed record ConnectionSettings(string BaseUrl, string ApiKey, string Mo
     public ConnectionMode Mode { get; init; }
     public bool UseSystemProxy { get; init; }
     public ConnectionDetails Details { get; init; } = new();
+    public string ProviderId { get; init; } = "openai";
+    public string ProviderName { get; init; } = "";
+    public string CredentialSource { get; init; } = "";
     public string? WebSearchMode { get; init; }
     // The settings UI edits these values explicitly, preserving absent defaults.
     public bool PreservePreferenceValues { get; init; }
@@ -84,6 +87,10 @@ public sealed record ConfigSnapshot(string Home, byte[]? Config, byte[]? Auth, s
 {
     public byte[]? Bridge { get; init; }
     public byte[]? Details { get; init; }
+    public bool SameContents(ConfigSnapshot other) => string.Equals(Home, other.Home, StringComparison.OrdinalIgnoreCase) &&
+        AuthApiBaseUrl == other.AuthApiBaseUrl && Same(Config, other.Config) && Same(Auth, other.Auth) && Same(Bridge, other.Bridge) && Same(Details, other.Details);
+
+    private static bool Same(byte[]? left, byte[]? right) => left is null ? right is null : right is not null && left.AsSpan().SequenceEqual(right);
 }
 public sealed record ConfigPlan(ConfigSnapshot Before, byte[] Config, byte[]? Auth, string? AuthApiBaseUrl,
     string ConfigPreview, string AuthPreview, IReadOnlyList<string> Notes,

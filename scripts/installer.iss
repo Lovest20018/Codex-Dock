@@ -1,8 +1,8 @@
 #ifndef AppVersion
-  #define AppVersion "0.10.1"
+  #define AppVersion "0.10.2"
 #endif
 #ifndef PayloadDir
-  #define PayloadDir "..\artifacts\CodexDock-0.10.1-win-x64"
+  #define PayloadDir "..\artifacts\CodexDock-0.10.2-win-x64"
 #endif
 
 [Setup]
