@@ -114,6 +114,6 @@ Codex Dock 用于配置已有的 Codex 客户端。开始前，请先安装你�
 
 ## 更多信息
 
-- [当前版本说明](docs/release-0.10.2.md)
+- [当前版本说明](docs/release-0.10.3.md)
 - [开发与构建](docs/development.md)
 - [MIT 许可证](LICENSE) · [第三方许可](THIRD-PARTY-NOTICES.md)

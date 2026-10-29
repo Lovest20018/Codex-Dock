@@ -75,12 +75,22 @@ public partial class MainWindow
         checks.Add("Manual relaunch signals tray instance; logon relaunch stays quiet");
 
         var fixture = new MainWindow(store, home, output, environment) { smokeLifecycle = true, StartInTray = true };
-        fixture.Loaded -= fixture.WindowLoaded; fixture.Show(); fixture.InitializeTray(); fixture.Reload(); fixture.ApplyStartupVisibility();
-        if (fixture.tray is null || fixture.IsVisible) throw new InvalidOperationException("Logon startup should hide only after tray creation succeeds.");
+        fixture.Loaded -= fixture.WindowLoaded;
+        Task? desktopStartup = null;
+        var hiddenBeforeRender = false;
+        fixture.Loaded += (_, _) =>
+        {
+            desktopStartup = fixture.InitializeDesktopAsync();
+            hiddenBeforeRender = fixture.tray is not null && !fixture.IsVisible;
+        };
+        fixture.Show();
+        await Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.Loaded);
+        if (!hiddenBeforeRender) throw new InvalidOperationException("Logon startup must create its tray and hide before yielding to the first render.");
+        await desktopStartup!;
         fixture.RestoreWindow(); fixture.RequestExit();
         for (var attempt = 0; attempt < 100 && !fixture.exitReady; attempt++) await Task.Delay(100);
         if (!fixture.exitReady) throw new InvalidOperationException("Startup tray fixture did not exit.");
-        checks.Add("Logon startup hides to tray and restores through the normal window lifecycle");
+        checks.Add("Logon startup hides before first render and restores through the normal window lifecycle");
     }
 
     private async Task RunConnectionDetailsSmokeAsync(string output, List<string> checks)

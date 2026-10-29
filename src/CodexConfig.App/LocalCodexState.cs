@@ -69,6 +69,23 @@ public partial class MainWindow
     private async Task RunLocalStateSmokeAsync(string output, List<string> checks)
     {
         void Assert(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
+        var startupHome = Path.Combine(home, "startup-connection");
+        Directory.CreateDirectory(startupHome);
+        File.WriteAllText(Path.Combine(startupHome, "config.toml"), "model='startup-model'\nopenai_base_url='https://startup.example.com/backend-api/codex'\n");
+        File.WriteAllText(Path.Combine(startupHome, "auth.json"), "{\"personal_access_token\":\"fake-startup-pat\",\"OPENAI_API_KEY\":\"fake-startup-pat\"}");
+        var startupFixture = new MainWindow(store, startupHome, output, environment);
+        startupFixture.Loaded -= startupFixture.WindowLoaded;
+        try
+        {
+            Assert(startupFixture.BaseUrlBox.Text == "https://startup.example.com/backend-api/codex" && startupFixture.ApiKeyBox.Password == "fake-startup-pat" &&
+                startupFixture.ModelBox.Text == "startup-model" && !startupFixture.Dirty,
+                "Saved address and PAT must be loaded before showing the window or initializing the tray");
+            startupFixture.Show(); startupFixture.ShowPage("connection");
+            await Settle(); startupFixture.Capture(output, "connection-first-open.png");
+            Assert(!startupFixture.SaveButton.IsEnabled && startupFixture.ApiKeyBox.Password == "fake-startup-pat", "Initial connection load must not create a draft");
+        }
+        finally { startupFixture.Close(); }
+        checks.Add("Saved address and PAT available on first open before tray or status polling");
         var configPath = Path.Combine(home, "config.toml");
         var authPath = Path.Combine(home, "auth.json");
         var fixture = System.Text.Encoding.UTF8.GetBytes("model='existing-model'\nmodel_provider='existing.service'\n[model_providers.'existing.service']\nname='已有服务'\nbase_url='https://existing.example.com/v1'\nexperimental_bearer_token='fake-import-token'\n");

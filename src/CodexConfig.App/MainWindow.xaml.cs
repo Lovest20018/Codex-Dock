@@ -72,19 +72,16 @@ public partial class MainWindow : Window
         RefreshStartupSetting();
         AppVersionText.Text = "当前版本 " + CurrentVersion.ToString(3);
         initializing = false;
+        // Populate the connection before Show can paint the window or tray setup can delay it.
+        Reload();
+        ShowPage("overview");
     }
 
     private async void WindowLoaded(object sender, RoutedEventArgs e)
     {
-        if (smokeOutput is null) InitializeTray();
-        Reload();
-        ShowPage("overview");
-        ApplyStartupVisibility();
         if (smokeOutput is null)
         {
-            UpdatePreview();
-            localStateTimer.Start();
-            await RefreshLocalCodexStateAsync();
+            await InitializeDesktopAsync();
         }
         else
         {
@@ -96,6 +93,23 @@ public partial class MainWindow : Window
                 Application.Current.Shutdown(1);
             }
         }
+    }
+
+    private async Task InitializeDesktopAsync()
+    {
+        if (StartInTray)
+        {
+            // Logon startup must hide before the first render, after tray creation succeeds.
+            InitializeTray();
+            ApplyStartupVisibility();
+        }
+        // Let the populated window render before initializing optional background services.
+        await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);
+        if (closing) return;
+        if (!StartInTray) InitializeTray();
+        localStateTimer.Start();
+        if (snapshot?.Bridge is not null && loadedSettings.Mode == ConnectionMode.OfficialWithApi) _ = RefreshBridgeAsync();
+        await RefreshLocalCodexStateAsync();
     }
 
     private bool Reload(ConfigSnapshot? source = null)
@@ -139,7 +153,7 @@ public partial class MainWindow : Window
         finally
         {
             initializing = false; ConfigureGatewayView(); UpdateActions(); UpdatePreview();
-            if (smokeOutput is null && snapshot?.Bridge is not null && loadedSettings.Mode == ConnectionMode.OfficialWithApi) _ = RefreshBridgeAsync();
+            if (IsLoaded && smokeOutput is null && snapshot?.Bridge is not null && loadedSettings.Mode == ConnectionMode.OfficialWithApi) _ = RefreshBridgeAsync();
         }
     }
 
