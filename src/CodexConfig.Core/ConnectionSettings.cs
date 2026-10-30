@@ -16,7 +16,6 @@ public sealed record ConnectionSettings(string BaseUrl, string ApiKey, string Mo
     public AuthenticationChoice Authentication { get; init; } = AuthenticationChoice.Auto;
     public ConnectionKind Kind { get; init; } = ConnectionKind.PatRelay;
     public ConnectionMode Mode { get; init; }
-    public bool UseSystemProxy { get; init; }
     public ConnectionDetails Details { get; init; } = new();
     public string ProviderId { get; init; } = "openai";
     public string ProviderName { get; init; } = "";
@@ -36,8 +35,8 @@ public sealed record ConnectionSettings(string BaseUrl, string ApiKey, string Mo
             if (path.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) { path = path[..^suffix.Length]; break; }
         if (Kind == ConnectionKind.PatRelay && path.Length == 0) path = "/backend-api/codex";
         var key = ApiKey.Trim();
-        if (key.Length == 0) throw new ArgumentException("请填写第三方服务的 API Key。");
-        if (key.Any(char.IsWhiteSpace) || key.Any(char.IsControl)) throw new ArgumentException("API Key 中不能包含空格或换行。");
+        if (key.Length == 0) throw new ArgumentException("请填写 PAT 或 API Key。");
+        if (key.Any(char.IsWhiteSpace) || key.Any(char.IsControl)) throw new ArgumentException("PAT / API Key 中不能包含空格或换行。");
         var model = Model.Trim();
         if (model.Length == 0 || model.Any(char.IsControl)) throw new ArgumentException("请填写模型 ID，或先获取模型目录。");
         var origin = Kind == ConnectionKind.PatRelay ? KrillLines.Find(uri.AbsoluteUri)?.Origin : null;
@@ -47,7 +46,7 @@ public sealed record ConnectionSettings(string BaseUrl, string ApiKey, string Mo
     public string Fingerprint()
     {
         var settings = Normalize();
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{settings.Kind}\0{settings.BaseUrl}\0{settings.ApiKey}\0{settings.UseSystemProxy}\0{settings.Mode}")));
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{settings.Kind}\0{settings.BaseUrl}\0{settings.ApiKey}\0{settings.Mode}")));
     }
 
     public AuthenticationDecision Decide()

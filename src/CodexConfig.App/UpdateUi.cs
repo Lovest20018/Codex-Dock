@@ -47,7 +47,7 @@ public partial class MainWindow
             { if (!closing) UpdateStatusText.Text = $"正在下载 {update.Version} · {percent}%"; }), updateCancellation.Token);
             if (!closing)
             {
-                UpdateStatusText.Text = "下载及 SHA-256 校验完成。安装前将处理未保存修改，并停止网关。";
+                UpdateStatusText.Text = "下载及 SHA-256 校验完成。安装前将处理未保存的修改并退出程序。";
                 InstallUpdateButton.Visibility = Visibility.Visible; DownloadUpdateButton.Visibility = Visibility.Collapsed;
             }
         }

@@ -1,13 +1,10 @@
-using System.Net;
-using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 
 namespace CodexConfig.Core;
 
-// This file is private to this tool; Codex receives only a loopback address and a local token.
+// Read-only compatibility with encrypted connections created by versions before 0.11.
 public sealed class MixedConnection
 {
     public const string Provider = "codex_config_mixed";
@@ -20,21 +17,6 @@ public sealed class MixedConnection
     public int Port { get; init; }
     public bool UseSystemProxy { get; init; }
     public string LocalBaseUrl => $"http://127.0.0.1:{Port}/v1";
-
-    public static MixedConnection Create(ConnectionSettings settings, MixedConnection? previous = null)
-    {
-        settings = settings.Normalize();
-        var port = previous?.Port ?? FreePort();
-        var token = previous?.LocalToken ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-        return new() { BaseUrl = settings.BaseUrl, ApiKey = settings.ApiKey, Kind = settings.Kind, Port = port, LocalToken = token, UseSystemProxy = settings.UseSystemProxy };
-    }
-
-    public byte[] Protect()
-    {
-        var plain = JsonSerializer.SerializeToUtf8Bytes(this);
-        try { return ProtectedData.Protect(plain, Entropy, DataProtectionScope.CurrentUser); }
-        finally { CryptographicOperations.ZeroMemory(plain); }
-    }
 
     public static MixedConnection Read(byte[] bytes)
     {
@@ -50,13 +32,6 @@ public sealed class MixedConnection
             return result;
         }
         finally { CryptographicOperations.ZeroMemory(plain); }
-    }
-
-    private static int FreePort()
-    {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 }
 
@@ -74,30 +49,6 @@ public static class OfficialCredentials
                 new[] { "access_token", "refresh_token", "id_token" }.All(name =>
                     tokens.TryGetProperty(name, out var token) && token.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(token.GetString())) &&
                 (!root.TryGetProperty("auth_mode", out var mode) || mode.ValueKind == JsonValueKind.Null || mode.GetString() == "chatgpt");
-        }
-        catch (Exception error) when (error is JsonException or InvalidOperationException) { return false; }
-    }
-
-    public static byte[] ForMixed(byte[]? bytes)
-    {
-        if (!HasLogin(bytes)) throw new InvalidOperationException("请先完成官方登录，再保存“官方账号 + API”连接。");
-        using var document = Parse(bytes!);
-        if (!document.RootElement.TryGetProperty("OPENAI_API_KEY", out _) && !document.RootElement.TryGetProperty("personal_access_token", out _))
-            return bytes!.ToArray();
-        var node = JsonNode.Parse(document.RootElement.GetRawText())!.AsObject();
-        node.Remove("OPENAI_API_KEY"); node.Remove("personal_access_token");
-        node["auth_mode"] = "chatgpt";
-        return Encoding.UTF8.GetBytes(node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
-    }
-
-    public static bool MatchesAccessToken(byte[]? bytes, string token)
-    {
-        if (bytes is null || token.Length == 0) return false;
-        try
-        {
-            using var doc = Parse(bytes);
-            return doc.RootElement.TryGetProperty("tokens", out var tokens) && tokens.ValueKind == JsonValueKind.Object &&
-                tokens.TryGetProperty("access_token", out var access) && access.ValueKind == JsonValueKind.String && access.GetString() == token;
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException) { return false; }
     }

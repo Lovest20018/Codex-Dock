@@ -25,7 +25,7 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, string?> detailedChanges = new(StringComparer.Ordinal);
     private string home;
     private string baselineFields = "";
-    private string currentPage = "overview";
+    private string currentPage = "connection";
     private string currentTab = "changes";
     private TemplateApplication? lastTemplate;
     private ConnectionSettings loadedSettings = new("", "", "gpt-6.1-sol");
@@ -34,14 +34,11 @@ public partial class MainWindow : Window
     private bool initializing = true;
     private bool busy;
     private bool closing;
-    private byte[]? pendingOfficialAuth;
-    private string? codexExecutable = CodexLoginClient.FindExecutable();
-    private CancellationTokenSource? loginCancellation;
     private IInputElement? overlayFocus;
-    private bool Dirty => pendingOfficialAuth is not null || detailedChanges.Count > 0 || Fields() != baselineFields;
+    private bool Dirty => loadedSettings.Mode != ConnectionMode.Direct || detailedChanges.Count > 0 || Fields() != baselineFields;
     private bool ConnectionChanged => BaseUrlBox.Text != loadedSettings.BaseUrl || ApiKeyBox.Password != loadedSettings.ApiKey ||
         KindBox.SelectedIndex != (int)loadedSettings.Kind || AuthenticationBox.SelectedIndex != (int)loadedSettings.Authentication ||
-        ConnectionModeBox.SelectedIndex != (int)loadedSettings.Mode || GatewayProxyBox.IsChecked != loadedSettings.UseSystemProxy || pendingOfficialAuth is not null;
+        loadedSettings.Mode != ConnectionMode.Direct;
 
     public MainWindow(ConfigStore store, string home, string? smokeOutput, IUserEnvironment environment, IStartupRegistration? startup = null)
     {
@@ -67,14 +64,14 @@ public partial class MainWindow : Window
         SizeChanged += (_, _) => PreviewDrawer.Width = Math.Min(490, Math.Max(320, RootPanel.ActualWidth - 90));
         InitializeDockLayout();
         SystemEvents.UserPreferenceChanged += SystemPreferenceChanged;
-        InitializeGatewayUi();
+        InitializeWindowLifecycle();
         InitializeLocalCodexState();
         RefreshStartupSetting();
         AppVersionText.Text = "当前版本 " + CurrentVersion.ToString(3);
         initializing = false;
         // Populate the connection before Show can paint the window or tray setup can delay it.
         Reload();
-        ShowPage("overview");
+        ShowPage("connection");
     }
 
     private async void WindowLoaded(object sender, RoutedEventArgs e)
@@ -108,20 +105,17 @@ public partial class MainWindow : Window
         if (closing) return;
         if (!StartInTray) InitializeTray();
         localStateTimer.Start();
-        if (snapshot?.Bridge is not null && loadedSettings.Mode == ConnectionMode.OfficialWithApi) _ = RefreshBridgeAsync();
         await RefreshLocalCodexStateAsync();
     }
 
     private bool Reload(ConfigSnapshot? source = null)
     {
         initializing = true;
-        ClearPendingLogin();
         snapshot = null;
         try
         {
             var loaded = source ?? store.Load(home);
             loadedSettings = store.ReadSettings(loaded);
-            if (loaded.Config is null && loaded.Auth is null && loaded.AuthApiBaseUrl is null) loadedSettings = loadedSettings with { Kind = ConnectionKind.ResponsesApi };
             snapshot = loaded;
             externalConfigurationChanged = false; localStateError = "";
             HomePath.Text = home;
@@ -132,9 +126,7 @@ public partial class MainWindow : Window
             ApiKeyBox.Password = loadedSettings.ApiKey; VisibleKeyBox.Text = loadedSettings.ApiKey;
             ModelBox.Text = loadedSettings.Model;
             KindBox.SelectedIndex = (int)loadedSettings.Kind; AuthenticationBox.SelectedIndex = (int)loadedSettings.Authentication;
-            ConnectionModeBox.SelectedIndex = (int)loadedSettings.Mode;
-            GatewayProxyBox.IsChecked = loadedSettings.UseSystemProxy;
-            UpdateModeControls();
+            LegacyConnectionHint.Visibility = loadedSettings.Mode == ConnectionMode.Direct ? Visibility.Collapsed : Visibility.Visible;
             SynchronizeLinePreset();
             detailedChanges.Clear();
             lastTemplate = null;
@@ -152,21 +144,19 @@ public partial class MainWindow : Window
         catch (Exception error) { snapshot = null; ShowError(error); return false; }
         finally
         {
-            initializing = false; ConfigureGatewayView(); UpdateActions(); UpdatePreview();
-            if (IsLoaded && smokeOutput is null && snapshot?.Bridge is not null && loadedSettings.Mode == ConnectionMode.OfficialWithApi) _ = RefreshBridgeAsync();
+            initializing = false; UpdateActions(); UpdatePreview();
         }
     }
 
     private bool DetailsChanged => ConnectionNameBox.Text != loadedSettings.Details.Name || ConnectionNoteBox.Text.Replace("\r\n", "\n") != loadedSettings.Details.Note;
-    private string Fields() => JsonSerializer.Serialize(new { url = BaseUrlBox.Text, key = ApiKeyBox.Password, model = ModelBox.Text, kind = KindBox.SelectedIndex, auth = AuthenticationBox.SelectedIndex, mode = ConnectionModeBox.SelectedIndex, proxy = GatewayProxyBox.IsChecked == true, details = new ConnectionDetails(ConnectionNameBox.Text, ConnectionNoteBox.Text.Replace("\r\n", "\n")) });
+    private string Fields() => JsonSerializer.Serialize(new { url = BaseUrlBox.Text, key = ApiKeyBox.Password, model = ModelBox.Text, kind = KindBox.SelectedIndex, auth = AuthenticationBox.SelectedIndex, details = new ConnectionDetails(ConnectionNameBox.Text, ConnectionNoteBox.Text.Replace("\r\n", "\n")) });
     private ConnectionSettings Settings(bool placeholder = false) => loadedSettings with
     {
         BaseUrl = placeholder && string.IsNullOrWhiteSpace(BaseUrlBox.Text) ? "https://relay.example.com" : BaseUrlBox.Text,
         ApiKey = placeholder && string.IsNullOrWhiteSpace(ApiKeyBox.Password) ? "preview-placeholder" : ApiKeyBox.Password,
         Model = ModelBox.Text,
         Kind = (ConnectionKind)Math.Max(0, KindBox.SelectedIndex), Authentication = (AuthenticationChoice)Math.Max(0, AuthenticationBox.SelectedIndex),
-        Mode = (ConnectionMode)Math.Max(0, ConnectionModeBox.SelectedIndex),
-        UseSystemProxy = GatewayProxyBox.IsChecked == true,
+        Mode = ConnectionMode.Direct,
         Details = new(ConnectionNameBox.Text, ConnectionNoteBox.Text),
         PreservePreferenceValues = true
     };
@@ -185,10 +175,8 @@ public partial class MainWindow : Window
         var previousPage = currentPage;
         currentPage = page;
         ConnectionPage.Visibility = page == "connection" ? Visibility.Visible : Visibility.Collapsed;
-        GatewayPage.Visibility = page == "gateway" ? Visibility.Visible : Visibility.Collapsed;
         Editor.Visibility = page is "preferences" or "catalog" ? Visibility.Visible : Visibility.Collapsed;
         ModelLayout.Visibility = Editor.Visibility;
-        ModelControls.Visibility = page == "preferences" ? Visibility.Visible : Visibility.Collapsed;
         OverviewPage.Visibility = page == "overview" ? Visibility.Visible : Visibility.Collapsed;
         ApplicationPage.Visibility = page == "app" ? Visibility.Visible : Visibility.Collapsed;
         LibraryTabs.Visibility = page is "templates" or "backup" ? Visibility.Visible : Visibility.Collapsed;
@@ -199,7 +187,7 @@ public partial class MainWindow : Window
         LibraryBackupTab.SetResourceReference(ForegroundProperty, page == "backup" ? "Accent" : "Muted");
         BackupPage.Visibility = page == "backup" ? Visibility.Visible : Visibility.Collapsed;
         TemplateEditor.Visibility = page == "templates" ? Visibility.Visible : Visibility.Collapsed;
-        GlobalSaveBar.Visibility = Dirty && !(page == "templates" && TemplateEditor.IsEditing) ? Visibility.Visible : Visibility.Collapsed;
+        GlobalSaveBar.Visibility = !(page == "templates" && TemplateEditor.IsEditing) ? Visibility.Visible : Visibility.Collapsed;
         if (page == "preferences" && previousPage != page) { Editor.Search.Text = ""; Editor.SetMode(true); }
         if (page == "catalog" && previousPage != page && Editor.Scope == "common") Editor.SetMode(false);
         RefreshOverview();
@@ -208,36 +196,32 @@ public partial class MainWindow : Window
             "overview" => ("概览", "当前已保存的连接与本地运行状态。"),
             "preferences" => ("模型与行为", "模型、速度和常用行为，修改后统一保存。"), "catalog" => ("全部配置", "搜索完整字段、查看说明和未收录配置。"),
             "templates" or "backup" => ("模板与备份", "复用配置，或恢复上次保存前的状态。"),
-            "app" => ("应用设置与帮助", "窗口、托盘与后台服务。"), "gateway" => ("网关与网络", "运行操作立即执行；网络修改保存后应用。"), _ => ("连接与账号", "官方身份与模型服务分别配置，保存时统一写入。")
+            "app" => ("应用设置与帮助", "窗口、托盘与软件更新。"), _ => ("PAT 连接", "编辑服务地址、PAT 和默认模型，保存后重新打开 Codex。")
         };
         PageTitle.Text = title; PageSubtitle.Text = subtitle;
-        var nav = page switch { "overview" => OverviewNav, "preferences" => CatalogNav, "catalog" => AdvancedNav, "templates" or "backup" => TemplatesNav, "app" => AppNav, "gateway" => GatewayNav, _ => ConnectionNav };
+        var nav = page switch { "overview" => OverviewNav, "preferences" => CatalogNav, "catalog" => AdvancedNav, "templates" or "backup" => TemplatesNav, "app" => AppNav, _ => ConnectionNav };
         if (nav.IsChecked != true) { var before = initializing; initializing = true; nav.IsChecked = true; initializing = before; }
     }
 
     private void UpdateActions()
     {
         var usable = snapshot is not null && !store.HasPending(home);
-        SaveButton.IsEnabled = usable && Dirty && !busy;
-        UndoButton.IsEnabled = usable && Dirty && !busy;
+        SaveButton.IsEnabled = usable && Dirty && !closing;
+        UndoButton.IsEnabled = usable && Dirty && !closing;
         ProbeButton.IsEnabled = usable && !busy;
-        OfficialLoginButton.IsEnabled = usable && !busy;
-        SelectCodexButton.IsEnabled = usable && !busy;
-        UpdateGatewayActions();
-        ConnectionModeBox.IsEnabled = !busy;
-        TemplatesNav.IsEnabled = usable && !busy;
-        ServiceTemplateButton.IsEnabled = usable && !busy;
+        TemplatesNav.IsEnabled = usable && !closing;
+        ServiceTemplateButton.IsEnabled = usable && !closing;
         UndoTemplateButton.Visibility = lastTemplate is { Count: > 0 } ? Visibility.Visible : Visibility.Collapsed;
-        UndoTemplateButton.IsEnabled = usable && !busy;
-        Editor.IsEnabled = usable && !busy; TemplateEditor.IsEnabled = usable && !busy;
-        DraftCountText.Text = Dirty ? $"有 {DraftCount()} 项未保存" : "所有修改已保存";
-        GlobalSaveBar.Visibility = Dirty && !(currentPage == "templates" && TemplateEditor.IsEditing) ? Visibility.Visible : Visibility.Collapsed;
+        UndoTemplateButton.IsEnabled = usable && !closing;
+        Editor.IsEnabled = usable && !closing; TemplateEditor.IsEnabled = usable && !closing;
+        DraftCountText.Text = snapshot is null ? "配置尚未读取，暂时无法保存" : store.HasPending(home) ? "请先恢复未完成的保存" : Dirty ? $"有 {DraftCount()} 项未保存" : "所有修改已保存";
+        GlobalSaveBar.Visibility = !(currentPage == "templates" && TemplateEditor.IsEditing) ? Visibility.Visible : Visibility.Collapsed;
         RefreshOverview();
     }
     private void MarkDirty()
     {
         if (initializing || !IsLoaded) return;
-        ConnectionError.Visibility = Visibility.Collapsed;
+        ConnectionError.Visibility = Visibility.Collapsed; SaveFeedback.Visibility = Visibility.Collapsed;
         UpdateActions(); SetStatus(Dirty ? "有未保存的修改" : "配置已读取");
         previewTimer.Stop(); previewTimer.Start();
     }
@@ -249,7 +233,7 @@ public partial class MainWindow : Window
     }
     private void StageTemplate(ConfigTemplate template, string[] paths)
     {
-        if (snapshot is null || store.HasPending(home) || busy) return;
+        if (snapshot is null || store.HasPending(home) || closing) return;
         try
         {
             var applied = template.StageSelected(new TomlDocument(snapshot.Config).Model, detailedChanges, paths);
@@ -261,13 +245,13 @@ public partial class MainWindow : Window
     }
     private void UndoTemplateClicked(object sender, RoutedEventArgs e)
     {
-        if (lastTemplate is null || snapshot is null || busy || store.HasPending(home)) return;
+        if (lastTemplate is null || snapshot is null || closing || store.HasPending(home)) return;
         var result = lastTemplate.Undo(detailedChanges); lastTemplate = null;
         Editor.Configure(snapshot.Config, detailedChanges); MarkDirty();
         SetStatus($"已撤销 {result.Restored} 项模板设置。" + (result.Preserved > 0 ? $"保留 {result.Preserved} 项后续修改。" : ""));
     }
     private int DraftCount() => detailedChanges.Count + (DetailsChanged ? 1 : 0) +
-        (pendingOfficialAuth is not null ? 1 : 0) + (ConnectionModeBox.SelectedIndex != (int)loadedSettings.Mode ? 1 : 0) + (GatewayProxyBox.IsChecked != loadedSettings.UseSystemProxy ? 1 : 0) +
+        (loadedSettings.Mode != ConnectionMode.Direct ? 1 : 0) +
         (BaseUrlBox.Text != loadedSettings.BaseUrl ? 1 : 0) + (ApiKeyBox.Password != loadedSettings.ApiKey ? 1 : 0) +
         (ModelBox.Text != loadedSettings.Model ? 1 : 0) + (KindBox.SelectedIndex != (int)loadedSettings.Kind ? 1 : 0) +
         (AuthenticationBox.SelectedIndex != (int)loadedSettings.Authentication ? 1 : 0);
@@ -312,13 +296,7 @@ public partial class MainWindow : Window
     }
     private void UpdateCredentialHint()
     {
-        if (ConnectionModeBox.SelectedIndex == (int)ConnectionMode.OfficialWithApi)
-        {
-            CredentialLabel.Text = "模型访问凭据";
-            CredentialHint.Text = "仅用于模型请求，可填写入口支持的 Krill PAT 或 API Key。";
-            return;
-        }
-        CredentialLabel.Text = AuthenticationBox.SelectedIndex switch { 1 => "PAT", 2 => "API Key", _ => "访问凭据" };
+        CredentialLabel.Text = AuthenticationBox.SelectedIndex switch { 1 => "PAT", 2 => "API Key", _ => "PAT / API Key" };
         var loginTokens = false;
         if (snapshot?.Auth is not null)
         {
@@ -326,59 +304,10 @@ public partial class MainWindow : Window
             loginTokens = auth.RootElement.TryGetProperty("tokens", out var tokens) && tokens.ValueKind == JsonValueKind.Object;
         }
         CredentialHint.Text = loginTokens && loadedSettings.ApiKey.Length == 0
-            ? "已读取登录认证结构，修改普通设置无需填写。"
+            ? "未读取 PAT，填写新凭据后保存。普通设置可单独修改。"
             : "修改服务连接时填写，普通设置无需填写。";
     }
 
-    private void ConnectionModeChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (initializing || OfficialLoginPanel is null) return;
-        if (ConnectionModeBox.SelectedIndex == 0) ClearPendingLogin();
-        UpdateModeControls(); UpdateCredentialHint(); MarkDirty();
-    }
-    private void UpdateModeControls()
-    {
-        var mixed = ConnectionModeBox.SelectedIndex == (int)ConnectionMode.OfficialWithApi;
-        OfficialLoginPanel.Visibility = mixed ? Visibility.Visible : Visibility.Collapsed;
-        ConnectionModeHint.Text = mixed ? "官方账号负责登录，模型请求使用下方 PAT / API Key。" : "无需登录 ChatGPT，使用服务提供的 PAT 或 API Key。";
-        AuthenticationRow.Visibility = mixed ? Visibility.Collapsed : Visibility.Visible;
-        OfficialLoginStatus.Text = pendingOfficialAuth is not null ? "新登录已完成，保存配置后应用。" :
-            OfficialCredentials.HasLogin(snapshot?.Auth) ? "已读取官方登录凭据，实际有效状态由 Codex 验证。" : "尚未读取完整的官方登录，请先在浏览器登录。";
-        CodexExecutableHint.Text = codexExecutable is null ? "未在 PATH 找到 codex.exe，请选择 Codex 原生程序。" : "登录程序：" + codexExecutable;
-    }
-    private void ClearPendingLogin()
-    {
-        if (pendingOfficialAuth is not null) CryptographicOperations.ZeroMemory(pendingOfficialAuth);
-        pendingOfficialAuth = null;
-    }
-    private void SelectCodexClicked(object sender, RoutedEventArgs e)
-    {
-        var picker = new OpenFileDialog { Title = "选择 Codex 原生程序", Filter = "Codex 程序 (codex.exe)|codex.exe", CheckFileExists = true };
-        if (picker.ShowDialog(this) == true) { codexExecutable = picker.FileName; UpdateModeControls(); }
-    }
-    private async void OfficialLoginClicked(object sender, RoutedEventArgs e)
-    {
-        if (busy || smokeOutput is not null) return;
-        if (codexExecutable is null) { SelectCodexClicked(sender, e); if (codexExecutable is null) return; }
-        busy = true; loginCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-        CancelLoginButton.Visibility = Visibility.Visible; UpdateActions();
-        OfficialLoginStatus.Text = "请在系统浏览器中完成官方登录，最长等待 5 分钟。";
-        try
-        {
-            var bytes = await new CodexLoginClient().LoginAsync(codexExecutable,
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexConfig", "login"), loginCancellation.Token);
-            if (closing) { CryptographicOperations.ZeroMemory(bytes); return; }
-            ClearPendingLogin(); pendingOfficialAuth = bytes; MarkDirty(); UpdateModeControls();
-        }
-        catch (OperationCanceledException) { if (!closing) OfficialLoginStatus.Text = "登录已取消或超时，原有登录未更改。"; }
-        catch (Exception error) { if (!closing) { OfficialLoginStatus.Text = "登录未完成，原有登录未更改。"; ShowError(error); } }
-        finally
-        {
-            loginCancellation.Dispose(); loginCancellation = null; busy = false;
-            if (!closing) { CancelLoginButton.Visibility = Visibility.Collapsed; UpdateActions(); }
-        }
-    }
-    private void CancelLoginClicked(object sender, RoutedEventArgs e) => loginCancellation?.Cancel();
     private void PasswordChanged(object sender, RoutedEventArgs e)
     {
         if (!initializing && ShowKeyBox.IsChecked != true) { initializing = true; VisibleKeyBox.Text = ApiKeyBox.Password; initializing = false; }
@@ -402,7 +331,7 @@ public partial class MainWindow : Window
     private void UpdatePreview()
     {
         if (snapshot is null) { PreviewBox.Text = "请先读取有效的配置目录。"; return; }
-        try { preview = store.Plan(snapshot, Settings(placeholder: true), detailedChanges, updateConnection: ConnectionChanged, updateModel: ModelBox.Text != loadedSettings.Model, officialAuth: pendingOfficialAuth, updateDetails: DetailsChanged); RenderPreview(); }
+        try { preview = store.Plan(snapshot, Settings(placeholder: true), detailedChanges, updateConnection: ConnectionChanged, updateModel: ModelBox.Text != loadedSettings.Model, updateDetails: DetailsChanged); RenderPreview(); }
         catch (Exception) { preview = null; PreviewBox.Text = "配置预览暂不可用，请检查字段格式与未保存的设置。"; }
     }
     private void RenderPreview()
@@ -435,7 +364,7 @@ public partial class MainWindow : Window
             lines.Add(ConfigHelp.Name(path) + "\n" + path + "\n  " + Display(path, previous) + "\n→ " + Display(path, next));
         }
         if (!(snapshot.Auth ?? []).SequenceEqual(preview.Auth ?? [])) lines.Add("认证文件\n  将更新（凭据内容已隐藏）");
-        if (!(snapshot.Bridge ?? []).SequenceEqual(preview.Bridge ?? [])) lines.Add("模型连接\n  将更新本地连接配置与加密模型凭据（内容已隐藏）");
+        if (!(snapshot.Bridge ?? []).SequenceEqual(preview.Bridge ?? [])) lines.Add("模型连接\n  将移除旧版本地连接配置（凭据已隐藏）");
         if (!(snapshot.Details ?? []).SequenceEqual(preview.Details ?? [])) lines.Add("连接名称与备注\n  将更新本工具的连接信息（内容已隐藏）");
         if (snapshot.AuthApiBaseUrl != preview.AuthApiBaseUrl) lines.Add("用户环境变量 CODEX_AUTHAPI_BASE_URL\n  " + (snapshot.AuthApiBaseUrl ?? "未设置") + "\n→ " + (preview.AuthApiBaseUrl ?? "移除"));
         return lines.Count == 0 ? "没有需要保存的更改。" : string.Join("\n\n", lines) + "\n\n保存后，重新打开 Codex 读取配置。";
@@ -457,7 +386,8 @@ public partial class MainWindow : Window
     private void SaveClicked(object sender, RoutedEventArgs e) => SaveCurrent();
     private bool SaveCurrent()
     {
-        if (busy) return false;
+        if (closing) return false;
+        SaveFeedback.Visibility = Visibility.Collapsed;
         try
         {
             if (snapshot is null || store.HasPending(home)) throw new InvalidOperationException("请先读取配置或恢复未完成的保存。");
@@ -467,17 +397,8 @@ public partial class MainWindow : Window
                 var first = Editor.Errors.First(); ShowPage("catalog"); Editor.Filter(ConfigSchema.Instance.Find(first.Key)?.Path ?? first.Key);
                 throw new ArgumentException("有配置项尚未填写正确，请检查行内提示。");
             }
-            var plan = store.Plan(snapshot, Settings(), detailedChanges, updateConnection: ConnectionChanged, updateModel: ModelBox.Text != loadedSettings.Model, officialAuth: pendingOfficialAuth, updateDetails: DetailsChanged);
+            var plan = store.Plan(snapshot, Settings(), detailedChanges, updateConnection: ConnectionChanged, updateModel: ModelBox.Text != loadedSettings.Model, updateDetails: DetailsChanged);
             store.Apply(plan);
-            if (smokeOutput is null && plan.Bridge is not null)
-            {
-                try { gateways.EnsureAsync(home, plan.Bridge).GetAwaiter().GetResult(); }
-                catch (Exception error)
-                {
-                    store.Restore(store.Load(home));
-                    throw new IOException("本地连接启动失败，已回滚本次保存。" + error.Message);
-                }
-            }
             if (!Reload()) return false;
             var note = plan.Notes.FirstOrDefault(n => n.StartsWith("保留现有", StringComparison.Ordinal));
             SetStatus("已保存，重新打开 Codex 后生效。" + (note is null ? "" : " " + note));
@@ -485,22 +406,23 @@ public partial class MainWindow : Window
         }
         catch (Exception error)
         {
-            ShowError(error);
+            ShowError(error); SaveFeedback.Text = "保存未完成：" + StatusText.Text; SaveFeedback.Visibility = Visibility.Visible;
             if (currentPage == "connection") { ConnectionError.Text = error.Message; ConnectionError.Visibility = Visibility.Visible; }
             UpdateActions(); return false;
         }
     }
-    private async void ProbeClicked(object sender, RoutedEventArgs e)
+    private async void ProbeClicked(object sender, RoutedEventArgs e) => await FetchModelsAsync(probe);
+    private async Task FetchModelsAsync(ModelCatalogClient client)
     {
         if (busy) return;
         try
         {
             var settings = Settings();
             settings = (settings with { Model = string.IsNullOrWhiteSpace(settings.Model) ? "model-catalog" : settings.Model }).Normalize();
-            var fingerprint = settings.Fingerprint();
+            var fingerprint = settings.Fingerprint(); var expectedHome = home;
             busy = true; ProbeButton.Content = "正在获取…"; UpdateActions(); ModelHint.Text = "正在获取模型目录…";
-            var result = await probe.ReadModelsAsync(settings, lifetime.Token);
-            if (closing) return;
+            var result = await client.ReadModelsAsync(settings, lifetime.Token);
+            if (closing || home != expectedHome) return;
             string? latest;
             try { latest = (Settings() with { Model = "model-catalog" }).Fingerprint(); } catch (ArgumentException) { latest = null; }
             if (latest != fingerprint) { ModelHint.Text = "连接设置已更改，请重新获取模型。"; return; }
@@ -528,14 +450,14 @@ public partial class MainWindow : Window
     }
     private void ChooseHomeClicked(object sender, RoutedEventArgs e)
     {
-        if (busy) return;
+        if (closing) return;
         if (!ResolveUnsaved()) return;
         var dialog = new OpenFolderDialog { Title = "选择 Codex 配置目录", InitialDirectory = Directory.Exists(home) ? home : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) };
         if (dialog.ShowDialog(this) == true) { home = dialog.FolderName; CloseOverlay(); Reload(); }
     }
     private void ReloadClicked(object sender, RoutedEventArgs e)
     {
-        if (busy) return;
+        if (closing) return;
         if (!ResolveUnsaved()) return;
         CloseOverlay(); Reload();
     }
@@ -550,7 +472,7 @@ public partial class MainWindow : Window
     }
     private void RestoreClicked(object sender, RoutedEventArgs e)
     {
-        if (busy) return;
+        if (closing) return;
         if (!ResolveUnsaved()) return;
         if (smokeOutput is null && MessageBox.Show(this, "将恢复上次保存前的配置文件和相关用户环境变量。当前状态也会加密备份。继续？", "恢复配置", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         try
@@ -598,11 +520,11 @@ public partial class MainWindow : Window
         void Assert(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
         ThemeManager.Apply(false);
         Assert(!SaveButton.IsEnabled && PreviewOverlay.Visibility == Visibility.Collapsed, "Initial state");
-        Assert(currentPage == "overview" && OverviewPage.IsVisible && GlobalSaveBar.Visibility == Visibility.Collapsed, "Dock default overview without draft bar");
+        Assert(currentPage == "connection" && ConnectionPage.IsVisible && ModelControls.IsVisible && GlobalSaveBar.IsVisible, "PAT editor opens its connection and keeps save actions visible");
         Assert(ProviderBox.SelectedIndex == 0 && LinePresetRow.Visibility == Visibility.Collapsed, "Blank home must not select a provider");
         await Settle(); Capture(output, "main-window.png");
         ShowPage("connection"); await Settle(); Capture(output, "connection-custom.png");
-        checks.AddRange(["Neutral default common page", "Blank custom connection without provider selection"]);
+        checks.AddRange(["Connection and model appear together with persistent save actions", "Blank custom connection without provider selection"]);
         await RunLocalStateSmokeAsync(output, checks);
         ShowPage("preferences"); Editor.Search.Text = ""; Editor.SetMode(true);
         Editor.NewPath.Text = "future_config.answer"; Editor.NewValue.Text = "42";
@@ -621,7 +543,7 @@ public partial class MainWindow : Window
             Assert(BaseUrlBox.Text == line.Origin && AuthenticationBox.SelectedIndex == (int)AuthenticationChoice.Pat, "Preset " + line.Id);
         }
         LinePresetBox.SelectedValue = KrillLines.Cdn.Id; ApiKeyBox.Password = "ah-fake-ui-smoke-key"; ModelBox.Text = "gpt-6.1-sol";
-        ShowPage("preferences"); Editor.Search.Text = ""; Editor.SetMode(true);
+        ShowPage("connection");
         ModelBox.ApplyTemplate();
         Assert(ModelBox.Template.FindName("PART_EditableTextBox", ModelBox) is TextBox, "Editable model input");
         var editable = (TextBox)ModelBox.Template.FindName("PART_EditableTextBox", ModelBox);
@@ -640,7 +562,7 @@ public partial class MainWindow : Window
         ShowPage("connection"); ShowPage("catalog"); Editor.Filter("model_context_window");
         Assert(Editor.VisibleCount == 1 && ((TextBox)Editor.Input("model_context_window")).Text == "500000", "Draft across navigation");
         ((TextBox)Editor.Input("model_context_window")).Text = "invalid-number";
-        Assert(!SaveCurrent() && detailedChanges.ContainsKey("model_context_window"), "Invalid draft blocked and retained");
+        Assert(!SaveCurrent() && detailedChanges.ContainsKey("model_context_window") && SaveFeedback.IsVisible, "Invalid draft blocked, retained and explained beside save");
         ((TextBox)Editor.Input("model_context_window")).Text = "500000";
         Editor.Filter("no-such-setting-unique"); Assert(Editor.VisibleCount == 0, "Empty search");
         Editor.Filter(""); ShowPage("connection");
@@ -660,7 +582,7 @@ public partial class MainWindow : Window
         ConfigTab.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Capture(output, "preview-drawer.png"); CloseOverlay();
         var width = Width; var height = Height;
         Width = 1024; Height = 720; await Settle(); Capture(output, "main-window-compact.png");
-        ShowPage("preferences"); Editor.Search.Text = ""; Editor.SetMode(true); ModelBox.Text = "layout-draft";
+        ShowPage("connection"); ModelBox.Text = "layout-draft";
         foreach (var factor in new[] { 1.25, 1.5 })
         {
             RootPanel.LayoutTransform = new ScaleTransform(factor, factor); await Settle();
@@ -837,47 +759,23 @@ public partial class MainWindow : Window
         var officialConfig = System.Text.Encoding.UTF8.GetBytes("# login fixture\nmodel='existing-login-model'\n");
         File.WriteAllBytes(Path.Combine(home, "auth.json"), loginAuth); File.WriteAllBytes(Path.Combine(home, "config.toml"), officialConfig);
         environment.Write(null); Reload();
-        Assert(!Dirty && ProviderBox.SelectedIndex == 0 && CredentialHint.Text.Contains("登录认证结构"), "Existing login status reads without staging changes");
-        ShowPage("connection"); await Settle(); Capture(output, "connection-login.png");
+        Assert(!Dirty && ProviderBox.SelectedIndex == 0 && ApiKeyBox.Password.Length == 0, "Existing authentication is preserved until a new PAT is saved");
+        ShowPage("connection"); await Settle(); Capture(output, "connection-no-pat.png");
         ShowPage("preferences"); Editor.Search.Text = ""; Editor.SetMode(true); SelectValue("analytics.enabled", "false");
         Assert(SaveCurrent() && store.Load(home).Auth!.SequenceEqual(loginAuth) && environment.Read() is null, "Config-only edit preserves login authentication");
-        checks.AddRange(["Blank service tier follows default", "Existing login structure shown without rewriting", "Config-only UI save preserves login authentication"]);
-        // Mixed mode stages login in memory; the smoke suite never opens a browser or starts a real bridge process.
-        pendingOfficialAuth = System.Text.Encoding.UTF8.GetBytes("{\"auth_mode\":\"chatgpt\",\"tokens\":{\"id_token\":\"fake-id-token\",\"access_token\":\"fake-mixed-official-access\",\"refresh_token\":\"fake-refresh-token\"}}");
-        var mixedAuth = pendingOfficialAuth.ToArray();
-        ConnectionModeBox.SelectedIndex = (int)ConnectionMode.OfficialWithApi;
-        BaseUrlBox.Text = "https://relay.example/backend-api/codex"; ApiKeyBox.Password = "fake-mixed-krill-pat";
-        KindBox.SelectedIndex = (int)ConnectionKind.PatRelay;
-        detailedChanges["service_tier"] = "\"fast\""; detailedChanges["features.fast_mode"] = "true";
-        detailedChanges["approval_policy"] = "\"on-request\""; detailedChanges["approvals_reviewer"] = "\"auto_review\"";
-        Editor.Configure(snapshot!.Config, detailedChanges); MarkDirty(); UpdateModeControls(); UpdatePreview();
-        Assert(OfficialLoginPanel.Visibility == Visibility.Visible && AuthenticationRow.Visibility == Visibility.Collapsed && SaveButton.IsEnabled, "Mixed login controls");
-        Assert(preview is not null && !preview.ConfigPreview.Contains("fake-mixed-krill-pat") && !RenderChanges().Contains("fake-mixed-official-access"), "Mixed preview masks both credentials");
-        ShowPage("connection"); ConnectionPage.ScrollToTop(); await Settle(); Capture(output, "connection-mixed.png");
-        Assert(SaveCurrent(), "Mixed connection save");
-        var mixedSnapshot = store.Load(home);
-        Assert(mixedSnapshot.Bridge is not null && mixedSnapshot.Auth!.SequenceEqual(mixedAuth) && environment.Read() is null, "Mixed identity stored separately");
-        Assert(loadedSettings.Mode == ConnectionMode.OfficialWithApi && ApiKeyBox.Password == "fake-mixed-krill-pat" && !Dirty, "Mixed connection reload");
-        ModelBox.Text = "mixed-model-after-edit";
-        Assert(SaveCurrent() && store.Load(home).Bridge!.SequenceEqual(mixedSnapshot.Bridge!) && store.Load(home).Auth!.SequenceEqual(mixedAuth), "Mixed model-only save preserves encrypted connection and official login");
-        ConnectionModeBox.SelectedIndex = 0; KindBox.SelectedIndex = (int)ConnectionKind.ResponsesApi;
-        BaseUrlBox.Text = "https://api.example/v1"; ApiKeyBox.Password = "fake-direct-after-mixed";
-        Assert(SaveCurrent() && store.Load(home).Bridge is null, "Explicit direct mode clears mixed connection");
-        store.Restore(store.Load(home)); Reload();
-        Assert(loadedSettings.Mode == ConnectionMode.OfficialWithApi && store.Load(home).Bridge!.SequenceEqual(mixedSnapshot.Bridge!) && store.Load(home).Auth!.SequenceEqual(mixedAuth), "UI restore returns to mixed identity and encrypted connection");
-        await RunGatewaySmokeAsync(output, checks);
-        checks.AddRange(["Mixed login draft and mode controls", "Mixed credential redaction", "Mixed save/reload and model-only preservation", "Mixed-to-direct switch and encrypted connection restore"]);
+        checks.AddRange(["Blank service tier follows default", "Existing authentication is read without rewriting", "Config-only UI save preserves login authentication"]);
+        await RunPatEditorSmokeAsync(output, checks);
         ShowPage("overview"); await Settle(); Capture(output, "dock-overview.png");
         ThemeManager.Apply(true); await Settle(); Capture(output, "dock-overview-dark.png"); ThemeManager.Apply(false);
         ShowPage("app"); await Settle(); Capture(output, "dock-application.png");
         ShowPage("backup"); await Settle(); Capture(output, "dock-backup.png");
         ShowPage("preferences"); Editor.Search.Text = ""; Editor.SetMode(true); await Settle(); Capture(output, "dock-model.png");
-        Assert(ModelControls.IsVisible && !ConnectionPage.IsVisible && !GlobalSaveBar.IsVisible, "Dedicated model page without clean draft bar");
-        GatewayProxyBox.IsChecked = true; ShowPage("gateway");
-        Assert(GlobalSaveBar.IsVisible && Dirty, "Network draft shows global save bar across pages");
-        GatewayProxyBox.IsChecked = false;
-        Assert(!Dirty && !GlobalSaveBar.IsVisible, "Reset network draft hides save bar");
-        checks.AddRange(["Codex Dock overview and identity summary", "Dedicated model, backup and application pages", "Global draft bar appears only for changes"]);
+        Assert(!ModelControls.IsVisible && !ConnectionPage.IsVisible && GlobalSaveBar.IsVisible, "Settings page keeps save actions visible");
+        ModelBox.Text = ModelBox.Text + "-draft";
+        Assert(GlobalSaveBar.IsVisible && SaveButton.IsEnabled && Dirty, "Model draft enables the persistent save action across pages");
+        ModelBox.Text = loadedSettings.Model;
+        Assert(!Dirty && GlobalSaveBar.IsVisible && !SaveButton.IsEnabled, "Clean state keeps the save action visible and disabled");
+        checks.AddRange(["PAT overview has no account or gateway controls", "Dedicated settings, backup and application pages", "Save action remains visible in clean and edited states"]);
         await RunConnectionDetailsSmokeAsync(output, checks);
         await RunApplicationSettingsSmokeAsync(output, checks);
         await RunUpdateSmokeAsync(output, checks);

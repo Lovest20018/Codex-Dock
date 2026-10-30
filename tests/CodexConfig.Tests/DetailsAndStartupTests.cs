@@ -15,7 +15,7 @@ internal static class DetailsAndStartupTests
         {
             var home = Home(); var env = new FakeEnvironment(); var store = new ConfigStore(env);
             File.WriteAllText(Path.Combine(home, "config.toml"), "# retained\r\nmodel='original'\r\n");
-            File.WriteAllBytes(Path.Combine(home, "auth.json"), MixedTests.Auth());
+            File.WriteAllBytes(Path.Combine(home, "auth.json"), LegacyConnectionTests.Auth());
             var before = store.Load(home);
             var settings = store.ReadSettings(before) with { Details = new("  我的服务  ", "第一行\r\n第二行 private-note") };
             store.Apply(store.Plan(before, settings, updateConnection: false, updateDetails: true));

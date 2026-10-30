@@ -103,21 +103,20 @@ public partial class MainWindow
         if (!SaveCurrent()) throw new InvalidOperationException("Connection label save failed.");
         var saved = store.Load(home);
         if (loadedSettings.Details.Name != "我的自定义连接" || loadedSettings.Details.Note != "工作使用\n备用模型入口" || Dirty ||
-            !saved.Config!.SequenceEqual(before.Config!) || !saved.Auth!.SequenceEqual(before.Auth!) || !saved.Bridge!.SequenceEqual(before.Bridge!))
+            !saved.Config!.SequenceEqual(before.Config!) || !saved.Auth!.SequenceEqual(before.Auth!) || saved.Bridge is not null || before.Bridge is not null)
             throw new InvalidOperationException("Label-only save changed model routing or credentials.");
         ShowPage("overview"); await Settle(); Capture(output, "connection-named-overview.png");
         if (!FindVisual<System.Windows.Controls.TextBlock>(OverviewBody).Any(text => text.Text == "我的自定义连接")) throw new InvalidOperationException("Overview omitted saved connection name.");
         ShowPage("connection"); ConnectionPage.ScrollToTop(); await Settle(); Capture(output, "connection-named.png");
-        ConnectionModeBox.SelectedIndex = (int)ConnectionMode.Direct;
         KindBox.SelectedIndex = (int)ConnectionKind.PatRelay; AuthenticationBox.SelectedIndex = (int)AuthenticationChoice.Pat;
-        if (OfficialLoginPanel.Visibility != Visibility.Collapsed || !ConnectionModeHint.Text.Contains("无需登录 ChatGPT") || !SaveCurrent())
-            throw new InvalidOperationException("Direct PAT mode requires no official login UI.");
+        BaseUrlBox.Text = "https://named.example/backend-api/codex"; ApiKeyBox.Password = "fake-named-pat";
+        if (!SaveCurrent()) throw new InvalidOperationException("PAT connection saves without account login.");
         using (var auth = System.Text.Json.JsonDocument.Parse(store.Load(home).Auth!))
             if (!auth.RootElement.TryGetProperty("personal_access_token", out _) || auth.RootElement.TryGetProperty("tokens", out _) || store.Load(home).Bridge is not null)
-                throw new InvalidOperationException("Direct PAT switch did not replace OAuth routing.");
+                throw new InvalidOperationException("PAT save did not write a direct connection.");
         if (loadedSettings.Details.Name != "我的自定义连接") throw new InvalidOperationException("Mode switch lost labels.");
         ShowPage("connection"); ConnectionPage.ScrollToTop(); await Settle(); Capture(output, "connection-pat-named.png");
         store.Restore(store.Load(home)); Reload();
-        checks.AddRange(["Name and multiline notes save and reload without rewriting credentials or routing", "Overview displays saved connection name", "Mixed mode switches to PAT without ChatGPT login and preserves labels"]);
+        checks.AddRange(["Name and multiline notes save and reload without rewriting credentials or routing", "Overview displays saved connection name", "PAT connection saves without login or gateway and preserves labels"]);
     }
 }

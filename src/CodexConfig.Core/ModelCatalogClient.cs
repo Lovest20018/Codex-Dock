@@ -10,15 +10,10 @@ public sealed record ModelCatalogResult(IReadOnlyList<string> Models, long Milli
 public sealed class ModelCatalogClient : IDisposable
 {
     private readonly HttpClient client;
-    private readonly HttpClient proxyClient;
-    private readonly HttpClient directClient;
     public ModelCatalogClient(HttpMessageHandler? handler = null)
     {
         client = handler is null ? new(new HttpClientHandler { AllowAutoRedirect = false }) : new(handler);
-        directClient = handler is null ? new(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false }) : client;
-        proxyClient = handler is null ? new(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = true, Proxy = new SystemHttpProxy() }) : client;
         client.Timeout = TimeSpan.FromSeconds(15);
-        directClient.Timeout = proxyClient.Timeout = client.Timeout;
     }
 
     // Fetch the chosen model endpoint only. This does not probe identity, fall
@@ -58,8 +53,7 @@ public sealed class ModelCatalogClient : IDisposable
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiKey);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        var transport = settings.Mode == ConnectionMode.OfficialWithApi ? settings.UseSystemProxy ? proxyClient : directClient : client;
-        using var response = await transport.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation);
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation);
         if (!response.IsSuccessStatusCode)
         {
             var message = response.StatusCode switch
@@ -92,8 +86,6 @@ public sealed class ModelCatalogClient : IDisposable
 
     public void Dispose()
     {
-        if (!ReferenceEquals(proxyClient, client)) proxyClient.Dispose();
-        if (!ReferenceEquals(directClient, client)) directClient.Dispose();
         client.Dispose();
     }
 }

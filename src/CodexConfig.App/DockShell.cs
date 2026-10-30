@@ -7,23 +7,20 @@ namespace CodexConfig.App;
 
 public partial class MainWindow
 {
-    private (ConfigSnapshot? Snapshot, ConnectionSettings Settings, string Gateway, bool Running, bool Dirty, CodexRuntimeStatus? Runtime, bool ExternalChange, string Error, string Home)? overviewState;
+    private (ConfigSnapshot? Snapshot, ConnectionSettings Settings, bool Dirty, CodexRuntimeStatus? Runtime, bool ExternalChange, string Error, string Home)? overviewState;
     private void ModelPageClicked(object sender, RoutedEventArgs e) => ShowPage("preferences");
     private void LibraryTemplatesClicked(object sender, RoutedEventArgs e) => ShowPage("templates");
     private void LibraryBackupClicked(object sender, RoutedEventArgs e) => ShowPage("backup");
 
     private void InitializeDockLayout()
     {
-        ModelLayout.Children.Remove(ModelControls); Editor.SetHeader(ModelControls);
-        Grid.SetRow(Editor, 0); Grid.SetRowSpan(Editor, 2);
-        ModelControls.Margin = new(0, 0, 0, 16);
         RootPanel.SizeChanged += (_, _) =>
         {
             var compact = RootPanel.ActualWidth < 820;
             SidebarColumn.Width = new(compact ? 176 : 196);
             PageHeading.Margin = compact ? new(28, 14, 28, 12) : new(28, 22, 28, 20);
         };
-        foreach (var (nav, glyph) in new[] { (OverviewNav, "\uE80F"), (ConnectionNav, "\uE774"), (CatalogNav, "\uE9D9"), (GatewayNav, "\uE968"), (TemplatesNav, "\uE8F1"), (AdvancedNav, "\uE9E9"), (AppNav, "\uE713") })
+        foreach (var (nav, glyph) in new[] { (OverviewNav, "\uE80F"), (ConnectionNav, "\uE774"), (CatalogNav, "\uE9D9"), (TemplatesNav, "\uE8F1"), (AdvancedNav, "\uE9E9"), (AppNav, "\uE713") })
         {
             var label = ((TextBlock)nav.Content).Text;
             var content = new Grid();
@@ -62,7 +59,7 @@ public partial class MainWindow
     private void RefreshOverview()
     {
         if (OverviewBody is null) return;
-        var state = (snapshot, loadedSettings, GatewayStateText.Text, gatewayRunning, Dirty, codexRuntime, externalConfigurationChanged, localStateError, home);
+        var state = (snapshot, loadedSettings, Dirty, codexRuntime, externalConfigurationChanged, localStateError, home);
         if (overviewState is { } previous && previous == state) return;
         overviewState = state;
         OverviewBody.Children.Clear();
@@ -81,12 +78,11 @@ public partial class MainWindow
             var actions = new WrapPanel(); actions.Children.Add(OverviewAction("设置连接", "connection", true)); actions.Children.Add(OverviewAction("模型与行为", "preferences")); welcome.Children.Add(actions);
             OverviewBody.Children.Add(OverviewSurface(welcome, new(0))); return;
         }
-        var mixed = loadedSettings.Mode == ConnectionMode.OfficialWithApi;
         var summary = new StackPanel(); summary.Children.Add(OverviewText("当前连接", "Muted", 12));
-        var mode = OverviewText(mixed ? "官方账号 + API" : loadedSettings.ApiKey.Length > 0 ? loadedSettings.Authentication == AuthenticationChoice.Pat ? "PAT 连接" : "API Key 连接" : OfficialCredentials.HasLogin(snapshot.Auth) ? "官方账号登录" : "已有配置", size: 22);
+        var mode = OverviewText(loadedSettings.ApiKey.Length > 0 ? loadedSettings.Authentication == AuthenticationChoice.Pat ? "PAT 连接" : "PAT / API Key 连接" : "待设置 PAT", size: 22);
         mode.FontWeight = FontWeights.SemiBold; mode.Margin = new(0, 8, 0, 20); summary.Children.Add(mode);
         var route = new Grid();
-        var stages = mixed ? new[] { ("Codex", "官方身份"), ("本地网关", "本机转发"), ("模型服务", "独立模型凭据") } : new[] { ("Codex", "读取本地配置"), ("模型入口", "由客户端连接") };
+        var stages = new[] { ("Codex", "读取本地配置"), ("模型入口", "由客户端连接") };
         for (var i = 0; i < stages.Length; i++)
         {
             if (i > 0)
@@ -122,13 +118,12 @@ public partial class MainWindow
         if (loadedSettings.Details.Note.Length > 0) Detail(left, "备注", loadedSettings.Details.Note, 12);
         Detail(left, "模型服务", string.IsNullOrEmpty(loadedSettings.BaseUrl) ? "沿用现有客户端配置" : loadedSettings.BaseUrl);
         var leftActions = new WrapPanel(); leftActions.Children.Add(OverviewAction("管理连接", "connection")); leftActions.Children.Add(OverviewAction("调整模型", "preferences")); left.Children.Add(leftActions);
-        Title(right, "网关与身份"); Detail(right, "本地网关", mixed ? GatewayStateText.Text : "当前连接无需网关");
-        Detail(right, "模型上游网络", mixed ? loadedSettings.UseSystemProxy ? "使用本机 HTTP 代理" : "直接连接" : "由 Codex 客户端连接");
-        Detail(right, "官方身份", OfficialCredentials.HasLogin(snapshot.Auth) ? "已读取登录凭据 · 未在线验证" : "未读取官方登录凭据");
-        Detail(right, "模型凭据来源", loadedSettings.CredentialSource);
-        Detail(right, "凭据存储", config.String("cli_auth_credentials_store") ?? "客户端默认存储");
+        Title(right, "保存与凭据");
+        Detail(right, "连接方式", "Codex 直接读取本机配置");
+        Detail(right, "凭据来源", loadedSettings.CredentialSource);
+        Detail(right, "保存与恢复", "保存前自动创建加密备份");
         if (config.String("profile") is { Length: > 0 } profile) Detail(right, "配置中的 profile", profile + " · 可能覆盖本地默认设置");
-        right.Children.Add(OverviewAction("查看网关与网络", "gateway"));
+        right.Children.Add(OverviewAction("备份恢复", "backup"));
         var leftCard = OverviewSurface(left, new(0, 0, 8, 0)); var rightCard = OverviewSurface(right, new(8, 0, 0, 0));
         Grid.SetColumn(rightCard, 1); columns.Children.Add(leftCard); columns.Children.Add(rightCard);
         columns.SizeChanged += (_, _) =>
@@ -139,11 +134,7 @@ public partial class MainWindow
             leftCard.Margin = compact ? new(0, 0, 0, 16) : new(0, 0, 8, 0); rightCard.Margin = compact ? new(0) : new(8, 0, 0, 0);
         };
         OverviewBody.Children.Add(columns);
-        var footer = OverviewText("每 5 秒刷新本地状态。配置显示当前目录的文件值；会话、项目或 profile 覆盖由 Codex 决定。进程状态不代表正在执行任务，登录凭据未在线验证。", "Muted", 12); footer.Margin = new(2, 16, 0, 0); OverviewBody.Children.Add(footer);
-        if (mixed && !gatewayRunning)
-        {
-            var note = OverviewText("网关尚未确认运行，使用模型前请检查“网关与网络”。", "Muted", 12); note.Margin = new(2, 8, 0, 0); OverviewBody.Children.Add(note);
-        }
+        var footer = OverviewText("每 5 秒刷新本地状态。配置显示当前目录的文件值；会话、项目或 profile 覆盖由 Codex 决定。进程状态不代表正在执行任务。", "Muted", 12); footer.Margin = new(2, 16, 0, 0); OverviewBody.Children.Add(footer);
         if (Dirty)
         {
             var note = OverviewText("有未保存的修改，此处仍显示已保存配置。", "Accent", 12); note.Margin = new(2, 8, 0, 0); OverviewBody.Children.Add(note);
@@ -162,7 +153,7 @@ public partial class MainWindow
             foreach (var scale in new[] { 1.0, 1.25, 1.5 })
             {
                 RootPanel.LayoutTransform = new ScaleTransform(scale, scale);
-                foreach (var page in new[] { "overview", "connection", "preferences", "gateway", "templates", "backup", "app" })
+                foreach (var page in new[] { "overview", "connection", "preferences", "templates", "backup", "app" })
                 {
                     ShowPage(page); await Settle();
                     if (CurrentDirectoryText.ActualHeight > 22) throw new InvalidOperationException("Long configuration path expanded the header.");
@@ -190,7 +181,7 @@ public partial class MainWindow
                     Capture(output, $"review-{page}-{(int)(scale * 100)}.png");
                 }
             }
-            checks.AddRange(["Long path stays on one header line", "Navigation remains scrollable above footer at minimum size", "Save actions remain within window at 100/125/150 percent", "Library tabs do not stretch over page content", "Model and settings share a usable page scroll area", "Seven pages captured at minimum size and three scales"]);
+            checks.AddRange(["Long path stays on one header line", "Navigation remains scrollable above footer at minimum size", "Save actions remain within window at 100/125/150 percent", "Library tabs do not stretch over page content", "Settings retain a usable page scroll area", "Six pages captured at minimum size and three scales"]);
         }
         finally
         {

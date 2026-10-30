@@ -41,7 +41,7 @@ public partial class MainWindow
             var changed = snapshot is null || !snapshot.SameContents(current);
             var previouslyChanged = externalConfigurationChanged;
             externalConfigurationChanged = changed;
-            if (changed && !Dirty && !busy && !TemplateEditor.IsEditing && loginCancellation is null)
+            if (changed && !Dirty && !busy && !TemplateEditor.IsEditing)
             {
                 // Parse before changing controls so partial writes never replace the current view.
                 _ = store.ReadSettings(current);
@@ -74,6 +74,7 @@ public partial class MainWindow
         File.WriteAllText(Path.Combine(startupHome, "config.toml"), "model='startup-model'\nopenai_base_url='https://startup.example.com/backend-api/codex'\n");
         File.WriteAllText(Path.Combine(startupHome, "auth.json"), "{\"personal_access_token\":\"fake-startup-pat\",\"OPENAI_API_KEY\":\"fake-startup-pat\"}");
         var startupFixture = new MainWindow(store, startupHome, output, environment);
+        var startupEnvironment = environment.Read();
         startupFixture.Loaded -= startupFixture.WindowLoaded;
         try
         {
@@ -83,9 +84,22 @@ public partial class MainWindow
             startupFixture.Show(); startupFixture.ShowPage("connection");
             await Settle(); startupFixture.Capture(output, "connection-first-open.png");
             Assert(!startupFixture.SaveButton.IsEnabled && startupFixture.ApiKeyBox.Password == "fake-startup-pat", "Initial connection load must not create a draft");
+            await Settle();
+            var modelInput = FindVisual<TextBox>(startupFixture.ModelBox).Single(box => box.Name == "PART_EditableTextBox");
+            modelInput.Text = "typed-model";
+            await Settle();
+            Assert(startupFixture.SaveButton.IsEnabled && startupFixture.Dirty, "Typing a model must enable saving");
+            var modelSaved = startupFixture.SaveCurrent();
+            Assert(modelSaved && store.ReadSettings(store.Load(startupHome)).Model == "typed-model", "Typed model must save and reload: " + startupFixture.StatusText.Text);
+            startupFixture.ShowPage("connection");
+            startupFixture.BaseUrlBox.Text = "https://typed.example.com/backend-api/codex";
+            startupFixture.ApiKeyBox.Password = "fake-typed-pat";
+            Assert(startupFixture.SaveButton.IsEnabled && startupFixture.SaveCurrent(), "Edited address and PAT must save");
+            Assert(store.ReadSettings(store.Load(startupHome)).ApiKey == "fake-typed-pat" && !startupFixture.Dirty, "Saved PAT must reload without a draft");
         }
-        finally { startupFixture.Close(); }
+        finally { startupFixture.Close(); environment.Write(startupEnvironment); }
         checks.Add("Saved address and PAT available on first open before tray or status polling");
+        checks.Add("Typed model, address and PAT enable saving and reload from disk");
         var configPath = Path.Combine(home, "config.toml");
         var authPath = Path.Combine(home, "auth.json");
         var fixture = System.Text.Encoding.UTF8.GetBytes("model='existing-model'\nmodel_provider='existing.service'\n[model_providers.'existing.service']\nname='已有服务'\nbase_url='https://existing.example.com/v1'\nexperimental_bearer_token='fake-import-token'\n");

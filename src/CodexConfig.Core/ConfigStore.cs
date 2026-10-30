@@ -37,7 +37,7 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         {
             var connection = snapshot.Bridge is null ? throw new InvalidDataException("缺少混合连接文件，请从备份恢复或重新配置连接。") : MixedConnection.Read(snapshot.Bridge);
             return new(connection.BaseUrl, connection.ApiKey, doc.String("model") ?? "gpt-6.1-sol")
-            { Details = details, Mode = ConnectionMode.OfficialWithApi, Kind = connection.Kind, PreservePreferenceValues = true, UseSystemProxy = connection.UseSystemProxy,
+            { Details = details, Mode = ConnectionMode.OfficialWithApi, Kind = connection.Kind, PreservePreferenceValues = true,
                 ProviderId = providerId, ProviderName = providerName, CredentialSource = "本地加密模型凭据" };
         }
         string key = "";
@@ -85,7 +85,7 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
             ProviderId = providerId, ProviderName = providerName, CredentialSource = credentialSource };
     }
 
-    public ConfigPlan Plan(ConfigSnapshot before, ConnectionSettings settings, IReadOnlyDictionary<string, string?>? edits = null, bool updateConnection = true, bool updateModel = false, byte[]? officialAuth = null, bool updateDetails = false)
+    public ConfigPlan Plan(ConfigSnapshot before, ConnectionSettings settings, IReadOnlyDictionary<string, string?>? edits = null, bool updateConnection = true, bool updateModel = false, bool updateDetails = false)
     {
         var doc = new TomlDocument(before.Config);
         if (before.Auth is not null) using (ParseAuth(before.Auth)) { }
@@ -105,15 +105,13 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         }
         if (!updateConnection)
         {
-            if (before.Bridge is not null && new TomlDocument(before.Config).String("model_provider") == MixedConnection.Provider)
-                ValidateMixedRoute(doc, MixedConnection.Read(before.Bridge));
             return new(before, doc.Bytes, before.Auth, before.AuthApiBaseUrl, doc.Masked(),
                 before.Auth is null ? "尚无认证文件。" : "认证配置保持现值（内容已隐藏）。", ["仅保存配置项，认证配置保持现值。"])
             { Bridge = before.Bridge, Details = details };
         }
         settings = settings.Normalize();
-        if (settings.Mode == ConnectionMode.OfficialWithApi)
-            return PlanMixed(before, settings, doc, officialAuth) with { Details = details };
+        if (settings.Mode != ConnectionMode.Direct)
+            throw new InvalidOperationException("本工具仅保存 PAT / API Key 直连，请将旧版连接转换为直连后保存。");
         foreach (var name in new[] { "profile", "forced_login_method", "forced_chatgpt_workspace_id" })
             if (doc.Get(name) is not null) notes.Add($"保留现有 {name}；它可能覆盖当前设置，请核查生效配置。");
         if (doc.String("cli_auth_credentials_store") is { } credentials && credentials != "file")
@@ -137,62 +135,6 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         notes.Add("原文件及用户环境变量纳入加密备份；不删除会话或修改客户端安装文件。");
         return new(before, doc.Bytes, Encoding.UTF8.GetBytes(settings.RenderAuth()), decision.AuthApiOrigin ?? before.AuthApiBaseUrl,
             doc.Masked(), settings.RenderAuth(true), notes, decision.Mode, decision.Reason) { Details = details };
-    }
-
-    private static ConfigPlan PlanMixed(ConfigSnapshot before, ConnectionSettings settings, TomlDocument doc, byte[]? officialAuth)
-    {
-        ValidateMixedRestrictions(doc);
-        if (before.Bridge is null && doc.Get("model_providers." + MixedConnection.Provider) is { } reserved && reserved is not Tomlyn.Model.TomlTable { Count: 0 })
-            throw new InvalidOperationException("混合连接的保留供应商名称已被占用，请先更名。");
-        var auth = OfficialCredentials.ForMixed(officialAuth ?? before.Auth);
-        var previous = before.Bridge is null ? null : MixedConnection.Read(before.Bridge);
-        var bridge = MixedConnection.Create(settings, previous);
-        doc.Set("model", settings.Model);
-        doc.Set("model_provider", MixedConnection.Provider);
-        doc.Set("openai_base_url", bridge.LocalBaseUrl);
-        doc.Remove("chatgpt_base_url");
-        doc.Set("cli_auth_credentials_store", "file");
-        var provider = "model_providers." + MixedConnection.Provider + ".";
-        doc.Set(provider + "name", "Codex Config connection");
-        doc.Set(provider + "base_url", bridge.LocalBaseUrl);
-        doc.Set(provider + "wire_api", "responses");
-        doc.Set(provider + "requires_openai_auth", true);
-        doc.Set(provider + "experimental_bearer_token", bridge.LocalToken);
-        doc.Set(provider + "supports_websockets", false);
-        ValidateMixedRoute(doc, bridge);
-        var notes = new List<string>
-        {
-            "保留官方 OAuth 登录；主对话与后台模型请求经本地连接服务转发到所选模型入口。",
-            "Krill 凭据单独加密保存；本地连接服务替换认证头，不转发官方 OAuth Token。",
-            "官方登录使用文件凭据存储；移除 ChatGPT 后端地址覆盖和 PAT 身份环境变量。",
-            "Fast、自动审核、搜索与压缩仍由当前客户端、凭据和模型入口决定；模型目录不代表能力已验证。"
-        };
-        if (doc.String("forced_chatgpt_workspace_id") is not null) notes.Add("保留现有 forced_chatgpt_workspace_id；Codex 会检查账号是否属于指定工作区。");
-        return new(before, doc.Bytes, auth, null, doc.Masked(), "官方登录凭据保留或更新（内容已隐藏）。\n模型访问凭据另行加密保存。", notes,
-            AuthenticationMode.OfficialWithApi, "官方账号 + 独立模型连接") { Bridge = bridge.Protect() };
-    }
-
-    private static void ValidateMixedRestrictions(TomlDocument doc)
-    {
-        if (doc.String("profile") is { Length: > 0 })
-            throw new InvalidOperationException("当前启用了 profile。请先在常用设置中移除 profile 覆盖后保存混合连接，避免模型请求走其他入口。");
-        if (doc.String("forced_login_method") is { } restriction && restriction != "chatgpt")
-            throw new InvalidOperationException("forced_login_method 限制了官方账号登录，请先调整此项。");
-        if (doc.Get("model_providers.openai") is not null)
-            throw new InvalidOperationException("当前自定义了内置 openai 供应商，请先移除此覆盖，避免后台模型请求走其他入口。");
-    }
-
-    private static void ValidateMixedRoute(TomlDocument doc, MixedConnection bridge)
-    {
-        ValidateMixedRestrictions(doc);
-        var prefix = "model_providers." + MixedConnection.Provider + ".";
-        if (doc.String("model_provider") != MixedConnection.Provider || doc.String("openai_base_url") != bridge.LocalBaseUrl ||
-            doc.Get(prefix + "base_url") as string != bridge.LocalBaseUrl || doc.Get(prefix + "experimental_bearer_token") as string != bridge.LocalToken ||
-            doc.Get(prefix + "requires_openai_auth") is not true || doc.Get(prefix + "supports_websockets") is not false ||
-            doc.Get(prefix + "wire_api") as string != "responses" || doc.String("chatgpt_base_url") is not null || doc.String("cli_auth_credentials_store") != "file")
-            throw new InvalidOperationException("混合连接的路由或认证方式被更改，请到服务连接页重新保存连接。");
-        foreach (var name in new[] { "env_key", "env_http_headers", "http_headers", "auth" })
-            if (doc.Get(prefix + name) is not null) throw new InvalidOperationException("混合连接使用独立的认证头，不能额外覆盖供应商认证。");
     }
 
     public string Apply(ConfigPlan plan) => Commit(plan.Before, plan.Config, plan.Auth, plan.AuthApiBaseUrl, "save", plan.Bridge, plan.Details);

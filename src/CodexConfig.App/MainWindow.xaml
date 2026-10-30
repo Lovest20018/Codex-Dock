@@ -18,17 +18,14 @@
             <TextBlock Text="Codex Dock" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
           </DockPanel>
           <ScrollViewer x:Name="NavigationScroll" Grid.Row="1" Grid.RowSpan="2" Style="{StaticResource PageScroll}" Margin="0,0,0,12"><StackPanel>
-            <RadioButton x:Name="OverviewNav" Tag="overview" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged" IsChecked="True">
+            <RadioButton x:Name="OverviewNav" Tag="overview" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged">
               <TextBlock Text="概览" />
             </RadioButton>
-            <RadioButton x:Name="ConnectionNav" Tag="connection" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged">
-              <TextBlock Text="连接与账号" />
+            <RadioButton x:Name="ConnectionNav" Tag="connection" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged" IsChecked="True">
+              <TextBlock Text="PAT 连接" />
             </RadioButton>
             <RadioButton x:Name="CatalogNav" Tag="preferences" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged">
               <TextBlock Text="模型与行为" />
-            </RadioButton>
-            <RadioButton x:Name="GatewayNav" Tag="gateway" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged">
-              <TextBlock Text="网关与网络" />
             </RadioButton>
             <TextBlock Text="配置管理" Style="{StaticResource Helper}" Margin="12,18,0,8" />
             <RadioButton x:Name="TemplatesNav" Tag="templates" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged">
@@ -50,12 +47,9 @@
           </StackPanel>
           </ScrollViewer>
           <StackPanel x:Name="NavigationFooter" Grid.Row="3">
-            <Button Click="GatewayClicked" Style="{StaticResource QuietButton}" HorizontalContentAlignment="Left" ToolTip="查看本地网关地址与运行状态">
-              <TextBlock x:Name="GatewaySummaryText" Text="网关 · 未配置" FontSize="12" />
-            </Button>
             <Button Content="配置位置" Click="LocationClicked" Style="{StaticResource QuietButton}" HorizontalContentAlignment="Left" />
             <Button Content="使用说明" Click="HelpClicked" Style="{StaticResource QuietButton}" HorizontalContentAlignment="Left" />
-            <TextBlock Text="v0.10.3" Style="{StaticResource Helper}" Margin="14,6,0,0" FontSize="11" />
+            <TextBlock Text="v0.11.0" Style="{StaticResource Helper}" Margin="14,6,0,0" FontSize="11" />
           </StackPanel>
         </Grid>
       </Border>
@@ -87,32 +81,8 @@
           <ScrollViewer x:Name="ConnectionPage" Visibility="Collapsed" Style="{StaticResource PageScroll}" Padding="0,0,8,24">
             <Border Style="{StaticResource SurfacePanel}" HorizontalAlignment="Stretch"><StackPanel x:Name="ConnectionForm">
               <TextBlock Text="模型服务连接" Style="{StaticResource SectionTitle}" />
-              <Grid Style="{StaticResource FormRow}">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="120" />
-                  <ColumnDefinition />
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="连接模式" Style="{StaticResource FieldLabel}" />
-                <StackPanel Grid.Column="1"><ComboBox x:Name="ConnectionModeBox" SelectedIndex="0" SelectionChanged="ConnectionModeChanged" AutomationProperties.Name="连接模式">
-                  <ComboBoxItem Content="PAT / API Key" />
-                  <ComboBoxItem Content="官方账号 + API" />
-                </ComboBox>
-                <TextBlock x:Name="ConnectionModeHint" Style="{StaticResource Helper}" Margin="0,7,0,0"/></StackPanel>
-              </Grid>
-              <Border x:Name="OfficialLoginPanel" Visibility="Collapsed" BorderBrush="{DynamicResource Line}" BorderThickness="1" CornerRadius="6" Padding="16" Margin="0,0,0,20">
-                <StackPanel>
-                  <TextBlock Text="ChatGPT 官方账号" FontWeight="SemiBold" />
-                  <TextBlock x:Name="OfficialLoginStatus" Text="请完成官方登录。" Style="{StaticResource Helper}" Margin="0,7,0,0" AutomationProperties.LiveSetting="Polite" />
-                  <WrapPanel Margin="0,12,0,0">
-                    <Button x:Name="OfficialLoginButton" Content="使用 ChatGPT 登录" Click="OfficialLoginClicked" Margin="0,0,8,0" />
-                    <Button x:Name="CancelLoginButton" Content="取消登录" Click="CancelLoginClicked" Visibility="Collapsed" Margin="0,0,8,0" />
-                    <Button x:Name="SelectCodexButton" Content="选择 Codex 程序" Click="SelectCodexClicked" Style="{StaticResource QuietButton}" />
-                  </WrapPanel>
-                  <TextBlock x:Name="CodexExecutableHint" Style="{StaticResource Helper}" Margin="0,8,0,0" />
-                  <TextBlock Text="在浏览器完成登录后，点击保存配置。模型请求使用下方凭据；官方账号用于登录及账号相关功能。" Style="{StaticResource Helper}" Margin="0,10,0,0" />
-                  <Button Content="查看本地网关" Click="GatewayClicked" HorizontalAlignment="Left" Margin="0,12,0,0" />
-                </StackPanel>
-              </Border>
+              <TextBlock Text="填写服务地址、PAT 和默认模型，保存到本机配置。" Style="{StaticResource Helper}" Margin="0,0,0,18" />
+              <TextBlock x:Name="LegacyConnectionHint" Visibility="Collapsed" Text="已读取旧版连接。点击保存后将转换为 PAT / API Key 直连，并备份原配置。" Style="{StaticResource Helper}" Margin="0,0,0,18" />
               <Grid Style="{StaticResource FormRow}">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="120" />
@@ -133,17 +103,6 @@
                 <ComboBox x:Name="LinePresetBox" Grid.Column="1" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="LinePresetChanged" AutomationProperties.Name="线路" />
               </Grid>
               <Grid Style="{StaticResource FormRow}">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition/></Grid.ColumnDefinitions>
-                <TextBlock Text="连接名称" Style="{StaticResource FieldLabel}"/>
-                <StackPanel Grid.Column="1">
-                  <TextBox x:Name="ConnectionNameBox" MaxLength="60" TextChanged="FieldChanged" AutomationProperties.Name="连接名称"/>
-                  <TextBlock Text="可选，例如“工作中转”。仅用于本工具中识别当前连接。" Style="{StaticResource Helper}" Margin="0,6,0,0"/>
-                  <Expander x:Name="ConnectionNoteExpander" Header="备注（可选）" Margin="0,6,0,0">
-                    <TextBox x:Name="ConnectionNoteBox" MaxLength="500" MinHeight="76" MaxHeight="160" Margin="0,8,0,0" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" TextChanged="FieldChanged" AutomationProperties.Name="连接备注"/>
-                  </Expander>
-                </StackPanel>
-              </Grid>
-              <Grid Style="{StaticResource FormRow}">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="120" />
                   <ColumnDefinition />
@@ -159,10 +118,10 @@
                   <ColumnDefinition Width="120" />
                   <ColumnDefinition />
                 </Grid.ColumnDefinitions>
-                <TextBlock x:Name="CredentialLabel" Text="访问凭据" Style="{StaticResource FieldLabel}" />
+                <TextBlock x:Name="CredentialLabel" Text="PAT / API Key" Style="{StaticResource FieldLabel}" />
                 <StackPanel Grid.Column="1">
                   <Grid>
-                    <PasswordBox x:Name="ApiKeyBox" PasswordChanged="PasswordChanged" AutomationProperties.Name="访问凭据" />
+                    <PasswordBox x:Name="ApiKeyBox" PasswordChanged="PasswordChanged" AutomationProperties.Name="PAT / API Key" />
                     <TextBox x:Name="VisibleKeyBox" Visibility="Collapsed" TextChanged="VisibleKeyChanged" AutomationProperties.Name="可见访问凭据" />
                   </Grid>
                   <DockPanel Margin="0,8,0,0">
@@ -172,9 +131,41 @@
                 </StackPanel>
               </Grid>
               <Border Height="1" Background="{DynamicResource Line}" Margin="0,3,0,25" />
-              <Button Content="调整默认模型与速度" Click="ModelPageClicked" HorizontalAlignment="Left" Margin="0,0,0,18" />
+<StackPanel x:Name="ModelControls" Margin="0,0,0,18">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="120" />
+                  <ColumnDefinition />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="默认模型" Style="{StaticResource FieldLabel}" />
+                <StackPanel Grid.Column="1">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition />
+                      <ColumnDefinition Width="10" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ComboBox x:Name="ModelBox" IsEditable="True" IsTextSearchEnabled="False" StaysOpenOnEdit="True" SelectionChanged="ModelChanged" AutomationProperties.Name="默认模型" />
+                    <Button x:Name="ProbeButton" Grid.Column="2" Content="获取模型" Click="ProbeClicked" />
+                  </Grid>
+                  <TextBlock x:Name="ModelHint" Text="可手动输入模型名称。" Style="{StaticResource Helper}" Margin="0,7,0,0" />
+                </StackPanel>
+              </Grid>
+            </StackPanel>
               <Expander x:Name="MoreConnection" Header="更多连接选项" Margin="0,2,0,0">
                 <StackPanel Margin="0,14,0,0">
+              <Grid Style="{StaticResource FormRow}">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                <TextBlock Text="连接名称" Style="{StaticResource FieldLabel}"/>
+                <StackPanel Grid.Column="1">
+                  <TextBox x:Name="ConnectionNameBox" MaxLength="60" TextChanged="FieldChanged" AutomationProperties.Name="连接名称"/>
+                  <TextBlock Text="可选，例如“工作中转”。仅用于本工具中识别当前连接。" Style="{StaticResource Helper}" Margin="0,6,0,0"/>
+                  <Expander x:Name="ConnectionNoteExpander" Header="备注（可选）" Margin="0,6,0,0">
+                    <TextBox x:Name="ConnectionNoteBox" MaxLength="500" MinHeight="76" MaxHeight="160" Margin="0,8,0,0" AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" TextChanged="FieldChanged" AutomationProperties.Name="连接备注"/>
+                  </Expander>
+                </StackPanel>
+              </Grid>
+
                   <Grid Style="{StaticResource FormRow}">
                     <Grid.ColumnDefinitions>
                       <ColumnDefinition Width="120" />
@@ -205,49 +196,6 @@
               <TextBlock x:Name="ConnectionError" Foreground="{DynamicResource Error}" FontSize="12" Margin="0,14,0,0" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite" />
             </StackPanel></Border>
           </ScrollViewer>
-          <ScrollViewer x:Name="GatewayPage" Visibility="Collapsed" Style="{StaticResource PageScroll}" Padding="0,0,8,24">
-            <StackPanel HorizontalAlignment="Stretch">
-              <Border Style="{StaticResource SurfacePanel}" Margin="0,0,0,20">
-                <StackPanel>
-                  <DockPanel Margin="0,0,0,18">
-                    <Border DockPanel.Dock="Right" Background="{DynamicResource AccentSoft}" CornerRadius="5" Padding="10,5">
-                      <TextBlock x:Name="GatewayStateText" Text="未配置" Foreground="{DynamicResource Accent}" FontSize="12" AutomationProperties.LiveSetting="Polite" />
-                    </Border>
-                    <TextBlock Text="本地模型网关" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
-                  </DockPanel>
-                  <WrapPanel Margin="0,0,0,12">
-                    <Button x:Name="BridgeStatusButton" Content="启动网关" Click="BridgeStatusClicked" Margin="0,0,8,8" />
-                    <Button x:Name="StopBridgeButton" Content="停止网关" Click="StopBridgeClicked" Margin="0,0,8,8" />
-                    <Button x:Name="RefreshGatewayButton" Content="刷新状态" Click="RefreshGatewayClicked" Style="{StaticResource QuietButton}" Margin="0,0,0,8" />
-                  </WrapPanel>
-                  <TextBlock Text="Codex 连接地址" Style="{StaticResource Helper}" Margin="0,0,0,7" />
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition />
-                      <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBox x:Name="GatewayAddressBox" IsReadOnly="True" Text="尚未保存网关配置" FontFamily="Consolas" AutomationProperties.Name="本地网关地址" />
-                    <Button x:Name="CopyGatewayButton" Grid.Column="1" Content="复制地址" Click="CopyGatewayClicked" Margin="8,0,0,0" />
-                  </Grid>
-                  <TextBlock Text="模型服务地址" Style="{StaticResource Helper}" Margin="0,18,0,7" />
-                  <TextBlock x:Name="GatewayUpstreamText" Text="尚未配置" TextWrapping="Wrap" />
-                  <Expander Header="本次运行详情" Margin="0,16,0,0">
-                    <StackPanel>
-                      <TextBlock x:Name="GatewayCountsText" Text="网关启动后显示本次运行的请求计数。" Style="{StaticResource Helper}" Margin="0,18,0,0" />
-                      <TextBlock x:Name="GatewayUpdatedText" Style="{StaticResource Helper}" Margin="0,5,0,0" FontSize="11" />
-                    </StackPanel>
-                  </Expander>
-
-                  <TextBlock x:Name="BridgeStatusText" Text="在服务连接中保存“官方账号 + API”后，自动启动本地网关。" Style="{StaticResource Helper}" AutomationProperties.LiveSetting="Polite" />
-                </StackPanel>
-              </Border>
-              <Border Style="{StaticResource SurfacePanel}"><StackPanel><TextBlock Text="上游网络代理" Style="{StaticResource SectionTitle}" Margin="0,0,0,12" />
-              <CheckBox x:Name="GatewayProxyBox" Content="使用本机 HTTP 代理访问模型服务" Checked="GatewayProxyChanged" Unchecked="GatewayProxyChanged" />
-              <TextBlock x:Name="GatewayProxyText" Text="正在检测本机代理…" Style="{StaticResource Helper}" Margin="0,10,0,0" />
-              <TextBlock Text="自动读取 Windows 固定系统代理，或 HTTP_PROXY / HTTPS_PROXY 环境变量。勾选后点击“保存配置”生效，取消勾选则直连模型服务；暂不解析 PAC。" Style="{StaticResource Helper}" Margin="0,8,0,0" />
-              </StackPanel></Border>
-            </StackPanel>
-          </ScrollViewer>
           <local:TemplateBrowser x:Name="TemplateEditor" Visibility="Collapsed" Margin="0,0,8,0" />
           <ScrollViewer x:Name="BackupPage" Style="{StaticResource PageScroll}" Visibility="Collapsed" Padding="0,0,8,24">
             <Border Style="{StaticResource SurfacePanel}"><StackPanel>
@@ -276,17 +224,16 @@
               <TextBlock Text="启动" Style="{StaticResource SectionTitle}" Margin="0,0,0,12"/>
               <CheckBox x:Name="AutoStartBox" Content="登录 Windows 后自动启动" Checked="AutoStartChanged" Unchecked="AutoStartChanged"/>
               <TextBlock x:Name="AutoStartHint" Style="{StaticResource Helper}" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite"/>
-              <TextBlock Text="立即生效。自动启动时收起到托盘，并读取开启此选项时的配置目录；网关按该目录已保存的连接启动。" Style="{StaticResource Helper}" Margin="0,6,0,0"/>
+              <TextBlock Text="立即生效。自动启动时收起到托盘，并读取开启此选项时的配置目录。" Style="{StaticResource Helper}" Margin="0,6,0,0"/>
               <Border Height="1" Background="{DynamicResource Line}" Margin="0,22,0,20"/>
               <TextBlock Text="窗口与后台运行" Style="{StaticResource SectionTitle}" Margin="0,2,0,10" />
-              <TextBlock Text="点击窗口关闭按钮会收起到系统托盘，网关继续运行；双击托盘图标可恢复窗口。普通最小化保留任务栏入口。" Style="{StaticResource Helper}" />
+              <TextBlock Text="点击窗口关闭按钮会收起到系统托盘并保留草稿；双击托盘图标可恢复窗口。普通最小化保留任务栏入口。" Style="{StaticResource Helper}" />
               <WrapPanel Margin="0,15,0,16">
                 <Button Content="收起到托盘" Click="HideToTrayClicked" Margin="0,0,8,8" />
                 <Button Content="最小化到任务栏" Click="MinimizeClicked" Margin="0,0,8,8" />
-                <Button Content="退出并停止网关" Click="ExitClicked" Style="{StaticResource QuietButton}" Margin="0,0,0,8" />
+                <Button Content="退出程序" Click="ExitClicked" Style="{StaticResource QuietButton}" Margin="0,0,0,8" />
               </WrapPanel>
-              <TextBlock Text="托盘右键菜单也可启动、停止网关或退出程序。退出会停止本程序管理的网关；下次打开工具时按已保存配置重新启动。" Style="{StaticResource Helper}" />
-              <TextBlock Text="网关只监听本机。ChatGPT 登录、账号和插件相关服务仍使用官方连接。计数仅表示收到请求及参数，不代表上游已经执行加速或自动审核。" Style="{StaticResource Helper}" Margin="0,15,0,0" />
+              <TextBlock Text="保存后可完全退出本工具，Codex 会直接读取本机配置，无需后台转发服务。" Style="{StaticResource Helper}" />
             </StackPanel></Border>
           </ScrollViewer>
           <StackPanel x:Name="LibraryTabs" Visibility="Collapsed" Orientation="Horizontal" VerticalAlignment="Top">
@@ -294,32 +241,7 @@
             <Button x:Name="LibraryBackupTab" Content="备份恢复" Click="LibraryBackupClicked" Margin="0,0,0,12" />
           </StackPanel>
           <Grid x:Name="ModelLayout" Visibility="Collapsed">
-            <Grid.RowDefinitions>
-              <RowDefinition Height="Auto" />
-              <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
-            <Border x:Name="ModelControls" Style="{StaticResource SurfacePanel}" Margin="0,0,8,16"><StackPanel>
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="120" />
-                  <ColumnDefinition />
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="默认模型" Style="{StaticResource FieldLabel}" />
-                <StackPanel Grid.Column="1">
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition />
-                      <ColumnDefinition Width="10" />
-                      <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <ComboBox x:Name="ModelBox" IsEditable="True" IsTextSearchEnabled="False" StaysOpenOnEdit="True" SelectionChanged="ModelChanged" AutomationProperties.Name="默认模型" />
-                    <Button x:Name="ProbeButton" Grid.Column="2" Content="获取模型" Click="ProbeClicked" />
-                  </Grid>
-                  <TextBlock x:Name="ModelHint" Text="可手动输入模型名称。" Style="{StaticResource Helper}" Margin="0,7,0,0" />
-                </StackPanel>
-              </Grid>
-            </StackPanel></Border>
-            <local:SettingsEditor x:Name="Editor" Margin="0,0,8,0" Grid.Row="1" />
+            <local:SettingsEditor x:Name="Editor" Margin="0,0,8,0" />
           </Grid>
         </Grid>
         <Border x:Name="GlobalSaveBar" Background="{DynamicResource Surface}" Grid.Row="2" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="28,12,24,12">
@@ -331,6 +253,7 @@
             </Grid.ColumnDefinitions>
             <StackPanel x:Name="SaveBarSummary" VerticalAlignment="Center" Margin="0,0,16,0">
               <TextBlock x:Name="DraftCountText" Text="所有修改已保存" FontSize="13" />
+              <TextBlock x:Name="SaveFeedback" Foreground="{DynamicResource Error}" FontSize="12" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,4,0,0" AutomationProperties.LiveSetting="Assertive" />
             </StackPanel>
             <WrapPanel x:Name="SaveBarActions" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
               <Button x:Name="UndoTemplateButton" Content="撤销模板应用" Visibility="Collapsed" Click="UndoTemplateClicked" Style="{StaticResource QuietButton}" Margin="0,0,4,0" />

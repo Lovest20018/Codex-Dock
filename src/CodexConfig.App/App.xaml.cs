@@ -9,16 +9,8 @@ public partial class App : Application
     private DesktopInstance? desktopInstance;
     protected override void OnStartup(StartupEventArgs e)
     {
-        if (e.Args is ["--model-bridge", var bridgeHome, ..])
-        {
-            base.OnStartup(e);
-            ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            if (e.Args.Length == 2) RunBridge(bridgeHome);
-            else if (e.Args is [_, _, "--owner-process", var pid, var started] && int.TryParse(pid, out var ownerId) && long.TryParse(started, out var ownerStarted))
-                RunBridge(bridgeHome, ownerId, ownerStarted);
-            else Shutdown(1);
-            return;
-        }
+        // Older gateway invocations must never open or edit the default user configuration.
+        if (e.Args.Contains("--model-bridge")) { base.OnStartup(e); Shutdown(1); return; }
         try
         {
             base.OnStartup(e);
@@ -57,12 +49,6 @@ public partial class App : Application
     {
         desktopInstance?.Dispose();
         base.OnExit(e);
-    }
-
-    private async void RunBridge(string home, int? ownerId = null, long? ownerStarted = null)
-    {
-        try { await BridgeProcess.RunAsync(home, ownerId, ownerStarted); Shutdown(0); }
-        catch (Exception) { Shutdown(1); }
     }
 
     private static void WriteStartupError(Exception error)
