@@ -23,10 +23,11 @@ public partial class MainWindow
         var before = store.Load(home);
         Assert(Reload(), "Legacy connection should remain readable");
         ShowPage("connection"); await Settle();
-        Assert(BaseUrlBox.Text == "https://offline.invalid/backend-api/codex" && ApiKeyBox.Password == "fake-legacy-pat" && LegacyConnectionHint.IsVisible && SaveButton.IsEnabled,
+        Assert(BaseUrlBox.Text == "https://offline.invalid/backend-api/codex" && ApiKeyBox.Password == "fake-legacy-pat" && LegacyConnectionHint.IsVisible && !SaveButton.IsEnabled,
             "Legacy PAT must be available for explicit conversion");
         Assert(before.SameContents(store.Load(home)), "Opening an old connection must not change files");
-        Assert(!FindVisual<Button>(RootPanel).Any(button => button.Content as string is "使用 ChatGPT 登录" or "启动网关" or "停止网关"), "Removed account and gateway actions must not be available");
+        ConnectionModeBox.SelectedIndex = 0;
+        Assert(!OfficialPanel.IsVisible && !GatewayPanel.IsVisible && SaveButton.IsEnabled, "PAT mode hides optional account and gateway controls");
         PreviewClicked(PreviewButton, new());
         Assert(!PreviewBox.Text.Contains("fake-legacy") && !PreviewBox.Text.Contains(localToken), "Conversion preview must mask old credentials");
         CloseOverlay();
@@ -36,7 +37,8 @@ public partial class MainWindow
         using (var auth = JsonDocument.Parse(saved.Auth!))
             Assert(auth.RootElement.GetProperty("personal_access_token").GetString() == "fake-legacy-pat" && !auth.RootElement.TryGetProperty("tokens", out _), "PAT save replaces old login authentication");
         store.Restore(saved); Reload();
-        Assert(before.SameContents(store.Load(home)) && ApiKeyBox.Password == "fake-legacy-pat" && Dirty, "Encrypted backup restores the original old connection for conversion");
+        Assert(before.SameContents(store.Load(home)) && ApiKeyBox.Password == "fake-legacy-pat" && !Dirty, "Encrypted backup restores the original old connection without creating a draft");
+        ConnectionModeBox.SelectedIndex = 0;
         Assert(SaveCurrent(), "Restored connection can convert again");
         var baseline = store.Load(home);
         BaseUrlBox.Text = "not-an-address";

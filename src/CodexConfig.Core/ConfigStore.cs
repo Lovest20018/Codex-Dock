@@ -33,11 +33,14 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         var provider = Value(providers, providerId) as Tomlyn.Model.TomlTable;
         var providerName = Text(provider, "name") ?? (providerId == "openai" ? "OpenAI" : providerId);
         var details = ConnectionDetails.Read(snapshot.Details);
-        if (doc.String("model_provider") == MixedConnection.Provider)
+        var mightUseBridge = providerId == MixedConnection.Provider || providerId == "openai" &&
+            Uri.TryCreate(doc.String("openai_base_url"), UriKind.Absolute, out var route) && route.IsLoopback;
+        var savedBridge = snapshot.Bridge is null || !mightUseBridge ? null : MixedConnection.Read(snapshot.Bridge);
+        if (doc.String("model_provider") == MixedConnection.Provider && savedBridge is null || savedBridge?.OwnsRoute(doc) is true)
         {
-            var connection = snapshot.Bridge is null ? throw new InvalidDataException("缺少混合连接文件，请从备份恢复或重新配置连接。") : MixedConnection.Read(snapshot.Bridge);
+            var connection = savedBridge ?? throw new InvalidDataException("缺少混合连接文件，请从备份恢复或重新配置连接。");
             return new(connection.BaseUrl, connection.ApiKey, doc.String("model") ?? "gpt-6.1-sol")
-            { Details = details, Mode = ConnectionMode.OfficialWithApi, Kind = connection.Kind, PreservePreferenceValues = true,
+            { Details = details, Mode = ConnectionMode.OfficialWithApi, Kind = connection.Kind, UseSystemProxy = connection.UseSystemProxy, PreservePreferenceValues = true,
                 ProviderId = providerId, ProviderName = providerName, CredentialSource = "本地加密模型凭据" };
         }
         string key = "";
@@ -85,7 +88,7 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
             ProviderId = providerId, ProviderName = providerName, CredentialSource = credentialSource };
     }
 
-    public ConfigPlan Plan(ConfigSnapshot before, ConnectionSettings settings, IReadOnlyDictionary<string, string?>? edits = null, bool updateConnection = true, bool updateModel = false, bool updateDetails = false)
+    public ConfigPlan Plan(ConfigSnapshot before, ConnectionSettings settings, IReadOnlyDictionary<string, string?>? edits = null, bool updateConnection = true, bool updateModel = false, bool updateDetails = false, byte[]? officialAuth = null)
     {
         var doc = new TomlDocument(before.Config);
         if (before.Auth is not null) using (ParseAuth(before.Auth)) { }
@@ -105,13 +108,22 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         }
         if (!updateConnection)
         {
+            if (before.Bridge is { } saved && MixedConnection.Read(saved).OwnsRoute(new TomlDocument(before.Config)))
+            {
+                var savedConnection = MixedConnection.Read(saved);
+                if (doc.String("profile") is { Length: > 0 } || doc.String("cli_auth_credentials_store") is not (null or "file") ||
+                    savedConnection.NativeRoute && doc.Get("features.enable_request_compression") is not false ||
+                    !savedConnection.OwnsRoute(doc) || doc.String("forced_login_method") is { } forced && forced != "chatgpt")
+                    throw new InvalidOperationException("这些设置会覆盖混合连接的登录或传输方式，请先切换到直连，或保留文件凭据和未压缩请求。");
+            }
             return new(before, doc.Bytes, before.Auth, before.AuthApiBaseUrl, doc.Masked(),
                 before.Auth is null ? "尚无认证文件。" : "认证配置保持现值（内容已隐藏）。", ["仅保存配置项，认证配置保持现值。"])
             { Bridge = before.Bridge, Details = details };
         }
         settings = settings.Normalize();
-        if (settings.Mode != ConnectionMode.Direct)
-            throw new InvalidOperationException("本工具仅保存 PAT / API Key 直连，请将旧版连接转换为直连后保存。");
+        if (settings.Mode == ConnectionMode.OfficialWithApi)
+            return PlanMixed(before, settings, doc, officialAuth) with { Details = details };
+        RestoreMixedPreferences(before, doc);
         foreach (var name in new[] { "profile", "forced_login_method", "forced_chatgpt_workspace_id" })
             if (doc.Get(name) is not null) notes.Add($"保留现有 {name}；它可能覆盖当前设置，请核查生效配置。");
         if (doc.String("cli_auth_credentials_store") is { } credentials && credentials != "file")
@@ -120,7 +132,9 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         doc.Set("model", settings.Model);
         doc.Set("model_provider", "openai");
         doc.Set("openai_base_url", decision.ModelBaseUrl);
-        if (before.Bridge is not null)
+        if (before.Bridge is not null && MixedConnection.Read(before.Bridge) is { } owned &&
+            doc.Get("model_providers." + MixedConnection.Provider + ".base_url") as string == owned.LocalBaseUrl &&
+            doc.Get("model_providers." + MixedConnection.Provider + ".experimental_bearer_token") as string == owned.LocalToken)
             foreach (var path in TomlDocument.ValuePaths(doc.Model).Where(path => path.StartsWith("model_providers." + MixedConnection.Provider + ".", StringComparison.Ordinal)).ToArray()) doc.Remove(path);
         if (decision.ChatGptBaseUrl is not null) doc.Set("chatgpt_base_url", decision.ChatGptBaseUrl);
         var search = settings.WebSearchMode ?? (settings.WebSearch ? "live" : "disabled");
@@ -133,11 +147,62 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         }
         notes.Add(decision.Mode == AuthenticationMode.Pat ? "PAT 双字段；CODEX_AUTHAPI_BASE_URL 写入线路 origin，ChatGPT 后端使用 /backend-api/。" : "API Key 模式明确写入 auth_mode=apikey，不写 PAT；认证环境变量与 ChatGPT 后端保持现值。");
         notes.Add("原文件及用户环境变量纳入加密备份；不删除会话或修改客户端安装文件。");
-        return new(before, doc.Bytes, Encoding.UTF8.GetBytes(settings.RenderAuth()), decision.AuthApiOrigin ?? before.AuthApiBaseUrl,
+        var preservedAuthOrigin = before.AuthApiBaseUrl;
+        if (before.Bridge is { } previousBytes && MixedConnection.Read(previousBytes) is { NativeRoute: true } previousConnection && preservedAuthOrigin is null)
+            preservedAuthOrigin = previousConnection.OriginalAuthApiBaseUrl;
+        return new(before, doc.Bytes, Encoding.UTF8.GetBytes(settings.RenderAuth()), decision.AuthApiOrigin ?? preservedAuthOrigin,
             doc.Masked(), settings.RenderAuth(true), notes, decision.Mode, decision.Reason) { Details = details };
     }
 
     public string Apply(ConfigPlan plan) => Commit(plan.Before, plan.Config, plan.Auth, plan.AuthApiBaseUrl, "save", plan.Bridge, plan.Details);
+
+    private static ConfigPlan PlanMixed(ConfigSnapshot before, ConnectionSettings settings, TomlDocument doc, byte[]? officialAuth)
+    {
+        if (doc.String("profile") is { Length: > 0 }) throw new InvalidOperationException("当前 profile 可能覆盖模型路由，请先移除 profile 覆盖后启用混合连接。");
+        if (doc.String("forced_login_method") is { } forced && forced != "chatgpt") throw new InvalidOperationException("forced_login_method 限制了官方登录，请先调整此项。");
+        if (doc.Get("model_providers.openai") is not null) throw new InvalidOperationException("检测到内置 openai 的自定义覆盖，请先处理该覆盖。");
+        var storage = doc.String("cli_auth_credentials_store");
+        if (storage is not (null or "file") && officialAuth is null) throw new InvalidOperationException("混合连接当前需要可验证的文件登录凭据；当前凭据存储为 " + storage + "。请使用原生登录或明确选择文件存储，原有登录不会被自动修改。");
+        var auth = OfficialCredentials.ForMixed(officialAuth ?? before.Auth);
+        var previous = before.Bridge is null ? null : MixedConnection.Read(before.Bridge);
+        var connection = MixedConnection.Create(settings, previous);
+        if (previous is null || !previous.NativeRoute)
+        {
+            foreach (var path in new[] { "chatgpt_base_url", "cli_auth_credentials_store", "features.enable_request_compression" })
+                connection.OriginalValues[path] = doc.Get(path) is { } value ? ConfigSchema.Literal(value) : null;
+            connection = new MixedConnection { BaseUrl = connection.BaseUrl, ApiKey = connection.ApiKey, Kind = connection.Kind, Port = connection.Port, LocalToken = connection.LocalToken,
+                UseSystemProxy = connection.UseSystemProxy, NativeRoute = true, OriginalValues = connection.OriginalValues, OriginalAuthApiBaseUrl = before.AuthApiBaseUrl };
+        }
+        doc.Set("model", settings.Model); doc.Set("model_provider", "openai");
+        doc.Set("openai_base_url", connection.NativeBaseUrl);
+        doc.Remove("chatgpt_base_url"); doc.Set("cli_auth_credentials_store", "file");
+        // Built-in OpenAI compresses by default; generic Responses providers need plain JSON.
+        doc.Set("features.enable_request_compression", false);
+        var p = "model_providers." + MixedConnection.Provider + ".";
+        if (doc.Get("model_providers." + MixedConnection.Provider) is not null && (previous is null ||
+            doc.Get(p + "base_url") as string != previous.LocalBaseUrl || doc.Get(p + "experimental_bearer_token") as string != previous.LocalToken))
+            throw new InvalidOperationException("兼容 provider 已由其他程序配置，请先核对，保存不会覆盖它。");
+        doc.Set(p + "name", "Codex Dock connection"); doc.Set(p + "base_url", connection.LocalBaseUrl);
+        doc.Set(p + "wire_api", "responses"); doc.Set(p + "requires_openai_auth", true);
+        doc.Set(p + "experimental_bearer_token", connection.LocalToken); doc.Set(p + "supports_websockets", true);
+        return new(before, doc.Bytes, auth, null, doc.Masked(), "保留官方登录；模型凭据单独加密保存。", new[] {
+            "官方账号身份保留，模型请求使用独立入口；不自动回退到官方推理额度。",
+            "普通模型入口使用未压缩 JSON；官方刷新由原生 Codex 处理。",
+            "关闭编辑器后，本地网关继续服务。保存后重新打开 Codex。"
+        }, AuthenticationMode.OfficialWithApi, "官方账号 + 独立模型入口") { Bridge = connection.Protect() };
+    }
+
+    private static void RestoreMixedPreferences(ConfigSnapshot before, TomlDocument doc)
+    {
+        if (before.Bridge is null) return;
+        var connection = MixedConnection.Read(before.Bridge);
+        foreach (var (path, original) in connection.OriginalValues)
+        {
+            var ours = path switch { "features.enable_request_compression" => doc.Get(path) is false, "cli_auth_credentials_store" => doc.String(path) == "file", "chatgpt_base_url" => doc.Get(path) is null, _ => false };
+            if (!ours) continue;
+            if (original is null) doc.Remove(path); else doc.SetRaw(path, original);
+        }
+    }
 
     public string? LatestBackup(string home) => Directory.Exists(DataDir(home))
         ? Directory.EnumerateFiles(DataDir(home), "*.backup").OrderByDescending(Path.GetFileName, StringComparer.Ordinal).FirstOrDefault() : null;

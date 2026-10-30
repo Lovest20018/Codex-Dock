@@ -79,10 +79,11 @@ public partial class MainWindow
             OverviewBody.Children.Add(OverviewSurface(welcome, new(0))); return;
         }
         var summary = new StackPanel(); summary.Children.Add(OverviewText("当前连接", "Muted", 12));
-        var mode = OverviewText(loadedSettings.ApiKey.Length > 0 ? loadedSettings.Authentication == AuthenticationChoice.Pat ? "PAT 连接" : "PAT / API Key 连接" : "待设置 PAT", size: 22);
+        var mixed = loadedSettings.Mode == ConnectionMode.OfficialWithApi;
+        var mode = OverviewText(mixed ? "官方账号 + 独立模型入口" : loadedSettings.ApiKey.Length > 0 ? loadedSettings.Authentication == AuthenticationChoice.Pat ? "PAT 连接" : "PAT / API Key 连接" : "待设置 PAT", size: 22);
         mode.FontWeight = FontWeights.SemiBold; mode.Margin = new(0, 8, 0, 20); summary.Children.Add(mode);
         var route = new Grid();
-        var stages = new[] { ("Codex", "读取本地配置"), ("模型入口", "由客户端连接") };
+        var stages = mixed ? new[] { ("Codex", "保留官方账号身份"), ("本地网关", "独立模型凭据"), ("模型入口", "接收模型请求") } : new[] { ("Codex", "读取本地配置"), ("模型入口", "由客户端连接") };
         for (var i = 0; i < stages.Length; i++)
         {
             if (i > 0)
@@ -119,7 +120,7 @@ public partial class MainWindow
         Detail(left, "模型服务", string.IsNullOrEmpty(loadedSettings.BaseUrl) ? "沿用现有客户端配置" : loadedSettings.BaseUrl);
         var leftActions = new WrapPanel(); leftActions.Children.Add(OverviewAction("管理连接", "connection")); leftActions.Children.Add(OverviewAction("调整模型", "preferences")); left.Children.Add(leftActions);
         Title(right, "保存与凭据");
-        Detail(right, "连接方式", "Codex 直接读取本机配置");
+        Detail(right, "连接方式", mixed ? "本机网关转发；关闭编辑器后继续运行" : "Codex 直接读取本机配置");
         Detail(right, "凭据来源", loadedSettings.CredentialSource);
         Detail(right, "保存与恢复", "保存前自动创建加密备份");
         if (config.String("profile") is { Length: > 0 } profile) Detail(right, "配置中的 profile", profile + " · 可能覆盖本地默认设置");

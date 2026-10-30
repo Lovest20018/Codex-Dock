@@ -49,7 +49,7 @@
           <StackPanel x:Name="NavigationFooter" Grid.Row="3">
             <Button Content="配置位置" Click="LocationClicked" Style="{StaticResource QuietButton}" HorizontalContentAlignment="Left" />
             <Button Content="使用说明" Click="HelpClicked" Style="{StaticResource QuietButton}" HorizontalContentAlignment="Left" />
-            <TextBlock Text="v0.11.0" Style="{StaticResource Helper}" Margin="14,6,0,0" FontSize="11" />
+            <TextBlock Text="v0.12.0" Style="{StaticResource Helper}" Margin="14,6,0,0" FontSize="11" />
           </StackPanel>
         </Grid>
       </Border>
@@ -81,8 +81,33 @@
           <ScrollViewer x:Name="ConnectionPage" Visibility="Collapsed" Style="{StaticResource PageScroll}" Padding="0,0,8,24">
             <Border Style="{StaticResource SurfacePanel}" HorizontalAlignment="Stretch"><StackPanel x:Name="ConnectionForm">
               <TextBlock Text="模型服务连接" Style="{StaticResource SectionTitle}" />
-              <TextBlock Text="填写服务地址、PAT 和默认模型，保存到本机配置。" Style="{StaticResource Helper}" Margin="0,0,0,18" />
-              <TextBlock x:Name="LegacyConnectionHint" Visibility="Collapsed" Text="已读取旧版连接。点击保存后将转换为 PAT / API Key 直连，并备份原配置。" Style="{StaticResource Helper}" Margin="0,0,0,18" />
+              <TextBlock Text="默认使用 PAT / API 直连，也可保留官方账号并为模型选择独立入口。" Style="{StaticResource Helper}" Margin="0,0,0,18" />
+              <TextBlock x:Name="LegacyConnectionHint" Visibility="Collapsed" Text="已读取旧版混合连接。保存连接修改后使用新版路由；也可明确选择 PAT / API 直连。" Style="{StaticResource Helper}" Margin="0,0,0,18" />
+              <Grid Style="{StaticResource FormRow}">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                <TextBlock Text="连接方式" Style="{StaticResource FieldLabel}"/>
+                <ComboBox x:Name="ConnectionModeBox" Grid.Column="1" SelectedIndex="0" SelectionChanged="ConnectionModeChanged" AutomationProperties.Name="连接方式">
+                  <ComboBoxItem Content="PAT / API 直连"/>
+                  <ComboBoxItem Content="官方账号 + 独立模型入口"/>
+                </ComboBox>
+              </Grid>
+              <Border x:Name="OfficialPanel" Visibility="Collapsed" Background="{DynamicResource AccentSoft}" CornerRadius="8" Padding="16" Margin="0,0,0,20">
+                <StackPanel>
+                  <TextBlock Text="官方账号" FontWeight="SemiBold"/>
+                  <TextBlock x:Name="OfficialStatusText" Style="{StaticResource Helper}" Margin="0,7,0,10"/>
+                  <WrapPanel>
+                    <Button x:Name="LoginButton" Content="使用 ChatGPT 登录" Click="LoginClicked" Margin="0,0,8,0"/>
+                    <Button x:Name="CancelLoginButton" Content="取消登录" Click="CancelLoginClicked" Visibility="Collapsed"/>
+                  </WrapPanel>
+                  <TextBlock Text="登录在独立目录暂存为文件凭据，保存配置后才启用。模型 PAT / API Key 在下方单独填写；官方令牌不会发送给该入口。" Style="{StaticResource Helper}" Margin="0,10,0,0"/>
+                  <Expander Header="Codex 程序位置（可选）" Margin="0,10,0,0">
+                    <DockPanel Margin="0,8,0,0">
+                      <Button DockPanel.Dock="Right" Content="选择" Click="ChooseCodexClicked" Margin="8,0,0,0"/>
+                      <TextBox x:Name="CodexPathBox" AutomationProperties.Name="Codex 程序位置"/>
+                    </DockPanel>
+                  </Expander>
+                </StackPanel>
+              </Border>
               <Grid Style="{StaticResource FormRow}">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="120" />
@@ -152,6 +177,19 @@
                 </StackPanel>
               </Grid>
             </StackPanel>
+              <Border x:Name="GatewayPanel" Visibility="Collapsed" Background="{DynamicResource AccentSoft}" CornerRadius="8" Padding="16" Margin="0,0,0,18">
+                <StackPanel>
+                  <TextBlock Text="本地网关" FontWeight="SemiBold"/>
+                  <TextBlock x:Name="GatewayStatusText" Style="{StaticResource Helper}" Margin="0,7,0,10"/>
+                  <CheckBox x:Name="GatewayProxyBox" Content="使用本机 HTTP 代理连接模型入口" Checked="MixedOptionChanged" Unchecked="MixedOptionChanged" Margin="0,0,0,10"/>
+                  <WrapPanel>
+                    <Button x:Name="StartGatewayButton" Content="启动网关" Click="StartGatewayClicked" Margin="0,0,8,0"/>
+                    <Button x:Name="StopGatewayButton" Content="停止网关" Click="StopGatewayClicked" Margin="0,0,8,0"/>
+                    <Button Content="刷新状态" Click="RefreshGatewayClicked"/>
+                  </WrapPanel>
+                  <TextBlock Text="关闭编辑器后网关继续运行。需要随 Windows 登录启动时，可在“应用设置与帮助”开启自动启动。停止网关会中断使用该连接的 Codex。" Style="{StaticResource Helper}" Margin="0,10,0,0"/>
+                </StackPanel>
+              </Border>
               <Expander x:Name="MoreConnection" Header="更多连接选项" Margin="0,2,0,0">
                 <StackPanel Margin="0,14,0,0">
               <Grid Style="{StaticResource FormRow}">

@@ -46,13 +46,13 @@ internal static class LegacyConnectionTests
             store.Restore(saved);
             Assert(before.SameContents(store.Load(home)));
         });
-        Test("new connections cannot create an account login or gateway", () =>
+        Test("mixed connections require an existing official login", () =>
         {
             var store = new ConfigStore(new FakeEnvironment(), _ => null);
             var settings = new ConnectionSettings("https://pat.example/backend-api/codex", "fake-pat", "model") { Mode = ConnectionMode.OfficialWithApi };
-            try { store.Plan(new ConfigSnapshot(Home(), null, Auth(), null), settings); }
+            try { store.Plan(new ConfigSnapshot(Home(), null, null, null), settings); }
             catch (InvalidOperationException) { return; }
-            throw new InvalidOperationException("The PAT editor must reject creation of removed account and gateway connections.");
+            throw new InvalidOperationException("Mixed connections must not silently replace an absent official login.");
         });
         Test("PAT saves and reloads without reaching a model service", () =>
         {

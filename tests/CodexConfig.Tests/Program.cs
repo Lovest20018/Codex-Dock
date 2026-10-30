@@ -4,6 +4,13 @@ using System.Text.Json;
 using CodexConfig.Core;
 using Tomlyn.Model;
 
+if (args is ["--model-bridge", var workerHome]) return await BridgeProcess.RunAsync(workerHome);
+if (args is ["--gateway-launch-once", var launcherHome])
+{
+    var bytes = File.ReadAllBytes(Path.Combine(launcherHome, MixedConnection.FileName));
+    await BridgeProcess.EnsureAsync(launcherHome, bytes); return 0;
+}
+
 var root = Path.GetFullPath(args.FirstOrDefault() ?? ".test-home/core-tests");
 Directory.CreateDirectory(root);
 var runRoot = Path.Combine(root, Guid.NewGuid().ToString("N"));
@@ -534,6 +541,9 @@ Test("capturing current settings includes drafts, skips removed values and exclu
 });
 
 LegacyConnectionTests.Register(tests, runRoot);
+GatewayTests.Register(tests, runRoot);
+GatewayProcessTests.Register(tests, runRoot);
+NativeBridgeTests.Register(tests, runRoot);
 DetailsAndStartupTests.Register(tests, runRoot);
 UpdateTests.Register(tests, runRoot);
 LocalStateTests.Register(tests, runRoot);

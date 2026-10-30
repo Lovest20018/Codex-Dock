@@ -42,6 +42,7 @@ public partial class MainWindow
         if (exitReady || smokeOutput is not null && !smokeLifecycle)
         {
             closing = true; lifetime.Cancel(); previewTimer.Stop(); localStateTimer.Stop();
+            loginCancellation?.Cancel(); ClearStagedLogin();
             SystemEvents.UserPreferenceChanged -= SystemPreferenceChanged;
             if (!busy) probe.Dispose();
             return;
@@ -58,6 +59,7 @@ public partial class MainWindow
             {
                 if (smokeOutput is not null) throw new InvalidOperationException("隔离检查不能启动安装器。");
                 using var verifiedFile = pendingInstaller.OpenVerified();
+                if (snapshot?.Bridge is { } bridge) await CodexConfig.Core.BridgeProcess.StopAsync(bridge);
                 _ = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(pendingInstaller.Path) { UseShellExecute = true })
                     ?? throw new IOException("无法启动更新安装器。");
             }

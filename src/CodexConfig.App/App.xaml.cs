@@ -7,10 +7,15 @@ namespace CodexConfig.App;
 public partial class App : Application
 {
     private DesktopInstance? desktopInstance;
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
-        // Older gateway invocations must never open or edit the default user configuration.
-        if (e.Args.Contains("--model-bridge")) { base.OnStartup(e); Shutdown(1); return; }
+        if (e.Args.Contains("--model-bridge"))
+        {
+            base.OnStartup(e);
+            if (e.Args.Length != 2 || e.Args[0] != "--model-bridge" || !Path.IsPathFullyQualified(e.Args[1])) { Shutdown(2); return; }
+            try { Shutdown(await BridgeProcess.RunAsync(e.Args[1])); } catch { Shutdown(2); }
+            return;
+        }
         try
         {
             base.OnStartup(e);

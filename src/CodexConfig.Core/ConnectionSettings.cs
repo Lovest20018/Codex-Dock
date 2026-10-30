@@ -16,6 +16,7 @@ public sealed record ConnectionSettings(string BaseUrl, string ApiKey, string Mo
     public AuthenticationChoice Authentication { get; init; } = AuthenticationChoice.Auto;
     public ConnectionKind Kind { get; init; } = ConnectionKind.PatRelay;
     public ConnectionMode Mode { get; init; }
+    public bool UseSystemProxy { get; init; }
     public ConnectionDetails Details { get; init; } = new();
     public string ProviderId { get; init; } = "openai";
     public string ProviderName { get; init; } = "";
@@ -46,7 +47,7 @@ public sealed record ConnectionSettings(string BaseUrl, string ApiKey, string Mo
     public string Fingerprint()
     {
         var settings = Normalize();
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{settings.Kind}\0{settings.BaseUrl}\0{settings.ApiKey}\0{settings.Mode}")));
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{settings.Kind}\0{settings.BaseUrl}\0{settings.ApiKey}\0{settings.Mode}\0{settings.UseSystemProxy}")));
     }
 
     public AuthenticationDecision Decide()
