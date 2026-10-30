@@ -544,6 +544,7 @@ LegacyConnectionTests.Register(tests, runRoot);
 GatewayTests.Register(tests, runRoot);
 GatewayProcessTests.Register(tests, runRoot);
 NativeBridgeTests.Register(tests, runRoot);
+CodexDiscoveryTests.Register(tests, runRoot);
 DetailsAndStartupTests.Register(tests, runRoot);
 UpdateTests.Register(tests, runRoot);
 LocalStateTests.Register(tests, runRoot);

@@ -24,6 +24,15 @@ public partial class MainWindow
             fixture.ConnectionModeBox.SelectedIndex = 1; fixture.BaseUrlBox.Text = "https://offline.invalid/v1";
             fixture.KindBox.SelectedIndex = (int)ConnectionKind.ResponsesApi; fixture.ApiKeyBox.Password = "fake-mixed-model-key"; fixture.ModelBox.Text = "fixture-model";
             Assert(fixture.OfficialPanel.IsVisible && fixture.GatewayPanel.IsVisible && fixture.SaveButton.IsEnabled && fixture.GlobalSaveBar.IsVisible, "Mixed controls are optional and save remains visible");
+            var executable = Path.Combine(fixtureHome, "codex.exe"); File.WriteAllText(executable, "fixture: never execute");
+            fixture.findCodexExecutable = () => executable;
+            Assert(await fixture.ResolveCodexExecutableAsync() == executable && fixture.CodexPathBox.Text == executable, "Detected native Codex path is shown without starting login");
+            fixture.CodexPathBox.Clear(); fixture.findCodexExecutable = () => null;
+            try { await fixture.ResolveCodexExecutableAsync(); throw new InvalidOperationException("Missing Codex should require a selection."); }
+            catch (InvalidOperationException) when (fixture.CodexProgramExpander.IsExpanded) { }
+            Assert(fixture.CodexProgramExpander.IsExpanded, "Missing Codex opens the program selection immediately");
+            fixture.CodexProgramExpander.IsExpanded = false;
+            checks.AddRange(["Detected native Codex path is shown before login", "Missing native Codex expands the program picker"]);
             Assert(fixture.SaveCurrent(), "Mixed connection save: " + fixture.StatusText.Text);
             bridge = fixtureStore.Load(fixtureHome).Bridge!;
             for (var i = 0; i < 100 && fixture.gatewayPolling; i++) await Task.Delay(100);

@@ -4,13 +4,7 @@ namespace CodexConfig.Core;
 
 public sealed class CodexLoginClient
 {
-    public static string? FindExecutable()
-    {
-        var known = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "OpenAI", "Codex", "bin", "codex.exe");
-        return (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
-            .Where(path => !string.IsNullOrWhiteSpace(path)).Select(path => Path.Combine(path.Trim('"'), "codex.exe"))
-            .Append(known).FirstOrDefault(File.Exists);
-    }
+    public static string? FindExecutable() => CodexExecutableLocator.Find();
 
     public static ProcessStartInfo StartInfo(string executable, string stagingHome)
     {

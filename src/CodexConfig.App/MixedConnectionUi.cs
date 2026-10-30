@@ -15,6 +15,7 @@ public partial class MainWindow
     private readonly HashSet<string> stoppedGatewayHomes = new(StringComparer.OrdinalIgnoreCase);
     private DateTimeOffset nextGatewayAttempt;
     private BridgeStatus? gatewayStatus;
+    private Func<string?> findCodexExecutable = CodexLoginClient.FindExecutable;
 
     private void ClearStagedLogin()
     {
@@ -57,6 +58,20 @@ public partial class MainWindow
         if (dialog.ShowDialog(this) == true) CodexPathBox.Text = dialog.FileName;
     }
 
+    private async Task<string> ResolveCodexExecutableAsync()
+    {
+        var executable = CodexPathBox.Text.Trim().Trim('"');
+        if (string.IsNullOrWhiteSpace(executable)) executable = await Task.Run(findCodexExecutable);
+        if (executable is null || !File.Exists(executable))
+        {
+            CodexProgramExpander.IsExpanded = true;
+            CodexProgramExpander.BringIntoView(); CodexPathBox.Focus();
+            throw new InvalidOperationException("未找到可用的原生 codex.exe。已展开程序位置，请选择本机 Codex CLI；支持桌面版运行时、独立安装和 npm 安装。");
+        }
+        CodexPathBox.Text = executable;
+        return executable;
+    }
+
     private async void LoginClicked(object sender, RoutedEventArgs e)
     {
         if (loginInProgress || closing) return;
@@ -68,8 +83,9 @@ public partial class MainWindow
         RefreshMixedUi(); UpdateActions();
         try
         {
-            var executable = string.IsNullOrWhiteSpace(CodexPathBox.Text) ? CodexLoginClient.FindExecutable() : CodexPathBox.Text.Trim();
-            if (executable is null) throw new InvalidOperationException("未找到原生 codex.exe，请展开程序位置并选择。");
+            var executable = await ResolveCodexExecutableAsync();
+            if (closing || home != expectedHome || ConnectionModeBox.SelectedIndex == 0) return;
+            loginCancellation.Token.ThrowIfCancellationRequested();
             var auth = await new CodexLoginClient().LoginAsync(executable, Path.Combine(Path.GetTempPath(), "CodexDock-login"), loginCancellation.Token);
             if (closing || home != expectedHome || ConnectionModeBox.SelectedIndex == 0) { CryptographicOperations.ZeroMemory(auth); return; }
             ClearStagedLogin(); stagedOfficialAuth = auth; MarkDirty();

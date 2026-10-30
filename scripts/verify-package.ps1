@@ -1,4 +1,4 @@
-param([string]$Version = '0.12.0')
+param([string]$Version = '0.12.1')
 $ErrorActionPreference = 'Stop'
 $taskRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $taskArtifacts = Join-Path $taskRoot 'artifacts'
