@@ -1,6 +1,8 @@
 """Codex-only HTTPS reverse-proxy gateway and separate authenticated local control."""
 import hashlib
+import html
 import hmac
+import ipaddress
 import json
 import re
 import secrets
@@ -20,11 +22,23 @@ from bridge.features.sessions.store import StoreUnavailable
 from bridge.clients.codex.ipc import IPCError
 from qr_png import pairing_image
 
-PROTOCOL = 1
+PROTOCOL = 2
 SESSION_ROUTE = re.compile(r'^/api/sessions/([0-9a-f-]{36})(?:/(send|steer|stop|respond))?$')
 ASSETS = {'/': ('index.html', 'text/html; charset=utf-8'),
           '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
           '/app.css': ('app.css', 'text/css; charset=utf-8')}
+
+
+def proxy_address(value):
+    if value == '':
+        return ''
+    try:
+        address = ipaddress.IPv4Address(value)
+        if str(address) == value and any(address in ipaddress.IPv4Network(network) for network in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')):
+            return value
+    except (ValueError, TypeError):
+        pass
+    raise ValueError('请输入反向代理设备的局域网 IPv4 地址；本机代理留空')
 
 
 def public_origin(value):
@@ -111,6 +125,10 @@ class State:
         self.instance_id = config['instanceId']
         self.bridge = bridge
         self.auth = Auth(config['auth'], config['dataDir'])
+        self.proxy_address = proxy_address(config.get('proxyAddress', ''))
+        # Only the separately configured peer can supply forwarded client IPs.
+        # Persisted access-policy data cannot expand this transport boundary.
+        self.auth.policy['trustedProxies'] = [self.proxy_address] if self.proxy_address else []
         self.pairing = Pairing(self.auth, {self.origin})
         self.web_dir = Path(web_dir)
         self.stop = threading.Event()
@@ -129,6 +147,13 @@ class State:
                 if (not isinstance(value, dict) or value.get('instanceId') != self.instance_id
                         or value.get('passwordless') is not False or type(value.get('authenticated')) is not bool):
                     raise ValueError()
+        except urllib.error.HTTPError as error:
+            self.checked = False
+            if error.code == 502:
+                raise ValueError('HTTPS 入口返回 502：反向代理未能连接电脑。请检查目标 IP、端口、两边网络通道，以及局域网反向代理 IP 设置。') from None
+            if error.code == 403:
+                raise ValueError('HTTPS 入口返回 403：请保留完整 Host（含外部端口），并检查局域网反向代理 IP 是否与连接来源一致。') from None
+            raise ValueError(f'HTTPS 入口返回 {error.code}，请检查反向代理；不接受跳转。') from None
         except (OSError, ValueError, urllib.error.URLError):
             self.checked = False
             raise ValueError('HTTPS 入口检测失败，请检查证书、反向代理及 Host 转发；不接受跳转。') from None
@@ -244,6 +269,19 @@ class PublicHandler(BaseHandler):
         return value + (f'; Max-Age={age}' if age is not None else '')
 
     def route(self, write):
+        peer = self.client_address[0]
+        if peer not in ('127.0.0.1', self.state.proxy_address):
+            raise PermissionError()
+        # A localhost visit is a diagnostic landing page, never an HTTP login.
+        if (not write and self.path == '/' and peer == '127.0.0.1'
+                and self.headers.get_all('Host', []) == [f'127.0.0.1:{self.server.server_port}']):
+            entry = html.escape(self.state.origin, quote=True)
+            page = ('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Codex Dock · 手机连接</title>'
+                    '<h1>手机服务已运行</h1><p>请通过配置的 HTTPS 域名登录：</p>'
+                    f'<p><a href="{entry}">{entry}</a></p>'
+                    '<p>若域名返回 502，请检查反向代理目标，以及电脑“手机连接”中的局域网代理 IP。</p>'
+                    '<p>本机 HTTP 地址仅用于诊断，不提供登录。</p></html>').encode('utf-8')
+            return self.output(200, page, content_type='text/html; charset=utf-8')
         if self.headers.get_all('Host', []) != [self.state.host]:
             raise PermissionError()
         origins = self.headers.get_all('Origin', [])
@@ -320,7 +358,8 @@ class ControlHandler(BaseHandler):
             raise PermissionError()
         if not write and self.path == '/health':
             return self.output(200, {'service': 'codex-dock-mobile', 'protocol': PROTOCOL, 'instanceId': self.state.instance_id,
-                                     'publicUrl': self.state.origin, 'port': self.state.config['port'], 'checked': self.state.checked})
+                                     'publicUrl': self.state.origin, 'port': self.state.config['port'], 'checked': self.state.checked,
+                                     'proxyAddress': self.state.proxy_address})
         if write and self.path == '/check':
             if self.read_json():
                 raise ValueError('入口检测不接受额外字段')

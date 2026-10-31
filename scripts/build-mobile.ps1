@@ -40,7 +40,7 @@ $taskHashes = foreach ($taskFile in $taskFiles) {
     [ordered]@{path=$taskFile.FullName.Substring($taskPayload.Length + 1).Replace('\','/'); sha256=(Get-FileHash -LiteralPath $taskFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
 }
 [ordered]@{
-    name='CodexDock.Mobile'; protocol=1; upstreamCommit='0721aa7dafa6177751ba7e568e0ad0efee05655b'
+    name='CodexDock.Mobile'; protocol=2; upstreamCommit='0721aa7dafa6177751ba7e568e0ad0efee05655b'
     python=(& $taskBuildPython -c 'import platform; print(platform.python_version())')
     pyinstaller=(& $taskBuildPython -m PyInstaller --version)
     createdAtUtc=[DateTimeOffset]::UtcNow.ToString('o'); files=$taskHashes

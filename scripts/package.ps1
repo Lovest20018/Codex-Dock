@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.13.0',
+    [string]$Version = '0.13.1',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
@@ -34,6 +34,7 @@ Copy-Item -LiteralPath (Join-Path $taskRoot "docs\release-$Version.md"),(Join-Pa
 Get-ChildItem -LiteralPath (Join-Path $taskRoot 'third_party') -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $taskRelease 'third_party') -Force }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\magpie-codex-comparison.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\mobile-connection.md'),(Join-Path $taskRoot 'docs\mobile-gateway-reuse.md') -Destination (Join-Path $taskRelease 'docs') -Force
+Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\release-0.13.0.md'),(Join-Path $taskRoot 'docs\review-0.13.0.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\release-0.12.0.md'),(Join-Path $taskRoot 'docs\review-0.12.0.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Get-ChildItem -LiteralPath (Join-Path $taskRoot 'assets\brand') -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $taskRelease 'brand') -Force }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'src\CodexConfig.App\Assets\app.ico') -Destination (Join-Path $taskRelease 'brand') -Force
@@ -60,6 +61,7 @@ Copy-Item -LiteralPath $taskUiReport -Destination (Join-Path $taskRelease 'verif
     '设置默认显示一句用途，点击“了解更多”查看说明。'
     '保存前自动加密备份，可在备份与恢复页恢复上次配置。'
     '手机连接使用已有 HTTPS 根域名；默认反向代理到本机 http://127.0.0.1:13090，保留原 Host。端口可在手机连接页修改。'
+    '代理在群晖等其他设备时，填写该设备的准确局域网代理 IP，再将代理目标设为电脑可达的 IP:端口。'
     '手机连接单独保存和启停。保持电脑 Codex App 运行，用上游安卓 App 扫码或使用独立账号密码登录。'
     'mobile 文件夹包含手机服务与 Python 运行时，必须与主程序一起保留。详见 docs/mobile-connection.md。'
     '完整说明见 README.md。'

@@ -11,13 +11,13 @@ namespace CodexConfig.Core;
 
 public sealed record MobileAuth(string Mode, string Username, string Salt, string Hash, int Iterations = 600000, int SessionHours = 12);
 public sealed record MobileGatewayConfig(int Protocol, string PublicUrl, int Port, int ControlPort, string ControlToken, string InstanceId,
-    MobileAuth Auth, string CodexHome, string DataDir);
-public sealed record MobileGatewayStatus(string Service, int Protocol, string InstanceId, string PublicUrl, int Port, bool Checked);
+    MobileAuth Auth, string CodexHome, string DataDir, string ProxyAddress = "");
+public sealed record MobileGatewayStatus(string Service, int Protocol, string InstanceId, string PublicUrl, int Port, bool Checked, string ProxyAddress = "");
 
 // Mobile access is independent of model routing and never writes Codex settings.
 public sealed partial class MobileGatewayManager
 {
-    public const int Protocol = 1;
+    public const int Protocol = 2;
     public const int DefaultPort = 13090;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("CodexDock.mobile.v1");
@@ -46,6 +46,18 @@ public sealed partial class MobileGatewayManager
     [GeneratedRegex(@"^(?=.{1,253}$)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")]
     private static partial Regex DomainPattern();
 
+    public static string NormalizeProxyAddress(string value)
+    {
+        value = value.Trim();
+        if (value.Length == 0) return "";
+        if (IPAddress.TryParse(value, out var address) && address.AddressFamily == AddressFamily.InterNetwork && address.ToString() == value)
+        {
+            var bytes = address.GetAddressBytes();
+            if (bytes[0] == 10 || bytes[0] == 172 && bytes[1] is >= 16 and <= 31 || bytes[0] == 192 && bytes[1] == 168) return value;
+        }
+        throw new ArgumentException("请输入反向代理设备的局域网 IPv4 地址；本机代理留空。不支持域名、网段或任意来源。");
+    }
+
     public MobileGatewayConfig? Load()
     {
         if (!File.Exists(SettingsPath)) return null;
@@ -56,7 +68,9 @@ public sealed partial class MobileGatewayManager
             if (info.Length > 65536) throw new InvalidDataException();
             plain = ProtectedData.Unprotect(File.ReadAllBytes(SettingsPath), Entropy, DataProtectionScope.CurrentUser);
             var config = JsonSerializer.Deserialize<MobileGatewayConfig>(plain, Json) ?? throw new InvalidDataException();
-            if (config.Protocol != Protocol || NormalizePublicUrl(config.PublicUrl) != config.PublicUrl || config.Port is < 1024 or > 65535 ||
+            if (config.Protocol == 1) config = config with { Protocol = Protocol };
+            if (config.Protocol != Protocol || NormalizeProxyAddress(config.ProxyAddress) != config.ProxyAddress ||
+                NormalizePublicUrl(config.PublicUrl) != config.PublicUrl || config.Port is < 1024 or > 65535 ||
                 config.ControlPort is < 1024 or > 65535 || config.Port == config.ControlPort || config.ControlToken.Length != 64 || config.InstanceId.Length != 32 ||
                 !config.ControlToken.All(Uri.IsHexDigit) || !config.InstanceId.All(Uri.IsHexDigit) || config.Auth.Mode != "password" ||
                 config.Auth.Iterations != 600000 || config.Auth.SessionHours != 12 || config.Auth.Salt.Length != 32 || config.Auth.Hash.Length != 64 ||
@@ -70,9 +84,10 @@ public sealed partial class MobileGatewayManager
         finally { if (plain is not null) CryptographicOperations.ZeroMemory(plain); }
     }
 
-    public async Task<MobileGatewayConfig> SaveAsync(string publicUrl, string username, string password, int port = DefaultPort, CancellationToken cancellation = default)
+    public async Task<MobileGatewayConfig> SaveAsync(string publicUrl, string username, string password, int port = DefaultPort, CancellationToken cancellation = default, string proxyAddress = "")
     {
         publicUrl = NormalizePublicUrl(publicUrl); username = username.Trim();
+        proxyAddress = NormalizeProxyAddress(proxyAddress);
         if (username.Length is < 1 or > 200 || username.Any(char.IsControl)) throw new ArgumentException("账号需为 1 至 200 个字符。");
         if (port is < 1024 or > 65535) throw new ArgumentException("本机端口需在 1024 至 65535 之间。");
         if (!Directory.Exists(home)) throw new ArgumentException("请先选择已存在的 Codex 配置目录。");
@@ -92,7 +107,7 @@ public sealed partial class MobileGatewayManager
         var controlPort = previous?.ControlPort ?? FreePort();
         while (controlPort == port) controlPort = FreePort();
         var config = new MobileGatewayConfig(Protocol, publicUrl, port, controlPort, previous?.ControlToken ?? RandomHex(32),
-            previous?.InstanceId ?? RandomHex(16), auth, home, StateDirectory);
+            previous?.InstanceId ?? RandomHex(16), auth, home, StateDirectory, proxyAddress);
         // Changing the public entry invalidates the old domain's devices as well
         // as any outstanding QR. A password/account change is revoked by Auth.
         if (previous is not null && previous.PublicUrl != publicUrl)
@@ -135,7 +150,7 @@ public sealed partial class MobileGatewayManager
         var config = Load() ?? throw new InvalidOperationException("请先保存 HTTPS 域名和访问密码。");
         if (await StatusCoreAsync(config, cancellation).ConfigureAwait(false) is { } existing)
         {
-            if (existing.Protocol == Protocol) return existing;
+            if (existing.Protocol == Protocol && existing.ProxyAddress == config.ProxyAddress) return existing;
             await StopCoreAsync(config, cancellation).ConfigureAwait(false);
         }
         if (!PortsFree(config)) throw new IOException("手机服务端口已被占用，未启动其他进程。请先检查已有服务。");
@@ -234,9 +249,9 @@ public sealed partial class MobileGatewayManager
         var listeners = new List<TcpListener>();
         try
         {
-            foreach (var port in new[] { config.Port, config.ControlPort })
+            foreach (var (address, port) in new[] { (config.ProxyAddress.Length > 0 ? IPAddress.Any : IPAddress.Loopback, config.Port), (IPAddress.Loopback, config.ControlPort) })
             {
-                var listener = new TcpListener(IPAddress.Loopback, port) { ExclusiveAddressUse = true }; listeners.Add(listener); listener.Start();
+                var listener = new TcpListener(address, port) { ExclusiveAddressUse = true }; listeners.Add(listener); listener.Start();
             }
             return true;
         }

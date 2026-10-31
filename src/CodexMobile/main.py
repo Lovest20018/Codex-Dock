@@ -7,7 +7,7 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 
-from gateway import ControlHandler, PublicHandler, Server, State, public_origin
+from gateway import PROTOCOL, ControlHandler, PublicHandler, Server, State, public_origin, proxy_address
 from service import Bridge
 
 
@@ -27,10 +27,11 @@ def worker_lock(directory):
 
 
 def validate(config):
-    if not isinstance(config, dict) or set(config) != {'protocol', 'publicUrl', 'port', 'controlPort', 'controlToken', 'instanceId', 'auth', 'codexHome', 'dataDir'}:
+    if not isinstance(config, dict) or set(config) != {'protocol', 'publicUrl', 'port', 'controlPort', 'controlToken', 'instanceId', 'auth', 'codexHome', 'dataDir', 'proxyAddress'}:
         raise ValueError('Invalid boot configuration')
-    if config['protocol'] != 1 or public_origin(config['publicUrl']) != config['publicUrl']:
+    if config['protocol'] != PROTOCOL or public_origin(config['publicUrl']) != config['publicUrl']:
         raise ValueError('Invalid protocol or origin')
+    proxy_address(config['proxyAddress'])
     if not all(type(config[key]) is int and 1024 <= config[key] <= 65535 for key in ('port', 'controlPort')) or config['port'] == config['controlPort']:
         raise ValueError('Invalid ports')
     if not re.fullmatch(r'[a-f0-9]{64}', config['controlToken']) or not re.fullmatch(r'[a-f0-9]{32}', config['instanceId']):
@@ -54,7 +55,7 @@ def run(config):
         public = control = None
         try:
             state = State(config, bridge, Path(__file__).resolve().parent / 'web')
-            public = Server(('127.0.0.1', config['port']), PublicHandler, state)
+            public = Server(('0.0.0.0' if config['proxyAddress'] else '127.0.0.1', config['port']), PublicHandler, state)
             control = Server(('127.0.0.1', config['controlPort']), ControlHandler, state)
             threads = [threading.Thread(target=server.serve_forever, daemon=True) for server in (public, control)]
             for thread in threads:
