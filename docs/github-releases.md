@@ -4,7 +4,9 @@
 
 ## 触发
 
-完成测试与提交后，将代码推送到 main，再推送与 Windows 版本一致的 `vX.Y.Z` 标签。例如当前 Windows 0.15.1 / Android 0.2.2 使用 `v0.15.1`。也可在 Actions 的 **Windows and Android release → Run workflow** 手动触发。普通 main 推送只更新源码，发布标签或手动运行才生成稳定发布。
+完成测试与提交后，在 Actions 的 **Windows and Android release → Run workflow** 手动触发，默认只生成双端构建产物，不创建或公开 Release。从成功运行的 Artifacts 下载 `windows-release` 和 `android-release`。
+
+需要公开发布时，明确勾选 `publish`，或推送与 Windows 版本一致的 `vX.Y.Z` 发布标签。例如当前 Windows 0.15.1 / Android 0.2.2 使用 `v0.15.1`。普通 main 推送只更新源码；发布标签或勾选公开发布的手动运行才生成稳定 Release。
 
 ```powershell
 git push origin HEAD:main

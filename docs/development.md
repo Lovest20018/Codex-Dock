@@ -48,7 +48,7 @@ pwsh -NoProfile -File scripts/verify-package.ps1
 
 打包包含 .NET 运行时，记录源提交与文件散列，并对实际发布程序运行隔离 UI 检查。安装验证使用独立目录，核对发布文件、旧入口清理、卸载保留用户文件以及真实用户环境未改变。发布流程和更新附件约定见 [GitHub 发布与更新](github-releases.md)。
 
-GitHub 的 `release.yml` 在发布标签或手动触发时自动并行打包 Windows 与 Android，签名使用仓库 Secrets 中的既有安卓密钥。双端校验成功后才发布同一稳定 Release。流水线工具的本地验证入口为 `python -B -m unittest discover -s tests/release -v`；发送补充专项见 [验证记录](review-steering-2026-10-31.md)。
+GitHub 的 `release.yml` 在发布标签或手动触发时自动并行打包 Windows 与 Android，签名使用仓库 Secrets 中的既有安卓密钥。手动运行默认只打包；发布标签或明确勾选 `publish` 后，双端校验成功才公开同一稳定 Release。流水线工具的本地验证入口为 `python -B -m unittest discover -s tests/release -v`；发送补充专项见 [验证记录](review-steering-2026-10-31.md)。
 
 个人 `auth.json`、`config.toml`、加密连接、备注、备份、测试运行目录、日志和构建缓存不得进入源码或发布包。打包脚本调用隐私扫描，在本机比较真实凭据与配置指纹，禁止打印其内容。仅上传明确的版本附件，不上传整个 artifacts 目录。
 

@@ -4,6 +4,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish verified packages as a public stable Release
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -164,6 +169,7 @@ jobs:
             artifacts/SHA256SUMS-Android-${{ needs.versions.outputs.android }}.txt
 
   publish:
+    if: github.ref_type == 'tag' || inputs.publish
     needs: [versions, windows, android]
     runs-on: ubuntu-24.04
     timeout-minutes: 20

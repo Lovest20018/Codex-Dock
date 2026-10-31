@@ -6,7 +6,7 @@
 
 项目包含 Windows 应用 **Codex Dock**、由 Windows 托管的 **Web / 手机网关**，以及独立安卓客户端 **Lovest Code**。手机端连接自己的电脑和原生执行环境，聊天能力由所选 Codex Desktop、CLI 或已登记的 WSL / SSH 提供。
 
-[Windows 安装器](https://github.com/Lovest20018/Codex-Dock/releases/download/v0.15.1/CodexDock-0.15.1-Setup-win-x64.exe) · [安卓 APK](https://github.com/Lovest20018/Codex-Dock/releases/download/v0.15.1/LovestCode-Android-0.2.2.apk) · [全部版本](https://github.com/Lovest20018/Codex-Dock/releases) · [反馈问题](https://github.com/Lovest20018/Codex-Dock/issues)
+[双端自动构建](https://github.com/Lovest20018/Codex-Dock/actions/workflows/release.yml) · [稳定版下载](https://github.com/Lovest20018/Codex-Dock/releases/latest) · [全部版本](https://github.com/Lovest20018/Codex-Dock/releases) · [反馈问题](https://github.com/Lovest20018/Codex-Dock/issues)
 
 ## 当前状态
 
@@ -18,7 +18,7 @@
 | Web / 手机工作台 | 随 Windows 版本提供 | Codex 聊天、审批、文件、Git、终端、通知及本机接入管理。 |
 | Android Lovest Code | **0.2.2** / versionCode 5 | 聊天／电脑／我的导航，恢复上次聊天，保留草稿，独立设置；文字输入区保持展开。 |
 
-Windows **0.15.1** 与 Android **0.2.2** 在同一个 [v0.15.1 稳定版](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.15.1) 提供下载。GitHub Actions 从同一提交自动构建双端，完成 Windows 安装验证、安卓签名与源码校验后，上传安装包、源码和 SHA-256 清单；所有附件验证通过后才公开发布。维护方式见 [自动发布说明](docs/github-releases.md)。
+GitHub Actions 从同一提交自动构建 Windows **0.15.1** 与 Android **0.2.2**，完成 Windows 安装验证、安卓签名与源码校验后，提供安装包、源码和 SHA-256 清单。手动运行默认只打包，在成功运行的 **Artifacts** 中下载 `windows-release` 与 `android-release`；发布标签或明确选择公开发布时，才将双端附件放入同一个稳定 Release。公开版本以 [Release 页面](https://github.com/Lovest20018/Codex-Dock/releases) 为准，维护方式见 [自动发布说明](docs/github-releases.md)。
 
 Web / 手机工作台复用固定的 Codex Mobile Bridge 2.1.7 快照，并通过显式覆盖和自有适配提供 Codex 范围的功能。上游来源、许可与维护方式见 [UPSTREAM](src/CodexMobile/UPSTREAM.md)。
 
@@ -47,7 +47,7 @@ Windows 支持 **Windows 10 1809 及以上 x64**。完整安装包包含 .NET �
 
 Lovest Code 沿用本项目安卓包名、签名与 Logo，可覆盖升级已交付的旧版。它与旧上游 App 是不同应用，首次迁移需重新添加电脑并登录。电脑上的聊天记录不受影响。
 
-日常使用可直接下载上方 Windows 安装器或安卓 APK；Windows 便携版和校验清单在同一个 Release 页面。安卓需要允许浏览器或文件管理器安装此 APK。
+已公开版本从稳定版下载页取得；构建中的新版本可从 Actions 的成功运行页面下载对应 Artifacts。Windows 选 `Setup-win-x64.exe` 或便携 ZIP，安卓选 APK；安卓需要允许浏览器或文件管理器安装此 APK。
 
 更新 Windows 前先停止手机网关，再从托盘退出旧 Dock；更新后重新启动手机服务并检测 HTTPS 入口。安卓 0.2.2 可直接覆盖安装 0.2.1，保留连接和登录。
 
