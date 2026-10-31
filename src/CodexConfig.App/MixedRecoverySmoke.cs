@@ -39,6 +39,8 @@ public partial class MainWindow
             await fixture.RefreshGatewayAsync(start: true);
             Assert(fixture.gatewayStatus is not null && !fixture.Dirty && !fixture.SaveButton.IsEnabled, "Saved connection starts an independent gateway and reloads cleanly");
             var connection = MixedConnection.Read(bridge);
+            await fixture.RefreshGatewaySummaryAsync();
+            Assert(fixture.ModelGatewaySummary.Content.ToString()!.Contains("运行中") && fixture.MobileGatewaySummary.Content.ToString()!.Contains("已停止"), "Persistent header reports model gateway running independently");
             fixture.InitializeTray();
             await fixture.tray!.RefreshGatewayActionsAsync();
             Assert(fixture.tray.StopModelItem.Enabled && !fixture.tray.StopMobileItem.Enabled, "Tray shows the running model gateway independently");
@@ -50,6 +52,8 @@ public partial class MainWindow
             Assert(!fixture.tray.GatewayActionInProgress && !fixture.IsVisible && fixture.Dirty && fixture.ModelBox.Text == "unsaved-tray-model" &&
                 await BridgeProcess.StatusAsync(connection) is null && !fixture.tray.StopModelItem.Enabled && beforeTrayStop.SameContents(fixtureStore.Load(fixtureHome)),
                 "Tray stops the actual model gateway while hidden, retains the draft, and prevents timer restart");
+            await fixture.RefreshGatewaySummaryAsync();
+            Assert(fixture.ModelGatewaySummary.Content.ToString()!.Contains("已停止"), "Read-only header refresh preserves stopped model worker and unsaved draft: " + fixture.ModelGatewaySummary.Content);
             fixture.RestoreWindow(); fixture.Reload(); fixture.stoppedGatewayHomes.Remove(fixtureHome); await fixture.RefreshGatewayAsync(start: true);
             Assert(fixture.gatewayStatus is not null, "Explicit model start works after a tray stop");
             checks.AddRange(["Tray reports model gateway independently", "Tray stops model worker while hidden without applying drafts or restarting on polling", "Explicit model start works after tray stop"]);

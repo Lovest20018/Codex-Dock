@@ -141,7 +141,8 @@ public static class MobileGatewayTests
                     var url = new Uri(localManager.RootElement.GetProperty("url").GetString()!);
                     Assert(url.Host == "127.0.0.1" && url.Port == saved.ControlPort && url.AbsolutePath == "/manager/" && url.Fragment.Length > 32, "manager link is local with one-use fragment");
                     using var managerPage = await client.GetAsync(new UriBuilder(url) { Fragment = "" }.Uri, timeout.Token);
-                    Assert(managerPage.IsSuccessStatusCode && (await managerPage.Content.ReadAsStringAsync(timeout.Token)).Contains("管理 Codex 接入"), "actual frozen manager assets are present");
+                    var managerHtml = await managerPage.Content.ReadAsStringAsync(timeout.Token);
+                    Assert(managerPage.IsSuccessStatusCode && managerHtml.Contains("class=\"manager-tabs\"") && managerHtml.Contains("id=\"tab-api\""), "actual frozen manager tab assets are present");
                 }
                 await replacement.StopAsync(timeout.Token);
                 Assert(await manager.StatusAsync(timeout.Token) is null, "authenticated stop closes worker");

@@ -65,3 +65,5 @@ pwsh -NoProfile -File scripts/verify-package.ps1
 0.14.1 的草稿与轮询决策见 [审查记录](review-0.14.1.md)。内容版本忽略光标位置；身份尚未核验的发送只记录本次首次提升的范围，不迁移未知请求。后台状态读取与显式刷新共用读取逻辑，后台失败退避并去重提醒，显式操作仍即时反馈。定向验证入口为 `node --test tests/mobile/dock-drafts.test.cjs tests/mobile/client-status.test.cjs` 和 `node tests/mobile/composer-send.browser.cjs`；后者实际运行生产 JS、延迟确认、身份变化和应用管理重试界面。
 
 0.15.0 的 Dock 展示模块位于 `src/CodexMobile/ui/`，通过现有 `/app.js`、`/style.css` 响应追加，冻结时复制到 `runtime/ui`；不新增公开资源路由或改变上游加载顺序。`node tests/mobile/dock-ui.browser.cjs` 覆盖实际 Dock 页面交互；`node tests/mobile/ui-performance.browser.cjs` 在同一隔离网关中移除精确的追加字节作为对照，记录合成长列表与长聊天的本机渲染耗时。前者包含合成文件/终端标签的状态保留，不代表真实终端已验收。见 [UI 实施记录](ui-optimization-plan.md) 和 [0.15.0 审查](review-0.15.0.md)。
+
+0.15.1 的稳定设置分组、输入错误去重、会话菜单及网关状态语义见 [审查](review-0.15.1.md)。Dock 通过可选能力标志省略动态网络部署 UI 和读取，并在适配层拒绝无关更新 / 部署 API；不修改上游默认能力。独立安卓壳尚未构建。

@@ -162,8 +162,13 @@ class WorkbenchTests(unittest.TestCase):
     def test_other_clients_stay_unavailable_on_all_management_routes(self):
         self.login()
         for path in ('/harness', '/harness/', '/api/harness', '/api/desktop-sessions/claude/list',
-                     '/api/desktop-sessions/deepseek/list', '/api/clients/claude/reconnect'):
+                     '/api/desktop-sessions/deepseek/list', '/api/clients/claude/reconnect',
+                     '/api/mobile/update?current=2.1.7', '/api/mobile/update/prepare',
+                     '/api/mobile/update/status/' + 'a' * 64, '/api/accounts/desktop-update',
+                     '/api/network-adaptation'):
             self.assertEqual(self.request(path)[0], 404, path)
+        for path in ('/api/mobile/update/prepare', '/api/accounts/desktop-update', '/api/network-adaptation'):
+            self.assertEqual(self.request(path, {'action': 'checkDesktopUpdate'})[0], 404, path)
         self.assertEqual(self.request('/api/clients', {'provider': 'claude', 'enabled': True})[0], 400)
         self.assertEqual(self.request('/api/cli-access', {'provider': 'claude', 'action': 'importCurrent'})[0], 400)
         self.assertEqual(self.request('/api/wsl-accounts/environments?provider=claude')[0], 400)
@@ -210,6 +215,11 @@ class WorkbenchTests(unittest.TestCase):
         for method in ('stop', 'save', 'harness', '__dict__'):
             self.assertEqual(self.request('/manager/api', {'method': method, 'value': {}},
                                           private=True, headers=session_headers)[0], 400)
+        with patch.object(self.work.bridge.accounts, 'control') as account_control:
+            for action in ('checkDesktopUpdate', 'requestDesktopUpdate'):
+                self.assertEqual(self.request('/manager/api', {'method': 'accounts', 'value': {'action': action}},
+                                              private=True, headers=session_headers)[0], 400)
+            account_control.assert_not_called()
         self.assertEqual(self.request('/manager/../../main.py', private=True, headers=session_headers)[0], 404)
         for path in ('/manager/', '/manager/app.js', '/manager/vendor/accounts.js'):
             self.assertEqual(self.request(path, private=True, headers={'Authorization': None})[0], 200)

@@ -22,7 +22,7 @@
               <TextBlock Text="概览" />
             </RadioButton>
             <RadioButton x:Name="ConnectionNav" Tag="connection" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged" IsChecked="True">
-              <TextBlock Text="PAT 连接" />
+              <TextBlock Text="连接与账号" />
             </RadioButton>
             <RadioButton x:Name="CatalogNav" Tag="preferences" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged">
               <TextBlock Text="模型与行为" />
@@ -52,7 +52,7 @@
           <StackPanel x:Name="NavigationFooter" Grid.Row="3">
             <Button Content="配置位置" Click="LocationClicked" Style="{StaticResource QuietButton}" HorizontalContentAlignment="Left" />
             <Button Content="使用说明" Click="HelpClicked" Style="{StaticResource QuietButton}" HorizontalContentAlignment="Left" />
-            <TextBlock Text="v0.15.0" Style="{StaticResource Helper}" Margin="14,6,0,0" FontSize="11" />
+            <TextBlock Text="v0.15.1" Style="{StaticResource Helper}" Margin="14,6,0,0" FontSize="11" />
           </StackPanel>
         </Grid>
       </Border>
@@ -71,6 +71,11 @@
               <Button Content="更改目录" Click="LocationClicked" Grid.Column="2" Style="{StaticResource QuietButton}" Margin="12,0,0,0" MinHeight="30" Padding="10,5"/>
             </Grid>
           </Border>
+          <WrapPanel x:Name="GatewaySummaryBar" Margin="28,8,28,0" AutomationProperties.Name="网关运行状态">
+            <Button x:Name="ModelGatewaySummary" Content="本地网关 · 正在核对" Click="ModelGatewaySummaryClicked" Style="{StaticResource QuietButton}" FontSize="12" Padding="10,6" MinHeight="30" Margin="0,0,8,0" ToolTip="本机模型转发进程状态；点击查看连接与账号。运行中不代表上游模型请求已验证。" />
+            <Button x:Name="MobileGatewaySummary" Content="手机网关 · 正在核对" Click="MobileGatewaySummaryClicked" Style="{StaticResource QuietButton}" FontSize="12" Padding="10,6" MinHeight="30" Margin="0,0,8,0" ToolTip="手机服务进程状态；点击查看入口检测、配对和设备。" />
+            <Button Content="刷新状态" Click="GatewaySummaryRefreshClicked" Style="{StaticResource QuietButton}" FontSize="12" Padding="10,6" MinHeight="30" ToolTip="只读取运行状态，不启动服务或保存草稿。" />
+          </WrapPanel>
           <StackPanel x:Name="PageHeading" Margin="28,22,28,20">
             <TextBlock x:Name="PageTitle" Text="概览" FontSize="26" FontWeight="SemiBold"/>
             <TextBlock x:Name="PageSubtitle" Style="{StaticResource Helper}" Margin="0,6,0,0"/>

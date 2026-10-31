@@ -113,6 +113,7 @@ public partial class MainWindow : Window
     {
         initializing = true;
         snapshot = null;
+        ResetGatewaySummary();
         try
         {
             var loaded = source ?? store.Load(home);
@@ -203,7 +204,7 @@ public partial class MainWindow : Window
             "mobile" => ("手机连接", "通过自己的 HTTPS 域名，在安卓 App 继续电脑上的 Codex 聊天。"),
             "preferences" => ("模型与行为", "模型、速度和常用行为，修改后统一保存。"), "catalog" => ("全部配置", "搜索完整字段、查看说明和未收录配置。"),
             "templates" or "backup" => ("模板与备份", "复用配置，或恢复上次保存前的状态。"),
-            "app" => ("应用设置与帮助", "窗口、托盘与软件更新。"), _ => ("PAT 连接", "编辑服务地址、PAT 和默认模型，保存后重新打开 Codex。")
+            "app" => ("应用设置与帮助", "窗口、托盘与软件更新。"), _ => ("连接与账号", "管理 PAT / API 服务、官方账号登录与默认模型，保存后重新打开 Codex。")
         };
         PageTitle.Text = title; PageSubtitle.Text = subtitle;
         var nav = page switch { "overview" => OverviewNav, "mobile" => MobileNav, "preferences" => CatalogNav, "catalog" => AdvancedNav, "templates" or "backup" => TemplatesNav, "app" => AppNav, _ => ConnectionNav };

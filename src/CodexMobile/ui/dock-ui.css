@@ -47,7 +47,7 @@
 .dock-ui #sidebar #search{min-height:42px;padding:10px 12px}
 .dock-ui .dock-delivery{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;font-size:13px;color:var(--muted)}
 .dock-ui .dock-delivery[data-state=unknown],.dock-ui .dock-delivery[data-state=rejected]{color:var(--dock-warning);background:var(--dock-warning-bg);padding:10px;border-radius:8px}
-.dock-ui #composer:has(#dock-delivery[data-state=unknown]:not([hidden])) #send-error,.dock-ui #composer:has(#dock-delivery[data-state=rejected]:not([hidden])) #send-error{display:none}
+.dock-ui #send-error.dock-duplicate-error{display:none}
 .dock-ui .dock-settings-tabs{display:flex;gap:5px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:12px}
 .dock-ui .dock-settings-tabs button{flex:1;padding:10px 8px;border:0;border-radius:8px;background:var(--dock-surface);color:inherit;min-width:100px}
 .dock-ui .dock-settings-tabs [aria-selected=true]{background:var(--soft);color:var(--green)}

@@ -67,6 +67,8 @@ class LocalManager:
                  'clients': self.workbench.public.desktop_sessions.control}
         if method not in calls:
             raise ValueError('未知管理操作')
+        if method == 'accounts' and value.get('action') in ('checkDesktopUpdate', 'requestDesktopUpdate'):
+            raise ValueError('请在电脑上管理 Codex Desktop 更新')
         if method == 'cliAccess' and value.get('provider', 'codex') != 'codex':
             raise ValueError('此网关仅提供 Codex 接入')
         try:

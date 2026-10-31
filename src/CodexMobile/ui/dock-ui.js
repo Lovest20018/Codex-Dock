@@ -17,13 +17,17 @@
     const label=check?'核对状态':'发送 ↑';if(get('send').textContent!==label)get('send').textContent=label;
   }
   function current(target,host,gateway,account){return target===currentId&&host===currentHost&&gateway===draftGateway&&account===codexDraftScope?.account;}
+  function syncSendError(){
+    const error=get('send-error');
+    error.classList.toggle('dock-duplicate-error',!!deliveryState?.reason&&error.textContent===BridgeI18n.t(deliveryState.reason));
+  }
   function receipt(){
     if(!ready)return;
     const root=get('dock-delivery'),value=deliveryState;
     root.hidden=!value;root.dataset.state=value?.kind||'';
     get('dock-delivery-text').textContent=value?.text||'';
     get('dock-check-delivery').hidden=value?.kind!=='unknown';
-    sendLabel();
+    sendLabel();syncSendError();
   }
   function selections(){
     if(!ready)return;
@@ -65,7 +69,7 @@
     const original=[...dialog.children];
     for(const child of original){
       if(child.matches('.picker-head,.appearance-actions')||child.id==='mobile-binding-status')continue;
-      const text=child.querySelector('legend')?.textContent||'';
+      const text=child.querySelector('legend')?.dataset.i18n||'';
       if(child.classList.contains('appearance-note')){child.hidden=true;continue;}
       const page=text.includes('全会话通知')?'notifications':text.includes('账号与接入')||text.includes('文件传输')||child.querySelector('#open-session-diagnostics')||child.classList.contains('settings-action-row')||child.classList.contains('file-transfer-settings')?'connections':'appearance';
       panels[page].append(child);
@@ -77,7 +81,7 @@
     const actions=clientNavigation.settingsActions;panels.connections.append(actions);
     const notifications=node('p','当前网关所有聊天 · 更改后即时保存，重新读取后核对结果。','muted');notifications.setAttribute('role','status');panels.notifications.prepend(notifications);
     for(const id of ['notification-requests','notification-completions']){const input=panels.notifications.querySelector('#'+id);input.addEventListener('change',()=>{notifications.textContent='当前网关所有聊天 · 正在保存…';});new MutationObserver(()=>{if(!input.disabled)notifications.textContent=get('notification-settings-error').textContent?'通知策略保存未确认，请重新读取核对。':'当前网关所有聊天 · 已读取最新通知策略';}).observe(input,{attributes:true,attributeFilter:['disabled']});}
-    for(const field of panels.connections.querySelectorAll('fieldset'))if(field.querySelector('legend')?.textContent.includes('文件传输'))field.append(node('p','当前网关的文件下载策略 · 点击保存后生效','muted'));
+    for(const field of panels.connections.querySelectorAll('fieldset'))if(field.querySelector('legend')?.dataset.i18n?.includes('文件传输'))field.append(node('p','当前网关的文件下载策略 · 点击保存后生效','muted'));
     const scope=node('p',null,'muted');scope.id='dock-settings-scope';scope.setAttribute('role','status');
     dialog.querySelector('.picker-head').after(tabs,scope,...Object.values(panels));
     const resetScope=node('p','当前网关所有设备 · 提交后等待保存结果','muted');get('appearance-reset-dynamic').closest('fieldset').append(resetScope);
@@ -115,6 +119,14 @@
   }
   function boot(){
     if(ready)return;ready=true;document.body.classList.add('dock-ui');
+    document.title='Codex Dock';
+    if(!isCodexClient(clientNavigation.provider)){
+      clientNavigation.provider='codex';localStorage.setItem('bridge-client','codex');clientNavigation.paint();
+    }
+    if(accountsPanel){
+      accountsPanel.updates.hidden=true;
+      const toolsTitle=accountsPanel.tools.querySelector('summary');toolsTitle.textContent='提醒设置';toolsTitle.removeAttribute('data-i18n');
+    }
     const composer=get('composer'),tools=composer.querySelector('.composer-tools'),advanced=node('details',null,'dock-composer-more'),summary=node('summary','更多选项');advanced.id='dock-composer-more';advanced.append(summary);
     const controls=node('div',null,'dock-advanced-controls');controls.append(get('notify-button'),get('skills-button'));advanced.append(controls);tools.append(advanced);
     for(const id of ['send-mode','work-mode']){const select=get(id),label=node('label',id==='send-mode'?'发送方式':'工作模式');label.append(select);controls.append(label);}
@@ -125,12 +137,15 @@
     const status=node('div',null,'dock-delivery');status.id='dock-delivery';status.setAttribute('role','status');status.setAttribute('aria-live','polite');const text=node('span');text.id='dock-delivery-text';const check=button('查看消息与核对状态',()=>openMessageManagement());check.id='dock-check-delivery';status.append(text,check);get('message').before(status);
     for(const id of ['send-mode','work-mode'])get(id).addEventListener('change',selections);
     get('message').addEventListener('input',sendLabel);
+    new MutationObserver(syncSendError).observe(get('send-error'),{childList:true,characterData:true,subtree:true});
     new MutationObserver(selections).observe(get('notify-button'),{childList:true,characterData:true,subtree:true});
     new MutationObserver(selections).observe(get('work-mode'),{attributes:true,attributeFilter:['disabled','hidden']});
     const footer=clientNavigation.footer,settingsButton=button('设置',()=>{get('appearance-dialog').showModal();window.loadNotificationDefaults?.();});settingsButton.id='dock-settings';footer.append(settingsButton);
     get('clients-button').textContent='连接与接入';get('clients-button').removeAttribute('data-i18n');
     clientNavigation.computer.classList.add('dock-device');clientNavigation.navigation.prepend(clientNavigation.computer);
-    get('chat').querySelector('.appearance-button').onclick=()=>get('chat-details-button').click();get('chat').querySelector('.appearance-button').setAttribute('aria-label','聊天操作');get('chat').querySelector('.appearance-button').removeAttribute('data-i18n-aria-label');
+    const chatMore=get('chat').querySelector('.appearance-button');
+    chatMore.removeAttribute('data-open-appearance');chatMore.removeAttribute('data-i18n-title');chatMore.removeAttribute('data-i18n-aria-label');
+    chatMore.title='聊天操作';chatMore.setAttribute('aria-label','聊天操作');chatMore.onclick=()=>get('chat-details-button').click();
     const filters=get('sidebar').querySelector('.list-filters'),filterDetails=node('details',null,'dock-filters'),filterSummary=node('summary','筛选');filterSummary.id='dock-filter-toggle';filters.before(filterDetails);filterDetails.append(filterSummary,filters);
     for(const id of ['search','list-mode','source-filter','archived'])get(id).addEventListener('change',()=>{listView();});
     const empty=node('div',null,'dock-empty');empty.id='dock-list-state';empty.setAttribute('role','status');const emptyTitle=node('h3'),emptyHelp=node('p',null,'muted');emptyTitle.id='dock-list-title';emptyHelp.id='dock-list-help';
@@ -146,7 +161,8 @@
     if(viewport){const resize=()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{document.documentElement.style.setProperty('--dock-visible-height',Math.round(viewport.height)+'px');document.body.classList.toggle('dock-keyboard',innerHeight-viewport.height>120);});};viewport.addEventListener('resize',resize,{passive:true});resize();}
   }
   window.DockUI={
-    delivery(kind,target,host,gateway,account,reason){if(!current(target,host,gateway,account))return;const labels={sending:'正在发送…',accepted:'已接收 · 等待任务更新',queued:'已加入队列 · 等待当前任务完成',unknown:'暂未确认是否接收，请先核对消息状态。',rejected:'消息明确未接收，原稿已保留，可修正后重试。'};deliveryState={kind,text:reason?reason+' '+labels[kind]:labels[kind],account:codexDraftScope?.account};receipt();},
+    supportsNetworkAdaptation:false,
+    delivery(kind,target,host,gateway,account,reason){if(!current(target,host,gateway,account))return;const labels={sending:'正在发送…',accepted:'已接收 · 等待任务更新',queued:'已加入队列 · 等待当前任务完成',unknown:'暂未确认是否接收，请先核对消息状态。',rejected:'消息明确未接收，原稿已保留，可修正后重试。'};deliveryState={kind,text:reason?reason+' '+labels[kind]:labels[kind],reason,account:codexDraftScope?.account};receipt();},
     view(){if(ready)get('dock-chat-context').textContent=[state?.cwd,state?.hostLabel||(currentHost==='local'?'此电脑':currentHost)].filter(Boolean).join(' · ');if(deliveryState&&deliveryState.account!==codexDraftScope?.account){deliveryState=null;receipt();}selections();},
     opened(){deliveryState=null;receipt();selections();},
     queue(rows,pending){if(sending&&deliveryState?.kind==='sending')return;if(pending.length||rows.some(row=>row.status!=='queued'))deliveryState={kind:'unknown',text:'有消息结果待确认，请先核对状态。',account:codexDraftScope?.account};else if(deliveryState?.kind==='unknown')deliveryState={kind:'updated',text:'未确认记录已更新，请查看消息管理中的结果。',account:codexDraftScope?.account};receipt();},

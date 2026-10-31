@@ -122,6 +122,7 @@ public partial class MainWindow
         {
             mobileBusy = false; foreach (var button in mobileActions) button.IsEnabled = true;
             mobileUrl.IsEnabled = mobileUsername.IsEnabled = mobilePort.IsEnabled = mobilePassword.IsEnabled = true;
+            await RefreshGatewaySummaryAsync();
         }
     }
 

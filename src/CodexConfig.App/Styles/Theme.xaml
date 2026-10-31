@@ -5,6 +5,7 @@
   <SolidColorBrush x:Key="Field" Color="White"/><SolidColorBrush x:Key="Hover" Color="#EDF0F4"/><SolidColorBrush x:Key="Error" Color="#B53636"/>
   <SolidColorBrush x:Key="Code" Color="#F6F7F9"/><SolidColorBrush x:Key="ScrollThumbBrush" Color="#BFC5CE"/>
   <SolidColorBrush x:Key="Surface" Color="White"/><SolidColorBrush x:Key="Success" Color="#267252"/><SolidColorBrush x:Key="SuccessSoft" Color="#E8F5EE"/>
+  <SolidColorBrush x:Key="Warning" Color="#8A570C"/>
   <Style x:Key="SurfacePanel" TargetType="Border"><Setter Property="Background" Value="{DynamicResource Surface}"/><Setter Property="BorderBrush" Value="{DynamicResource Line}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="12"/><Setter Property="Padding" Value="22"/></Style>
   <Style TargetType="Window">
     <Setter Property="FontFamily" Value="Segoe UI, Microsoft YaHei UI"/><Setter Property="FontSize" Value="14"/>

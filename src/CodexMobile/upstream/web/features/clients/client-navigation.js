@@ -359,7 +359,7 @@ class ClientNavigation {
   }
 
   createNetworkAdaptation(){
-    if(window.BridgeSharedRelay)return;
+    if(window.BridgeSharedRelay||globalThis.DockUI?.supportsNetworkAdaptation===false)return;
     const section=document.createElement('section'),heading=document.createElement('div'),title=document.createElement('h3'),refresh=document.createElement('button'),label=document.createElement('label'),caption=document.createElement('span'),box=document.createElement('input'),hint=document.createElement('p'),status=document.createElement('p');
     section.className='gateway-network-settings';heading.className='gateway-network-heading';title.dataset.i18n='网关连接';title.textContent=BridgeI18n.t('网关连接');
     refresh.type='button';refresh.className='plain';refresh.dataset.i18n='刷新状态';refresh.textContent=BridgeI18n.t('刷新状态');refresh.onclick=()=>this.readNetworkAdaptation();heading.append(title,refresh);
@@ -377,7 +377,7 @@ class ClientNavigation {
     panel.status.textContent=BridgeI18n.t(busy?(this.networkAdaptationBusy==='write'?'正在保存…':'正在读取网络恢复设置…'):this.networkAdaptationError||(state?.canEdit===false?'免密访问下不能远程修改此设置，请在网关 App 中调整。':known?(state.enabled?'已启用':'未启用'):'正在读取网络恢复设置…'));
   }
   async readNetworkAdaptation(){
-    if(window.BridgeSharedRelay||this.networkAdaptationBusy)return;
+    if(window.BridgeSharedRelay||globalThis.DockUI?.supportsNetworkAdaptation===false||this.networkAdaptationBusy)return;
     this.networkAdaptationBusy='read';this.networkAdaptationError='';this.renderNetworkAdaptation();
     try{this.networkAdaptationState=await this.networkAdaptationRequest();}
     catch(error){this.networkAdaptationState=null;this.networkAdaptationError=error.status===404?'请更新网关以使用网络变化自动恢复。':'网络恢复设置读取失败，请刷新状态。';}

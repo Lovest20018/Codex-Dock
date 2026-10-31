@@ -22,8 +22,8 @@
       "reason": "Legacy Dock draft cleanup plus optional presentation hooks for scoped delivery, list and queue; uncertain identical submissions open existing message management, IME composition cannot submit."
     },
     "web/features/clients/client-navigation.js": {
-      "sha256": "590748409796459d67eef4f8cb4cb8eb774899388dfc1ce225790e54fd336efa",
-      "reason": "Passive status failure deduplication and read backoff, manual retry, stale-login guard, and optional Dock layered connection presentation."
+      "sha256": "3f4eaceb014ae7993773df9d49b6bd7aeb41b2291d5ac123712abd8d086f7975",
+      "reason": "Passive status failure deduplication and read backoff, manual retry, stale-login guard, and optional Dock layered connection presentation. Optional Dock policy omits upstream dynamic network deployment controls and reads for fixed-domain gateways."
     },
     "web/features/settings/presentation.js": {
       "sha256": "c1e50982371fcbb2b2ee7801b83aaa4e63d70242d6641bb3662e84058e8b029f",

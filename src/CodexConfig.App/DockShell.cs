@@ -158,6 +158,7 @@ public partial class MainWindow
                 {
                     ShowPage(page); await Settle();
                     if (CurrentDirectoryText.ActualHeight > 22) throw new InvalidOperationException("Long configuration path expanded the header.");
+                    if (GatewaySummaryBar.ActualHeight > 34) throw new InvalidOperationException("Gateway status must fit one compact header row.");
                     var footer = NavigationFooter.TransformToAncestor(RootPanel).TransformBounds(new Rect(NavigationFooter.RenderSize));
                     if (footer.Bottom > RootPanel.ActualHeight + 1 || NavigationScroll.ActualHeight < 70)
                         throw new InvalidOperationException("Navigation footer overlaps the available navigation area.");

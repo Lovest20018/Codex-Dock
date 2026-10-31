@@ -60,7 +60,7 @@ public partial class MainWindow
         finally
         {
             localStatePolling = false;
-            if (!closing) { RefreshOverview(); await RefreshGatewayAsync(); }
+            if (!closing) { RefreshOverview(); await RefreshGatewayAsync(); await RefreshGatewaySummaryAsync(); }
         }
     }
 

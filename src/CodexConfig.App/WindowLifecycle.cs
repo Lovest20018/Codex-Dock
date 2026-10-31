@@ -32,7 +32,11 @@ public partial class MainWindow
         var manager = MobileManager();
         async Task<bool?> MobileRunning()
         {
-            try { return await manager.StatusAsync(lifetime.Token) is not null; }
+            try
+            {
+                if (await manager.StatusAsync(lifetime.Token) is not null) return true;
+                return manager.Load() is { } config ? await UnresponsiveGatewayStateAsync(config.ControlPort, lifetime.Token) : false;
+            }
             catch { return null; }
         }
         async Task<bool?> ModelRunning()
@@ -40,7 +44,10 @@ public partial class MainWindow
             try
             {
                 var saved = await Task.Run(() => store.Load(expectedHome), lifetime.Token);
-                return saved.Bridge is { } bytes && await BridgeProcess.StatusAsync(MixedConnection.Read(bytes), lifetime.Token) is not null;
+                if (saved.Bridge is not { } bytes) return false;
+                var connection = MixedConnection.Read(bytes);
+                if (await BridgeProcess.StatusAsync(connection, lifetime.Token) is { ProtocolVersion: ModelBridge.ProtocolVersion }) return true;
+                return await UnresponsiveGatewayStateAsync(connection.Port, lifetime.Token);
             }
             catch { return null; }
         }

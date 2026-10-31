@@ -48,6 +48,8 @@ public partial class MainWindow
             var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
             var config = await fixtureManager.SaveAsync("https://phone.example.com", "tester", "fake-tray-mobile-password", port);
             await fixtureManager.StartAsync();
+            await fixture.RefreshGatewaySummaryAsync();
+            Assert(fixture.MobileGatewaySummary.Content.ToString()!.Contains("运行中") && fixture.ModelGatewaySummary.Content.ToString()!.Contains("已停止"), "Persistent header shows mobile and model states separately");
             fixture.InitializeTray(); await fixture.tray!.RefreshGatewayActionsAsync();
             Assert(fixture.tray.StopMobileItem.Enabled && !fixture.tray.StopModelItem.Enabled, "Tray shows the running mobile gateway independently");
             fixture.ModelBox.Text = "unsaved-mobile-tray-model";
@@ -56,7 +58,13 @@ public partial class MainWindow
             Assert(!fixture.tray.GatewayActionInProgress && !fixture.IsVisible && fixture.Dirty && fixture.ModelBox.Text == "unsaved-mobile-tray-model" &&
                 await fixtureManager.StatusAsync() is null && !fixture.tray.StopMobileItem.Enabled && fixtureManager.Load() == config && before.SameContents(store.Load(home)),
                 "Tray stops the actual mobile worker while hidden and preserves drafts, credentials and configuration");
-            checks.AddRange(["Tray reports mobile gateway independently", "Tray stops mobile worker while hidden without changing credentials or drafts"]);
+            await fixture.RefreshGatewaySummaryAsync();
+            Assert(fixture.MobileGatewaySummary.Content.ToString()!.Contains("已停止"), "Header updates after stopping mobile worker");
+            using var occupied = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, config.ControlPort); occupied.Start();
+            await fixture.RefreshGatewaySummaryAsync();
+            Assert(fixture.MobileGatewaySummary.Content.ToString()!.Contains("未确认") && await fixtureManager.StatusAsync() is null, "A listening port without authenticated health is unknown and refresh never starts a worker");
+            occupied.Stop();
+            checks.AddRange(["Tray reports mobile gateway independently", "Tray stops mobile worker while hidden without changing credentials or drafts", "Persistent header reports running, stopped and unknown gateways using read-only probes"]);
         }
         finally
         {

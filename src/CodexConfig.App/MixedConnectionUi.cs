@@ -128,7 +128,7 @@ public partial class MainWindow
         {
             if (!closing && home == expectedHome) { gatewayStatus = null; GatewayStatusText.Text = "网关未能运行，请检查端口占用，或点击启动重试。"; }
         }
-        finally { gatewayPolling = false; if (!closing) RefreshMixedUi(); }
+        finally { gatewayPolling = false; if (!closing) { RefreshMixedUi(); await RefreshGatewaySummaryAsync(); } }
     }
     private async void StartGatewayClicked(object sender, RoutedEventArgs e)
     {

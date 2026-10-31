@@ -25,6 +25,7 @@ internal static class ThemeManager
             ["Canvas"] = dark ? "#171B22" : "#F5F7FB", ["Sidebar"] = dark ? "#1C212A" : "#FFFFFF",
             ["Surface"] = dark ? "#202630" : "#FFFFFF", ["Success"] = dark ? "#89D7B4" : "#267252",
             ["SuccessSoft"] = dark ? "#243E36" : "#E8F5EE",
+            ["Warning"] = dark ? "#F2C278" : "#8A570C",
             ["Field"] = dark ? "#202225" : "#FFFFFF", ["Hover"] = dark ? "#2B2E34" : "#EDF0F4",
             ["Error"] = dark ? "#FF9C9C" : "#B53636", ["Code"] = dark ? "#191B1E" : "#F6F7F9",
             ["ScrollThumbBrush"] = dark ? "#616875" : "#BFC5CE"

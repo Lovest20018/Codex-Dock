@@ -91,11 +91,14 @@ class CodexHandler(Handler):
             return self.output(200, page, 'text/html; charset=utf-8')
         if (path == '/harness' or path.startswith('/harness/')
                 or path.startswith('/api/desktop-sessions/')
-                or path.startswith('/api/clients/claude') or path == '/api/harness'):
+                or path.startswith('/api/clients/claude') or path == '/api/harness'
+                or path == '/api/accounts/desktop-update'
+                or path == '/api/network-adaptation'
+                or path == '/api/mobile/update' or path.startswith('/api/mobile/update/')):
             self.check_request(write)
             if not self.authorized(write):
                 return
-            return self.output(404, {'error': '此网关仅提供 Codex 接入'})
+            return self.output(404, {'error': '此功能不在 Codex Dock 手机网关中提供'})
         return super()._handle_method(write)
 
 

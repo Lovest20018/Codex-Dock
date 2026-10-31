@@ -39,6 +39,8 @@ async function start(){
   accounts=new AccountsPanel({root:document.getElementById('accounts'),desktop:true,read:()=>call('accounts',{action:'list'}),request:value=>call('accounts',value),onUpdate:currentAccess});
   cli=new CliAccessPanel({root:document.getElementById('cli'),provider:'codex',read:()=>call('cliAccess',{action:'list'}),request:value=>call('cliAccess',value),onChanged:()=>{tab('saved');accounts.refresh();}});
   accounts.refreshButton.hidden=true;
+  accounts.updates.hidden=true;
+  const toolsTitle=accounts.tools.querySelector('summary');toolsTitle.textContent='提醒设置';toolsTitle.removeAttribute('data-i18n');
   for(const child of [...cli.root.children])if(child.tagName==='H2'||child.tagName==='BUTTON'&&child!==cli.native)child.hidden=true;
   document.getElementById('cli-rows').append(cli.rows,cli.native);
   document.getElementById('cli-feedback').append(cli.status,cli.error);
