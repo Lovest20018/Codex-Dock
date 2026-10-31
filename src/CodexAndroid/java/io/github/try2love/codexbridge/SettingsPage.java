@@ -30,9 +30,10 @@ final class SettingsPage extends Dialog implements SharedPreferences.OnSharedPre
  private Bitmap previousFrame;
  private BitmapDrawable previousDrawable;
  private ValueAnimator pageAnimator,themeAnimator;
- private final Runnable refreshStatus=new Runnable(){public void run(){if(isShowing()){refresh();handler.postDelayed(this,3000);}}};
+ private final Runnable refreshStatus=new Runnable(){public void run(){if(embedded||isShowing()){refresh();handler.postDelayed(this,3000);}}};
  private String signature="";
  private SettingsMotion.Sheet themePicker;
+ private boolean embedded;
  SettingsPage(MainActivity owner,int position){this(owner,position,true,null);}
  SettingsPage(MainActivity owner,int position,boolean entering){this(owner,position,entering,null);}
  private SettingsPage(MainActivity owner,int position,boolean entering,Bitmap previousFrame){
@@ -51,6 +52,9 @@ final class SettingsPage extends Dialog implements SharedPreferences.OnSharedPre
   LinearLayout app=ui.section(body,"应用");themeRow(app);
   ui.action(app,"当前版本",owner.appVersion(),()->new AlertDialog.Builder(getContext()).setTitle("Lovest Code").setMessage(ui.L("独立安卓客户端")+" · "+owner.appVersion()+"\n"+ui.L("连接 Windows Dock，继续使用 Codex 聊天、文件与终端。")).setPositiveButton(ui.L("关闭"),null).show());
   ui.action(app,"版本与更新","Lovest Code",owner::openDockReleases);
+  ui.action(app,"语言",prefs.getString("language",java.util.Locale.getDefault().getLanguage()).startsWith("en")?"English":"简体中文",owner::languagePicker);
+  ui.action(app,"外观与阅读","",()->owner.webSettings("appearance"));
+  ui.action(app,"当前电脑的聊天提醒规则",owner.currentComputerName(),()->owner.webSettings("notifications"));
   screen=new FrameLayout(getContext());screen.addView(content,new FrameLayout.LayoutParams(-1,-1));setContentView(screen);
   getWindow().setBackgroundDrawableResource(android.R.color.transparent);getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);getWindow().setWindowAnimations(0);getWindow().getDecorView().setPadding(0,0,0,0);
   new SystemBars(getWindow(),screen,()->{}).update(ui.surface,ui.page);
@@ -59,6 +63,9 @@ final class SettingsPage extends Dialog implements SharedPreferences.OnSharedPre
   });
  }
  int scrollPosition(){return scroll.getScrollY();}
+ View embeddedView(){embedded=true;ViewGroup parent=(ViewGroup)screen.getParent();if(parent!=null)parent.removeView(screen);((ViewGroup)screen.getChildAt(0)).getChildAt(0).setVisibility(View.GONE);return screen;}
+ void startEmbedded(){prefs.registerOnSharedPreferenceChangeListener(this);handler.post(refreshStatus);}
+ void stopEmbedded(){if(themePicker!=null)themePicker.dismiss();prefs.unregisterOnSharedPreferenceChangeListener(this);handler.removeCallbacksAndMessages(null);}
  boolean isClosing(){return closing;}
  SettingsPage replacement(){Bitmap frame=ui.page==new SettingsUi(SettingsUi.themed(owner)).page?null:SettingsMotion.capture(screen);return new SettingsPage(owner,scrollPosition(),false,frame);}
  private void appear(){
@@ -81,7 +88,7 @@ final class SettingsPage extends Dialog implements SharedPreferences.OnSharedPre
  @Override protected void onStart(){super.onStart();prefs.registerOnSharedPreferenceChangeListener(this);handler.post(refreshStatus);}
  @Override protected void onStop(){prefs.unregisterOnSharedPreferenceChangeListener(this);handler.removeCallbacksAndMessages(null);if(pageAnimator!=null){pageAnimator.cancel();pageAnimator=null;}releaseFrame();TransitionManager.endTransitions(body);if(themePicker!=null)themePicker.dismiss();super.onStop();}
  @Override public void onSharedPreferenceChanged(SharedPreferences preferences,String key){
-  if("settingsTheme".equals(key)){owner.reopenSettings(this);return;}
+  if("settingsTheme".equals(key)){if(!embedded)owner.reopenSettings(this);return;}
   if("alerts".equals(key)||"backgroundNotifications".equals(key))refresh(true);
  }
  void refresh(){refresh(false);}

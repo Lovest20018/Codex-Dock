@@ -106,6 +106,7 @@ def build():
         assets = []
         for directory in (UPSTREAM / 'mobile/shared/web', UPSTREAM / 'mobile/android/assets'):
             assets += [(p, 'assets/' + p.name) for p in sorted(directory.glob('*.js'))]
+        assets += [(p, 'assets/' + p.name) for p in sorted((SOURCE / 'assets').glob('*.js'))]
         assets += [(UPSTREAM / 'web/client-icons/codex.png', 'assets/codex.png'),
                    (UPSTREAM / 'mobile/NOTICE.md', 'assets/UPSTREAM-NOTICE.md'),
                    (UPSTREAM / 'LICENSE', 'assets/UPSTREAM-LICENSE.txt'),

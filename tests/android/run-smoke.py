@@ -73,8 +73,20 @@ try:
     endpoint = json.loads(line[0])
     port = str(endpoint['port'])
     adb('reverse', 'tcp:' + port, 'tcp:' + port)
-    adb('install', '-r', args.apk.resolve())
+    previous = ROOT / 'artifacts/LovestCode-Android-0.1.1.apk'
     adb('install', '-r', out / 'test.apk')
+    # Downgrading only this disposable emulator is necessary on repeated QA runs.
+    if previous.exists():
+        if adb('shell', 'pm', 'path', 'io.github.lovest20018.codexdock', capture=True).strip():
+            adb('uninstall', 'io.github.lovest20018.codexdock')
+        adb('install', previous)
+        seeded = adb('shell', 'am', 'instrument', '-w', '-e', 'mode', 'seed', 'io.github.lovest20018.codexdock.test/io.github.lovest20018.codexdock.test.AndroidSmoke', capture=True)
+        assert 'SEEDED' in seeded
+    adb('install', '-r', args.apk.resolve())
+    if previous.exists():
+        upgraded = adb('shell', 'am', 'instrument', '-w', '-e', 'mode', 'upgrade', 'io.github.lovest20018.codexdock.test/io.github.lovest20018.codexdock.test.AndroidSmoke', capture=True)
+        assert 'UPGRADE_PASS' in upgraded
+
     adb('shell', 'pm', 'grant', 'io.github.lovest20018.codexdock', 'android.permission.POST_NOTIFICATIONS')
     result = adb('shell', 'am', 'instrument', '-w', '-r', '-e', 'base', endpoint['url'], 'io.github.lovest20018.codexdock.test/io.github.lovest20018.codexdock.test.AndroidSmoke', capture=True)
     (out / 'instrumentation.txt').write_text(result, encoding='utf-8')
@@ -86,6 +98,7 @@ try:
     data = json.loads(report[1])
     assert data['status'] == 'PASS'
     data['apk'] = args.apk.name
+    data['upgradeFrom011'] = previous.exists()
     (out / 'report.json').write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 finally:
     if 'port' in locals():
