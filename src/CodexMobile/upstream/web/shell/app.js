@@ -167,7 +167,7 @@ function renderLoginStatus(status=loginStatus){
   $('login-attempts').textContent=loginStatus.blocked?t('此 IP 已被封禁，请在电脑网关 App 的“登录设备”中解除。'):t('剩余尝试次数：')+loginStatus.attemptsRemaining+'/'+loginStatus.attemptLimit+t('；连续输错 5 次将封禁此 IP。');
   $('login-button').disabled=loginStatus.blocked;
 }
-function clearCodexProvisionalDrafts(){codexProvisionalDrafts.clear();for(let i=sessionStorage.length-1;i>=0;i--){const key=sessionStorage.key(i);if(key?.startsWith('draft:')||key?.startsWith('skills:'))sessionStorage.removeItem(key);}}
+function clearCodexProvisionalDrafts(){if(composerDrafts)composerDrafts.provisionalSend=null;codexProvisionalDrafts.clear();for(let i=sessionStorage.length-1;i>=0;i--){const key=sessionStorage.key(i);if(key?.startsWith('draft:')||key?.startsWith('skills:'))sessionStorage.removeItem(key);}}
 function clearQuoteComposer(){if(typeof codexQuotes!=='undefined')codexQuotes?.reset();}
 function showLogin(passwordless=false,status){sessionPins.suspend();clearQuoteComposer();if(typeof ChatTimeline!=='undefined')ChatTimeline.clearCache?.();draftGateway='';codexDraftScope=null;clearCodexProvisionalDrafts();codexActiveAccountId=undefined;window.BridgeDownloads?.clear();$('mobile-binding-status').hidden=true;if(typeof codexCliAccessPanel!=='undefined')codexCliAccessPanel?.clear();claudeCliAccessPanel?.clear();if(window.BridgeSharedRelay){location.replace((window.BridgeRelayBase||'')+'/relay/');return;}desktopSessions.clear();clientNavigation.clear?.();modelCatalogGeneration++;modelCatalogs.clear();catalogData.models=null;catalogResults.models=null;catalogTasks.models=null;workbench.reset();if(typeof accountsPanel!=='undefined')accountsPanel?.clear();chatTimeline?.dispose();chatTimeline=null;document.querySelectorAll('dialog[open]').forEach(d=>d.close());$('app').hidden=true;$('login').hidden=false;$('credentials').hidden=passwordless;$('noauth').hidden=!passwordless;$('username').required=!passwordless;$('password').value='';$('remember-login').parentElement.hidden=passwordless||BridgeHost.isNativeApp();$('login-attempts').hidden=passwordless;renderLoginStatus(status);if(window.BridgeBootstrap)window.BridgeBootstrap.ready();else $('bootstrap-status').hidden=true;}
 async function start(pairingToken=null){
@@ -690,7 +690,10 @@ function messageManagementTarget(){
 }
 function messageManagementChanged(recovery){
   if(currentId&&clientNavigation.provider==='codex'){
-    const cleared=recovery?.clearedDraft;
+    const submission=composerDrafts.provisionalSend;
+    const recovered=submission?.promoted&&composerDrafts.key(submission.promoted.scope)===composerDrafts.key(codexDraftScope)&&recovery?.resolved?.some(row=>row.id===submission.id&&['accepted','queued'].includes(row.status));
+    if(recovered)submission.confirmed=true;
+    const cleared=recovery?.clearedDraft||(recovered?composerDrafts.clearPromoted(submission):null);
     if(cleared&&composerDrafts.key(cleared.scope)===composerDrafts.key(codexDraftScope)&&!composerDrafts.load(codexDraftScope)&&
        $('message').value===cleared.draft.text&&JSON.stringify(codexQuotes?.quotes||[])===JSON.stringify(cleared.draft.quotes||[])){
       restoringComposer=true;$('message').value='';codexQuotes?.reset();selectedSkills.clear();renderSkillPills();restoringComposer=false;
@@ -771,6 +774,8 @@ window.BridgeImageViewer?.configureComposer({
 function saveDraft(){
   if(!currentId||restoringComposer)return null;
   const fields={quotes:codexQuotes?.quotes.map(quote=>({...quote}))||[],text:$('message').value,selectionStart:$('message').selectionStart,selectionEnd:$('message').selectionEnd,sendMode:$('send-mode').value,workMode:workModes.selection||$('work-mode').value,skills:[...selectedSkills]};
+  const previous=codexProvisionalDrafts.get(chatKey());
+  fields.revision=(previous?.revision||0)+(composerDrafts?.sameContent(fields,previous)?0:1);
   if(!codexDraftScope||!composerDrafts){if(draftGateway&&composerDrafts){if(codexDraftTouched)codexProvisionalDrafts.set(chatKey(),{gateway:draftGateway,account:'',...fields});}else sessionStorage.setItem('draft:'+chatKey(),fields.text);return null;}
   const saved=composerDrafts.save(codexDraftScope,fields);
   if(saved){codexProvisionalDrafts.delete(chatKey());sessionStorage.removeItem('draft:'+chatKey());sessionStorage.removeItem('skills:'+chatKey());}
@@ -803,6 +808,13 @@ function bindCodexDraft(view){
   if(pending&&(pending.gateway!==draftGateway||pending.account&&pending.account!==account)){codexProvisionalDrafts.delete(chatKey());sessionStorage.removeItem('draft:'+chatKey());sessionStorage.removeItem('skills:'+chatKey());}
   const provisional=codexProvisionalDrafts.get(chatKey());
   const promoted=provisional&&composerDrafts.save(scope,provisional);
+  // Bind only the first verified identity observed by this in-flight send.
+  // Keep request IDs in their original temporary store; never replay them.
+  const submission=composerDrafts.provisionalSend;
+  if(submission&&!submission.identityBound&&submission.gateway===draftGateway&&submission.key===chatKey()){
+    submission.identityBound=true;
+    if(promoted&&provisional.revision===submission.draft?.revision&&composerDrafts.sameContent(promoted,submission.draft))submission.promoted={scope:{...scope},revision:promoted.revision,draft:promoted};
+  }
   if(promoted){codexProvisionalDrafts.delete(chatKey());sessionStorage.removeItem('draft:'+chatKey());sessionStorage.removeItem('skills:'+chatKey());}
   const stored=composerDrafts.load(scope)||composerDrafts.importDock(scope,text=>window.confirm(t('是否把旧版 Dock 草稿导入当前 Codex 账号？导入不会发送消息；请先核对原聊天结果。')+'\n\n'+text.slice(0,160)));
   const legacy=(stored||provisional||window.BridgeSharedRelay)?null:composerDrafts.migrate(scope,sessionStorage,{text:'draft:'+chatKey(),skills:'skills:'+chatKey()});
@@ -1065,35 +1077,43 @@ $('composer').onsubmit=async event=>{
   const mode=$('send-mode').value,workMode=workModes.value(mode);
   if(workMode==='goal'&&submittedAttachmentIds.length){$('send-error').textContent=t('目标模式暂不支持附件');return;}
   if(invalidSkills.size){$('send-error').textContent=t('已选 Skill 已失效，请刷新列表后重新选择');return;}
-  const skills=[...selectedSkills].sort(),scope=codexDraftScope;
+  const skills=[...selectedSkills].sort(),scope=codexDraftScope,submittedGateway=draftGateway;
   const body={text,mode,skills,workMode,attachments:attachmentIds,uiLocale:BridgeI18n.locale()};if(references.length)body.references=references;
   const revision=saveDraft()?.revision,submittedProvisional=codexProvisionalDrafts.get(chatKey());
+  const provisionalSend=!scope?{key:chatKey(),gateway:draftGateway,draft:submittedProvisional,body}:null;
   const submittedKey=chatKey(),legacyKey='pending:'+submittedKey;let legacy=composerDrafts.temporaryPending.get(legacyKey);try{legacy=JSON.parse(sessionStorage.getItem(legacyKey))||legacy;}catch{}
   const matchingLegacy=legacy?.id&&legacy.gateway===draftGateway&&legacy.target===submittedKey&&(!legacy.account||legacy.account===scope?.account);
   const sameLegacy=matchingLegacy&&['text','mode','workMode','skills','attachments','references','uiLocale'].every(field=>JSON.stringify(legacy[field])===JSON.stringify(body[field]));
   const attempt=uuid(),target=currentId,targetHost=currentHost;
   let pending,usedDurable=false;
   sending=true;
+  composerDrafts.provisionalSend=provisionalSend;
   try{
     if(matchingLegacy&&legacy.text===body.text&&!sameLegacy){$('send-error').textContent=t('上次发送结果尚未确认，请检查聊天记录或先处理未确认记录。');renderQueue(state?.submissions||[]);messageManagement?.reconcile();return;}
     if(scope&&composerDrafts){pending=await composerDrafts.beginSend(scope,body,sameLegacy?legacy.id:uuid(),attempt,!!sameLegacy);usedDurable=!!pending;if(!pending&&composerDrafts.pendingSend(scope)){pending={blocked:true};}if(usedDurable&&sameLegacy&&!pending.blocked){composerDrafts.temporaryPending.delete(legacyKey);try{sessionStorage.removeItem(legacyKey);}catch{}}}
     if(pending?.blocked){$('send-error').textContent=t('上次发送结果尚未确认，请检查聊天记录或先处理未确认记录。');renderQueue(state?.submissions||[]);messageManagement?.reconcile();return;}
     if(!pending){pending=sameLegacy?legacy:{id:uuid(),gateway:draftGateway,target:submittedKey,account:scope?.account||'',...body};
       pending={...pending,attempts:[...(sameLegacy&&Array.isArray(legacy.attempts)?legacy.attempts:[]),attempt],untracked:!!(sameLegacy&&(legacy.untracked||!Array.isArray(legacy.attempts)))};composerDrafts.temporaryPending.set(legacyKey,pending);try{sessionStorage.setItem(legacyKey,JSON.stringify(pending));}catch{} }
+    if(provisionalSend)provisionalSend.id=pending.id;
     attachments.setLocked(true);workModes.render(state,mode,true);$('send').disabled=true;$('send-error').textContent='';
     const result=await api(sessionUrl(target,'send',targetHost),{...body,id:pending.id});
     if(result.status==='ignored')throw Error(t('这条未确认记录已忽略，请刷新后重新编辑消息。'));
     if(result.status==='unknown')throw Error(t('消息可能已送达，请检查聊天记录。再次点击不会重复提交。'));
     bumpRecency(target,targetHost);
-    const sameRevision=usedDurable?composerDrafts.load(scope)?.revision===revision:$('message').value===rawText&&JSON.stringify(codexQuotes?.quotes||[])===submittedQuotes;
+    const settledScope=scope||provisionalSend?.promoted?.scope||null;
+    const currentProvisional=codexProvisionalDrafts.get(chatKey(target,targetHost));
+    const sameProvisional=submittedProvisional&&currentProvisional?.gateway===submittedProvisional.gateway&&currentProvisional.account===submittedProvisional.account&&currentProvisional.revision===submittedProvisional.revision&&composerDrafts.sameContent(currentProvisional,submittedProvisional);
+    const sameRevision=usedDurable?composerDrafts.load(scope)?.revision===revision:provisionalSend?.promoted?!provisionalSend.promoted.cleared&&composerDrafts.load(settledScope)?.revision===provisionalSend.promoted.revision:submittedProvisional?sameProvisional:$('message').value===rawText&&JSON.stringify(codexQuotes?.quotes||[])===submittedQuotes;
     let confirmed=usedDurable?await composerDrafts.settleSend(scope,pending.id,attempt,'confirm',revision):false;
     if(!usedDurable){let saved=composerDrafts.temporaryPending.get(legacyKey);try{saved=JSON.parse(sessionStorage.getItem(legacyKey))||saved;}catch{}confirmed=saved?.id===pending.id&&saved.attempts?.includes(attempt);if(confirmed){composerDrafts.temporaryPending.delete(legacyKey);try{sessionStorage.removeItem(legacyKey);}catch{}}}
-    if(confirmed&&submittedProvisional&&JSON.stringify(codexProvisionalDrafts.get(chatKey(target,targetHost)))===JSON.stringify(submittedProvisional)){codexProvisionalDrafts.delete(chatKey(target,targetHost));try{sessionStorage.removeItem('draft:'+chatKey(target,targetHost));sessionStorage.removeItem('skills:'+chatKey(target,targetHost));}catch{}}
+    confirmed=confirmed||!!provisionalSend?.confirmed;
+    if(confirmed)composerDrafts.clearPromoted(provisionalSend);
+    if(confirmed&&sameProvisional){codexProvisionalDrafts.delete(chatKey(target,targetHost));try{sessionStorage.removeItem('draft:'+chatKey(target,targetHost));sessionStorage.removeItem('skills:'+chatKey(target,targetHost));}catch{}}
     if(confirmed)attachments.clear(chatKey(target,targetHost),submittedAttachmentIds);
     if(confirmed&&sameRevision&&$('message').value===rawText&&JSON.stringify(codexQuotes?.quotes||[])===submittedQuotes){
       if(!usedDurable)try{sessionStorage.removeItem('draft:'+chatKey(target,targetHost));}catch{}
       workModes.submitted(chatKey(target,targetHost),workMode);
-      if(currentId===target&&currentHost===targetHost&&composerDrafts.key(codexDraftScope)===composerDrafts.key(scope)){
+      if(currentId===target&&currentHost===targetHost&&draftGateway===submittedGateway&&composerDrafts.key(codexDraftScope)===composerDrafts.key(settledScope)){
         restoringComposer=true;$('message').value='';codexQuotes?.reset();selectedSkills.clear();renderSkillPills();restoringComposer=false;
         window.BridgePresentation?.resizeMessage();
       }
@@ -1109,7 +1129,7 @@ $('composer').onsubmit=async event=>{
     if(currentId===target&&currentHost===targetHost){$('send-error').textContent=t(error.message);window.BridgePresentation?.showError();}
     if(error.code!=='send_not_submitted'&&currentId===target&&currentHost===targetHost)await messageManagement?.reconcile();
   }
-  finally{sending=false;attachments.setLocked(false);workModes.render(state,$('send-mode').value,false);$('send').disabled=!state||state.loadingHistory||state.activating||!attachments.ready()||!currentAccess().canSend;}
+  finally{if(composerDrafts.provisionalSend===provisionalSend)composerDrafts.provisionalSend=null;sending=false;attachments.setLocked(false);workModes.render(state,$('send-mode').value,false);$('send').disabled=!state||state.loadingHistory||state.activating||!attachments.ready()||!currentAccess().canSend;}
 };
 $('message').onkeydown=event=>{if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)){event.preventDefault();$('composer').requestSubmit();}};
 $('stop').onclick=async()=>{if(!currentAccess().canInterrupt)return;try{await api(sessionUrl(currentId,'stop'),{});toast('已请求停止');}catch(e){toast(e.message);}};

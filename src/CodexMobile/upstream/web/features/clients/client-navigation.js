@@ -66,7 +66,7 @@ class ClientNavigation {
     document.querySelector('#chat .chat-info').before(this.icon('codex'));
     new MutationObserver(()=>document.body.classList.toggle('gateway-authenticated',!document.getElementById('app').hidden)).observe(document.getElementById('app'),{attributes:true,attributeFilter:['hidden']});
     document.addEventListener('bridge-language',()=>{this.paint();BridgeI18n.apply();});
-    document.addEventListener('visibilitychange',()=>{if(!document.hidden)this.refresh();});
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)this.poll();});
     this.timer=setInterval(()=>this.poll(),15000);this.connectingTimer=setInterval(()=>this.poll(true),2000);this.paint();
   }
   syncHome(){this.home.hidden=!BridgeHost.hasNativeLayout();}
@@ -196,14 +196,15 @@ class ClientNavigation {
     else{if(id&&this.view.previewOnly)this.view.confirmCachedList();this.paint();}
     this.onClientStates?.(this.clients);
   }
-  async refresh(){
+  async refresh({background=false}={}){
     if(this.loading||this.pending.size||this.choosing||document.getElementById('app').hidden)return;
+    if(background&&Date.now()<(this.statusRetryAt||0))return;
     this.loading=true;const revision=this.revision;
-    try{const data=await ClientLifecycle.request(signal=>this.request('/api/clients',undefined,signal),{timeout:this.statusTimeout??10000,uncertain:false,message:'客户端状态读取超时，请重试。'});if(revision===this.revision){this.statusPending=data.pending===true;if(data.refreshError)throw Error(data.refreshError);if(!this.statusPending){ClientLifecycle.reconcile(this.operationFailures,this.managementClients(data.clients));this.applyClients(data);}}}
-    catch(error){this.notify(error.message);}finally{this.loading=false;this.paint();}
+    try{const data=await ClientLifecycle.request(signal=>this.request('/api/clients',undefined,signal),{timeout:this.statusTimeout??10000,uncertain:false,message:'客户端状态读取超时，请重试。'});if(revision===this.revision){this.statusPending=data.pending===true;if(data.refreshError)throw Error(data.refreshError);this.statusFailure='';this.statusFailures=0;this.statusRetryAt=0;if(!this.statusPending){ClientLifecycle.reconcile(this.operationFailures,this.managementClients(data.clients));this.applyClients(data);}}}
+    catch(error){if(revision===this.revision&&!document.getElementById('app').hidden){const previous=this.statusFailure;this.statusFailure=error.message;this.statusFailures=(this.statusFailures||0)+1;this.statusRetryAt=Date.now()+Math.min(60000,15000*2**Math.min(this.statusFailures-1,2));if(!background||previous!==error.message)this.notify(error.message);}}finally{this.loading=false;this.paint();}
     if(this.clientsKnown&&this.pendingChatLink&&!document.getElementById('app').hidden){const {hash,openCodex}=this.pendingChatLink;this.pendingChatLink=null;try{await this.openChatLink(hash,openCodex);}catch(error){this.notify(error.message);}}
   }
-  clear(){this.revision++;this.clients=[];this.clientsKnown=false;this.enabledClients=null;this.pendingChatLink=null;this.choosing=null;this.pending.clear();this.operationFailures?.clear();this.swipeSnapshots.clear();}
+  clear(){this.revision++;this.statusFailure='';this.statusFailures=0;this.statusRetryAt=0;this.statusPending=false;this.clients=[];this.clientsKnown=false;this.enabledClients=null;this.pendingChatLink=null;this.choosing=null;this.pending.clear();this.operationFailures?.clear();this.swipeSnapshots.clear();}
   async scanWsl(button){
     if(this.pending.size||this.choosing||this.hasUncertain())return;
     this.choosing='scan-wsl';const revision=++this.revision;button.disabled=true;this.paint();
@@ -213,7 +214,7 @@ class ClientNavigation {
   }
   poll(fast=false){
     if(document.hidden||document.getElementById('app').hidden||this.hasUncertain()||(fast&&!this.statusPending&&!this.managementClients().some(client=>ClientLifecycle.connection(client).waiting)))return;
-    return this.refresh();
+    return this.refresh({background:true});
   }
   connection(client){return ClientLifecycle.connection({...client,pendingEnable:this.gatewayRunning!==false&&this.pending.has(client.id)&&client.enabled});}
   managementClients(clients=this.clients){return clients.flatMap(client=>client.id==='codex'&&client.entries?.length?client.entries.map(entry=>({...entry,id:entry.id==='desktop'?'codex':entry.id,parentId:'codex'})):client.id==='claude'&&client.entries?.length?[{...client,enabled:client.nativeEnabled??client.enabled,parentId:'claude'},...client.entries.map(entry=>({...entry,parentId:'claude'}))]:[client]);}
@@ -323,6 +324,8 @@ class ClientNavigation {
     const manager=this.manager;if(!manager?.dialog.open)return;
     this.renderNetworkAdaptation();
     const {list,note}=manager;list.replaceChildren();
+    if(manager.status){manager.status.textContent=BridgeI18n.t(this.statusFailure||'');manager.status.hidden=!this.statusFailure;}
+    if(manager.retry){manager.retry.hidden=!this.statusFailure;manager.retry.disabled=!!this.loading||this.pending.size>0||!!this.choosing;}
     const groups=new Map();
     for(const client of this.managementClients()){
       let parent=list;if(client.parentId){if(!groups.has(client.parentId)){const group=document.createElement('section'),title=document.createElement('h3'),name=client.parentId==='codex'?'Codex':'Claude';group.className='client-management-group';group.setAttribute('aria-label',name);title.textContent=name;group.append(title);list.append(group);groups.set(client.parentId,group);}parent=groups.get(client.parentId);}
@@ -345,9 +348,9 @@ class ClientNavigation {
   }
   openManager(){
     if(this.manager?.dialog.open)return;
-    const dialog=this.view.dialog('应用管理'),list=document.createElement('div'),note=document.createElement('p');note.className='muted';
+    const dialog=this.view.dialog('应用管理'),list=document.createElement('div'),note=document.createElement('p'),status=document.createElement('p'),retry=document.createElement('button');note.className='muted';status.className='muted';status.setAttribute('role','status');retry.type='button';retry.textContent=BridgeI18n.t('刷新状态');retry.onclick=()=>this.refresh();
     if(this.wslSupported){const scan=document.createElement('button');scan.type='button';scan.textContent=BridgeI18n.t('扫描 WSL 应用');scan.onclick=()=>this.scanWsl(scan);dialog.append(scan);}
-    const title=dialog.querySelector('.picker-head h2');title.classList.add('dialog-content-start');title.tabIndex=-1;title.autofocus=true;dialog.append(list,note);this.manager={dialog,list,note};
+    const title=dialog.querySelector('.picker-head h2');title.classList.add('dialog-content-start');title.tabIndex=-1;title.autofocus=true;dialog.append(status,retry,list,note);this.manager={dialog,list,note,status,retry};
     this.createNetworkAdaptation();
     dialog.addEventListener('close',()=>{if(this.manager?.dialog===dialog)this.manager=null;});dialog.showModal();this.renderManager();this.refresh();this.readNetworkAdaptation();
   }

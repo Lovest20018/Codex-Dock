@@ -5,6 +5,7 @@ import json
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -110,6 +111,33 @@ class WorkbenchTests(unittest.TestCase):
             code, content, _ = self.request(path)
             self.assertEqual(code, 200, path)
             self.assertGreater(len(content), 100, path)
+
+    def test_client_status_reads_stay_responsive_during_native_inspection(self):
+        self.login()
+        manager = self.public.desktop_sessions
+        manager.client_cache = None
+        entered, release = threading.Event(), threading.Event()
+
+        def slow_inspection(refresh=False):
+            entered.set()
+            release.wait(3)
+            return {'clients': []}
+
+        with patch.object(manager, 'clients', side_effect=slow_inspection) as inspect:
+            try:
+                for _ in range(4):
+                    started = time.monotonic()
+                    code, value, _ = self.request('/api/clients')
+                    self.assertEqual(code, 200)
+                    self.assertTrue(value['pending'])
+                    self.assertLess(time.monotonic() - started, 0.5)
+                self.assertTrue(entered.wait(1))
+                self.assertEqual(inspect.call_count, 1)
+            finally:
+                release.set()
+                deadline = time.monotonic() + 2
+                while manager.client_refreshing and time.monotonic() < deadline:
+                    time.sleep(0.01)
 
     def test_public_host_origin_auth_and_local_control_boundaries(self):
         self.assertEqual(self.request('/api/accounts')[0], 401)

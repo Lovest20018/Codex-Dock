@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.14.0',
+    [string]$Version = '0.14.1',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )

@@ -61,3 +61,5 @@ pwsh -NoProfile -File scripts/verify-package.ps1
 每次冻结前 `scripts/verify-mobile-upstream.py` 校验原始快照与显式覆盖，禁止构建时自动接受散列变化。`freeze-mobile.py` 校验微软官方 ConPTY 锁定摘要、构建并自检原生 Codex 退出助手，收集远端注入源码与 certifi 证书。相关许可随运行时提供。
 
 `python -B tests/mobile/upstream_codex_regression.py` 按模块在独立解释器运行固定上游的 Codex 相关回归，保留原始断言。测试中的 WSL 发行版列表使用夹具，避免依赖本机 WSL 服务延迟；无 Windows 符号链接权限的用例明确跳过，目录 junction 边界另有原生测试。该入口不代替安卓真机、真实 SSH / WSL 或模型任务验收。
+
+0.14.1 的草稿与轮询决策见 [审查记录](review-0.14.1.md)。内容版本忽略光标位置；身份尚未核验的发送只记录本次首次提升的范围，不迁移未知请求。后台状态读取与显式刷新共用读取逻辑，后台失败退避并去重提醒，显式操作仍即时反馈。定向验证入口为 `node --test tests/mobile/dock-drafts.test.cjs tests/mobile/client-status.test.cjs` 和 `node tests/mobile/composer-send.browser.cjs`；后者实际运行生产 JS、延迟确认、身份变化和应用管理重试界面。

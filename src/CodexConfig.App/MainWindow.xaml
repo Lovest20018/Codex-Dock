@@ -52,7 +52,7 @@
           <StackPanel x:Name="NavigationFooter" Grid.Row="3">
             <Button Content="配置位置" Click="LocationClicked" Style="{StaticResource QuietButton}" HorizontalContentAlignment="Left" />
             <Button Content="使用说明" Click="HelpClicked" Style="{StaticResource QuietButton}" HorizontalContentAlignment="Left" />
-            <TextBlock Text="v0.14.0" Style="{StaticResource Helper}" Margin="14,6,0,0" FontSize="11" />
+            <TextBlock Text="v0.14.1" Style="{StaticResource Helper}" Margin="14,6,0,0" FontSize="11" />
           </StackPanel>
         </Grid>
       </Border>
