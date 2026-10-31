@@ -191,8 +191,9 @@ class Auth:
                 raise
 
     def permitted(self, address):
+        """Explicit IP policy applies to both existing sessions and new logins."""
         with self.lock:
-            return (address not in self.auto_blocks and address not in self.policy['blocklist'] and
+            return (address not in self.policy['blocklist'] and
                     (not self.policy['allowlistEnabled'] or address in self.policy['allowlist']))
 
     def client(self, peer, headers, secure=False):
@@ -219,7 +220,7 @@ class Auth:
 
     def login_status(self, address):
         with self.lock:
-            blocked = not self.permitted(address)
+            blocked = address in self.auto_blocks or not self.permitted(address)
             return {'attemptsRemaining': 0 if blocked else max(0, self.MAX_FAILURES - self.failures.get(address, 0)),
                     'attemptLimit': self.MAX_FAILURES, 'blocked': blocked}
 
@@ -230,8 +231,8 @@ class Auth:
         # Serialize validation and durable accounting: simultaneous requests must
         # not create extra password attempts or clear a newly applied block.
         with self.lock:
-            if not self.permitted(address):
-                raise LoginRejected('此 IP 已被封禁，请在电脑网关 App 的“登录设备”中解除。', self.login_status(address))
+            if self.login_status(address)['blocked']:
+                raise LoginRejected('此来源的新登录已被限制，请在电脑网关 App 的“登录设备”中解除。', self.login_status(address))
             if self.config.get('mode', 'password') != 'none':
                 digest = hashlib.pbkdf2_hmac('sha256', password.encode(), bytes.fromhex(self.config['salt']), self.config['iterations'], dklen=32)
                 valid = hmac.compare_digest(digest.hex(), self.config['hash']) and hmac.compare_digest(username.encode(), self.config['username'].encode())
@@ -241,9 +242,10 @@ class Auth:
                     if count >= self.MAX_FAILURES:
                         self.auto_blocks[address] = {'id': secrets.token_hex(16), 'ip': address,
                                                      'blockedAt': time.time(), 'attempts': count}
-                        self.sessions = {k: v for k, v in self.sessions.items() if v['ip'] != address}
+                        # A proxy/NAT address can represent many authenticated
+                        # devices. Failed logins must never revoke their cookies.
                     self.persist()
-                    message = ('此 IP 已被封禁，请在电脑网关 App 的“登录设备”中解除。'
+                    message = ('此来源的新登录已被限制，请在电脑网关 App 的“登录设备”中解除。'
                                if address in self.auto_blocks else '账号或密码不正确')
                     raise LoginRejected(message, self.login_status(address))
             self.failures.pop(address, None)
@@ -251,8 +253,8 @@ class Auth:
 
     def new_session(self, address='', user_agent='', client=None, remember=None):
         with self.lock:
-            if address and not self.permitted(address):
-                raise PermissionError('此 IP 已被访问规则禁止')
+            if address and self.login_status(address)['blocked']:
+                raise PermissionError('此来源的新登录已被限制')
             now = time.time()
             trusted = self.mobile_client(user_agent)
             hours = 0 if trusted else self.REMEMBER_HOURS if remember is True else self.hours

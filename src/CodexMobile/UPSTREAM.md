@@ -9,7 +9,9 @@ Selected modules from `try2love/codex-mobile-bridge`, commit
 
 The account-namespace helper `draft_identity` and image-signature helper `image_type`
 are isolated into `auth/identity.py` and `sessions/image_signatures.py`; two imports
-were changed accordingly. Other selected upstream modules are initially unchanged.
+were changed accordingly. Auth is adapted in Dock 0.13.3: failed-login source
+locks restrict new authentication without revoking existing sessions behind a
+shared proxy. Explicit IP policy and device revocation remain authoritative.
 Upstream copyright and license: `UPSTREAM-LICENSE`.
 
 `main.py`, `gateway.py`, `service.py` and `web/` are Dock's narrow integration.

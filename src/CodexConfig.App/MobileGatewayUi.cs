@@ -188,8 +188,8 @@ public partial class MainWindow
         {
             var ip = row.GetProperty("ip").GetString()!;
             var panel = new DockPanel { Margin = new(0, 6, 0, 8) };
-            var unblock = new Button { Content = "解除封禁", Margin = new(12, 0, 0, 0) }; DockPanel.SetDock(unblock, Dock.Right); panel.Children.Add(unblock);
-            panel.Children.Add(OverviewText($"{ip} · 多次登录失败，已封禁", "Muted", 13));
+            var unblock = new Button { Content = "解除登录限制", Margin = new(12, 0, 0, 0) }; DockPanel.SetDock(unblock, Dock.Right); panel.Children.Add(unblock);
+            panel.Children.Add(OverviewText($"{ip} · 多次登录失败，已限制新登录", "Muted", 13));
             unblock.Click += async (_, _) => await MobileActionAsync(async () => { using var result = await MobileManager().ControlAsync("devices", new { action = "unblock", ip }, lifetime.Token); await RefreshMobilePageAsync(); });
             mobileDevices.Children.Add(panel);
         }

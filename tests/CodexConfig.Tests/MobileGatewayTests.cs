@@ -83,7 +83,7 @@ public static class MobileGatewayTests
             await interrupted;
             Assert(manager.Load() == saved, "unavailable status preserves encrypted settings and identity");
         }));
-        tests.Add(("packaged mobile worker survives manager disposal, persists Android login and revokes devices", async () =>
+        tests.Add(("packaged mobile worker preserves Android login across source locks and restart, and revokes devices", async () =>
         {
             var executable = Path.GetFullPath("artifacts/mobile-worker/CodexDock.Mobile/CodexDock.Mobile.exe");
             if (!File.Exists(executable)) throw new FileNotFoundException("Build mobile worker before the full test suite.", executable);
@@ -98,7 +98,7 @@ public static class MobileGatewayTests
                 var replacement = new MobileGatewayManager(home, Path.Combine(root, "mobile-process-test"));
                 Assert(await replacement.StatusAsync(timeout.Token) is not null, "worker is independent of manager/UI lifetime");
                 using var client = new HttpClient(new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false, UseCookies = false }) { Timeout = TimeSpan.FromSeconds(10) };
-                async Task<(JsonDocument Data, string? Cookie)> Request(string path, object? body = null, string? cookie = null, string? csrf = null, string address = "127.0.0.1")
+                async Task<(JsonDocument Data, string? Cookie)> Request(string path, object? body = null, string? cookie = null, string? csrf = null, string address = "127.0.0.1", HttpStatusCode expected = HttpStatusCode.OK)
                 {
                     using var request = new HttpRequestMessage(body is null ? HttpMethod.Get : HttpMethod.Post, $"http://{address}:{saved.Port}" + path);
                     request.Headers.Host = "phone.example.com"; request.Headers.UserAgent.ParseAdd("BridgeMobile/2.1.7-Android");
@@ -109,7 +109,8 @@ public static class MobileGatewayTests
                         if (csrf is not null) request.Headers.TryAddWithoutValidation("X-CSRF-Token", csrf);
                         request.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
                     }
-                    using var response = await client.SendAsync(request, timeout.Token); response.EnsureSuccessStatusCode();
+                    using var response = await client.SendAsync(request, timeout.Token);
+                    Assert(response.StatusCode == expected, $"mobile {path} returned expected {expected}");
                     var result = JsonDocument.Parse(await response.Content.ReadAsByteArrayAsync(timeout.Token));
                     return (result, response.Headers.TryGetValues("Set-Cookie", out var cookies) ? cookies.First().Split(';')[0] : null);
                 }
@@ -161,6 +162,26 @@ public static class MobileGatewayTests
                 using (forbidden) using (var rejected = await client.SendAsync(forbidden, timeout.Token)) Assert(rejected.StatusCode == HttpStatusCode.Forbidden, "mapped access keeps Host validation");
                 saved = await manager.SaveAsync(saved.PublicUrl, "tester", "", saved.Port, timeout.Token);
                 Assert((await manager.StartAsync(timeout.Token, executable)).Protocol == MobileGatewayManager.Protocol, "saved settings restart without proxy configuration");
+                authorized = await Request("/api/auth", cookie: cookie);
+                using (authorized.Data) Assert(authorized.Data.RootElement.GetProperty("authenticated").GetBoolean(), "valid cookie returns to the shared source");
+                for (var attempt = 0; attempt < 5; attempt++)
+                {
+                    var failed = await Request("/api/login", new { username = "tester", password = "wrong" }, expected: HttpStatusCode.Unauthorized);
+                    failed.Data.Dispose();
+                }
+                var blockedLogin = await Request("/api/login", new { username = "tester", password = "isolated-test-password" }, expected: HttpStatusCode.Unauthorized);
+                using (blockedLogin.Data) Assert(blockedLogin.Data.RootElement.GetProperty("loginStatus").GetProperty("blocked").GetBoolean(), "new authentication remains limited");
+                await manager.StopAsync(timeout.Token);
+                await manager.StartAsync(timeout.Token, executable);
+                authorized = await Request("/api/auth", cookie: cookie);
+                using (authorized.Data)
+                {
+                    Assert(authorized.Data.RootElement.GetProperty("authenticated").GetBoolean(), "shared-source failures preserve the original Android cookie across worker restart");
+                    Assert(authorized.Data.RootElement.GetProperty("loginStatus").GetProperty("blocked").GetBoolean(), "source login limit persists across worker restart");
+                }
+                using (var unblocked = await manager.ControlAsync("devices", new { action = "unblock", ip = "127.0.0.1" }, timeout.Token)) { }
+                authorized = await Request("/api/auth", cookie: cookie);
+                using (authorized.Data) Assert(authorized.Data.RootElement.GetProperty("authenticated").GetBoolean(), "unblocking keeps the original cookie");
                 using var devices = await manager.ControlAsync("devices", new { action = "list" }, timeout.Token);
                 var id = devices.RootElement.GetProperty("sessions")[0].GetProperty("id").GetString();
                 using var revoked = await manager.ControlAsync("devices", new { action = "revoke", id }, timeout.Token);

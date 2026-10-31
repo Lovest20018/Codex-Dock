@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src' / 'CodexMobile'))
-from bridge.features.auth.auth import Auth, access_policy, session_hours
+from bridge.features.auth.auth import Auth, LoginRejected, access_policy, password_record, session_hours
 from bridge.features.auth.pairing import Pairing, phone_origin
 ROOT = Path(__file__).resolve().parents[2] / 'artifacts' / 'mobile-tests'
 ROOT.mkdir(parents=True, exist_ok=True)
@@ -113,6 +113,41 @@ class AuthTests(unittest.TestCase):
         self.assertIsNotNone(restarted.get(other))
         with self.assertRaises(PermissionError):
             restarted.login('', '', '192.0.2.7')
+
+    def test_shared_proxy_login_lock_preserves_sessions_and_explicit_policy_still_revokes(self):
+        self.config.update(mode='password', username='tester', **password_record('isolated-password'))
+        auth = self.auth()
+        address = '198.51.100.2'
+        client = {'ip': address, 'peer': address, 'source': 'proxy'}
+        phone, _ = auth.new_session(address, 'BridgeMobile/2.1.7-Android', client)
+        browser, _ = auth.new_session(address, 'Safari', client)
+        for _ in range(auth.MAX_FAILURES):
+            with self.assertRaises(LoginRejected):
+                auth.login('tester', 'wrong', address)
+        self.assertTrue(auth.login_status(address)['blocked'])
+        self.assertEqual(auth.login_status(address)['attemptsRemaining'], 0)
+        for token in (phone, browser):
+            self.assertIsNotNone(auth.get(token, client))
+        self.assertIsNone(auth.get('invalid-cookie', client))
+        # Correct credentials and pairing cannot create another session until
+        # desktop unblocks this login source; valid cookies need no new login.
+        with self.assertRaises(LoginRejected):
+            auth.login('tester', 'isolated-password', address)
+        with self.assertRaises(PermissionError):
+            auth.new_session(address)
+        restarted = self.auth()
+        restarted.manage({'action': 'save', 'policy': {}})
+        for token in (phone, browser):
+            self.assertIsNotNone(restarted.get(token, client))
+        self.assertTrue(restarted.login_status(address)['blocked'])
+        restarted.manage({'action': 'unblock', 'ip': address})
+        self.assertEqual(restarted.login_status(address)['attemptsRemaining'], auth.MAX_FAILURES)
+        restarted.manage({'action': 'revoke', 'id': auth.key(phone)})
+        self.assertIsNone(restarted.get(phone, client))
+        self.assertIsNotNone(restarted.get(browser, client))
+        restarted.manage({'action': 'block', 'id': auth.key(browser)})
+        self.assertIsNone(self.auth().get(browser, client))
+        self.assertFalse(self.auth().permitted(address))
 
     def test_allowlist_blacklist_priority_and_ipv6(self):
         auth = self.auth()

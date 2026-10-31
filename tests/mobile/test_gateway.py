@@ -163,6 +163,48 @@ class HTTPTests(unittest.TestCase):
         restarted = State(self.config, self.bridge, self.state.web_dir)
         self.assertEqual(restarted.auth.policy['trustedProxies'], [])
 
+    def test_shared_proxy_failed_logins_cannot_log_out_other_devices(self):
+        original_setup = PublicHandler.setup
+        peer = '198.51.100.2'
+        def setup(handler):
+            original_setup(handler)
+            handler.client_address = (peer, handler.client_address[1])
+        with patch.object(PublicHandler, 'setup', setup):
+            devices = []
+            for agent in (AGENT, 'Mozilla/5.0 Safari'):
+                code, body, headers = self.request('/api/login', {'username': 'tester', 'password': PASSWORD},
+                                                    headers={'User-Agent': agent})
+                self.assertEqual(code, 200)
+                devices.append((headers['Set-Cookie'].split(';')[0], body['csrf'], agent))
+            for number in range(5):
+                code, body, _ = self.request('/api/login', {'username': 'tester', 'password': 'wrong'},
+                                             headers={'X-Forwarded-For': f'192.0.2.{number + 1}'})
+                self.assertEqual(code, 401)
+            self.assertTrue(body['loginStatus']['blocked'])
+            self.assertEqual(self.request('/api/login', {'username': 'tester', 'password': PASSWORD})[0], 401)
+            self.assertEqual(self.request('/api/sessions')[0], 401)
+            for restart in (False, True):
+                if restart:
+                    self.state.auth = State(self.config, self.bridge, self.state.web_dir).auth
+                for cookie, csrf, agent in devices:
+                    headers = {'Cookie': cookie, 'User-Agent': agent}
+                    code, auth, _ = self.request('/api/auth', headers=headers)
+                    self.assertEqual(code, 200)
+                    self.assertTrue(auth['authenticated'])
+                    self.assertEqual(auth['csrf'], csrf)
+                    self.assertEqual(self.request('/api/sessions', headers=headers)[0], 200)
+                    self.assertEqual(self.request(f'/api/sessions/{SID}/send', {'id': 'fake', 'text': 'test'}, headers=headers)[0], 403)
+            rows = self.request('/devices', {'action': 'list'}, private=True)[1]
+            self.assertEqual(len(rows['sessions']), 2)
+            self.assertEqual([row['ip'] for row in rows['autoBlocks']], [peer])
+            self.assertEqual(self.request('/devices', {'action': 'unblock', 'ip': peer}, private=True)[0], 200)
+            # Unblocking preserves the exact original cookies, not just a fresh login.
+            for cookie, _, _ in devices:
+                self.assertTrue(self.request('/api/auth', headers={'Cookie': cookie})[1]['authenticated'])
+            self.assertEqual(self.request('/devices', {'action': 'revoke', 'id': rows['sessions'][0]['id']}, private=True)[0], 200)
+            self.assertEqual(sum(self.request('/api/auth', headers={'Cookie': cookie})[1]['authenticated']
+                                 for cookie, _, _ in devices), 1)
+
     def test_boot_contract_has_no_proxy_setting_and_requires_current_worker_protocol(self):
         self.assertEqual(validate(self.config), self.config)
         with self.assertRaises(ValueError): validate({**self.config, 'proxyAddress': '198.51.100.2'})
