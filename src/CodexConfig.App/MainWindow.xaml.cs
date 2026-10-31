@@ -534,6 +534,16 @@ public partial class MainWindow : Window
         var originalEnvironment = Environment.GetEnvironmentVariable(WindowsUserEnvironment.Variable, EnvironmentVariableTarget.User);
         var checks = new List<string>();
         void Assert(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
+        async Task WaitForSearchAsync(int expectedCount, string message)
+        {
+            var elapsed = Stopwatch.StartNew();
+            while (Editor.VisibleCount != expectedCount && elapsed.Elapsed < TimeSpan.FromSeconds(5))
+            {
+                await Task.Delay(40);
+                await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            }
+            Assert(Editor.VisibleCount == expectedCount, $"{message}: expected {expectedCount}, actual {Editor.VisibleCount}");
+        }
         ThemeManager.Apply(false);
         Assert(!SaveButton.IsEnabled && PreviewOverlay.Visibility == Visibility.Collapsed, "Initial state");
         Assert(currentPage == "connection" && ConnectionPage.IsVisible && ModelControls.IsVisible && GlobalSaveBar.IsVisible, "PAT editor opens its connection and keeps save actions visible");
@@ -566,10 +576,10 @@ public partial class MainWindow : Window
         editable.Text = "typed-model"; Assert(ModelBox.Text == "typed-model", "Editable model binding"); editable.Text = "gpt-6.1-sol";
         checks.Add("Presets and editable model binding");
         ShowPage("preferences"); Editor.Search.Text = ""; Editor.SetMode(true);
+        var commonSettingsCount = Editor.VisibleCount;
         Editor.Search.Text = "model_context_window";
-        await Task.Delay(240);
-        Assert(Editor.VisibleCount == 1, "Common settings search");
-        Editor.Search.Text = ""; await Task.Delay(240);
+        await WaitForSearchAsync(1, "Common settings search");
+        Editor.Search.Text = ""; await WaitForSearchAsync(commonSettingsCount, "Clear common settings search");
         checks.Add("Search within common settings");
         var reasoning = (ComboBox)Editor.Input("model_reasoning_effort");
         reasoning.SelectedItem = reasoning.Items.Cast<SettingsEditor.ValueChoice>().First(c => c.Repr == "\"high\"");
