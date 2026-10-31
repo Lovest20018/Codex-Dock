@@ -14,10 +14,10 @@ public sealed record MobileGatewayConfig(int Protocol, string PublicUrl, int Por
     MobileAuth Auth, string CodexHome, string DataDir);
 public sealed record MobileGatewayStatus(string Service, int Protocol, string InstanceId, string PublicUrl, int Port, bool Checked);
 
-// Mobile access is independent of model routing and never writes Codex settings.
+// Gateway setup is independent of model routing; workbench account changes are explicit.
 public sealed partial class MobileGatewayManager
 {
-    public const int Protocol = 3;
+    public const int Protocol = 4;
     public const int DefaultPort = 13090;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("CodexDock.mobile.v1");
@@ -57,7 +57,7 @@ public sealed partial class MobileGatewayManager
             plain = ProtectedData.Unprotect(File.ReadAllBytes(SettingsPath), Entropy, DataProtectionScope.CurrentUser);
             var config = JsonSerializer.Deserialize<MobileGatewayConfig>(plain, Json) ?? throw new InvalidDataException();
             // Older settings may contain proxyAddress; it no longer controls access.
-            if (config.Protocol is 1 or 2) config = config with { Protocol = Protocol };
+            if (config.Protocol is 1 or 2 or 3) config = config with { Protocol = Protocol };
             if (config.Protocol != Protocol ||
                 NormalizePublicUrl(config.PublicUrl) != config.PublicUrl || config.Port is < 1024 or > 65535 ||
                 config.ControlPort is < 1024 or > 65535 || config.Port == config.ControlPort || config.ControlToken.Length != 64 || config.InstanceId.Length != 32 ||
@@ -194,7 +194,7 @@ public sealed partial class MobileGatewayManager
 
     public async Task<JsonDocument> ControlAsync(string action, object body, CancellationToken cancellation = default)
     {
-        if (action is not ("check" or "pair" or "devices")) throw new ArgumentException("未知手机服务管理操作。");
+        if (action is not ("check" or "pair" or "devices" or "manager")) throw new ArgumentException("未知手机服务管理操作。");
         var config = Load() ?? throw new InvalidOperationException("请先保存手机连接设置。");
         return await CallCoreAsync(config, action, body, cancellation).ConfigureAwait(false);
     }

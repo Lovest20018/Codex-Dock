@@ -1,12 +1,12 @@
 # Third-party notices
 
-## Codex Mobile Bridge 2.1.7 (selected Python modules and Android test fixtures)
+## Codex Mobile Bridge 2.1.7 (Codex backend, Web UI and source snapshot)
 
 Copyright (c) 2026 try2love. MIT.
 
 Source: https://github.com/try2love/codex-mobile-bridge/tree/0721aa7dafa6177751ba7e568e0ad0efee05655b
 
-Selected Codex IPC, authentication, pairing and session modules are distributed in the mobile worker. Four unmodified Android host JavaScript files are included as development test fixtures only. The exact selection and local adaptations are documented in `src/CodexMobile/UPSTREAM.md`. The full license is in `third_party/codex-mobile-bridge-LICENSE.txt` and `src/CodexMobile/UPSTREAM-LICENSE`. Upstream desktop/mobile executables and other client adapters are not bundled.
+The full Codex backend and Web UI are reused in the mobile worker. Source provenance and explicit overlays are documented in `src/CodexMobile/UPSTREAM.md`. The full license is in `third_party/codex-mobile-bridge-LICENSE.txt` and `src/CodexMobile/UPSTREAM-LICENSE`. Upstream Electron and Android executables are not bundled. Other AI providers are disabled by the Dock adapter; their source remains in the auditable upstream snapshot.
 
 ## Project Nayuki QR Code generator 1.8.0
 
@@ -53,3 +53,15 @@ https://github.com/jrsoftware/issrc/blob/is-6_5_4/Files/Languages/Unofficial/Chi
 
 The file retains its translator attribution and source comments. The unmodified upstream file SHA-256 is `fc1dbf303559cfefd47cf59eec7f1ad1c5fc6266ef8fa64569c13bc754adfeb4`. Local changes remove four obsolete message names and translate the additional Inno Setup 6.7 messages.
 
+
+## Microsoft ConPTY 1.25.260930003
+
+Microsoft. MIT. The locked NuGet package `Microsoft.Windows.Console.ConPTY` provides the app-local Windows terminal DLL and architecture-specific OpenConsole executables. The build checks the upstream SHA-256 and package metadata. License and version metadata accompany `mobile/runtime/conpty`.
+
+## certifi 2026.7.22
+
+Mozilla CA root bundle, MPL-2.0. https://github.com/certifi/python-certifi . Trust roots and the package license accompany `mobile/runtime/bridge/features/auth` and `mobile/runtime/licenses/certifi` respectively.
+
+## Upstream Web vendor assets
+
+The worker includes the pinned upstream Markdown-it, texmath, KaTeX, Prism, Mermaid, PDF.js (including fonts/CMaps), and xterm.js / fit assets. Their original license files accompany the files under `mobile/runtime/web/vendor`, and the complete upstream provenance is in `src/CodexMobile/upstream/web/vendor/README.md`. No npm development installation or Electron binary is distributed.

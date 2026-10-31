@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.13.3',
+    [string]$Version = '0.14.0',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
@@ -63,7 +63,7 @@ Copy-Item -LiteralPath $taskUiReport -Destination (Join-Path $taskRelease 'verif
     '保存前自动加密备份，可在备份与恢复页恢复上次配置。'
     '手机连接使用已有 HTTPS 根域名；默认 HTTP 端口 13090，可在手机连接页修改。保留外部 Host（含非默认端口）。'
     '无需填写代理来源 IP；支持本机代理、群晖和路由端口映射。代理目标为电脑可达的 IP:端口，管理端口仅本机。'
-    '手机连接单独保存和启停。保持电脑 Codex App 运行，用上游安卓 App 扫码或使用独立账号密码登录。'
+    '手机连接单独保存和启停。保持电脑及所选执行端可用，用上游安卓 App 扫码或使用独立账号密码登录。'
     'mobile 文件夹包含手机服务与 Python 运行时，必须与主程序一起保留。详见 docs/mobile-connection.md。'
     '完整说明见 README.md。'
 ) | Set-Content -LiteralPath (Join-Path $taskRelease '使用说明.txt') -Encoding utf8
@@ -86,11 +86,9 @@ Compress-Archive -LiteralPath $taskRelease -DestinationPath $taskZip -Force
 
 Add-Type -AssemblyName System.IO.Compression
 $taskSourceZip = Join-Path $taskArtifacts "CodexDock-$Version-source.zip"
-$taskSourceFiles = @()
-foreach ($taskFolder in @('src','config','tests','scripts','docs','third_party','assets')) {
-    $taskSourceFiles += Get-ChildItem -LiteralPath (Join-Path $taskRoot $taskFolder) -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|__pycache__|node_modules)[\\/]' -and $_.Extension -notin @('.pyc','.pyo') }
-}
-foreach ($taskName in @('README.md','LICENSE','THIRD-PARTY-NOTICES.md','Directory.Build.props','.gitignore')) { $taskSourceFiles += Get-Item -LiteralPath (Join-Path $taskRoot $taskName) }
+# The committed tree is the release boundary; never sweep vendor build caches
+# or temporary fixtures into a source archive.
+$taskSourceFiles = @(git -C $taskRoot -c core.quotepath=false ls-files | ForEach-Object { Get-Item -LiteralPath (Join-Path $taskRoot $_) })
 $taskStream = [IO.File]::Open($taskSourceZip, [IO.FileMode]::Create)
 try {
     $taskArchive = [IO.Compression.ZipArchive]::new($taskStream, [IO.Compression.ZipArchiveMode]::Create)

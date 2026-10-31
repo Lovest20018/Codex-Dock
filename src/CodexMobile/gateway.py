@@ -1,31 +1,25 @@
 """Codex-only HTTPS reverse-proxy gateway and separate authenticated local control."""
-import hashlib
-import html
 import hmac
 import json
 import re
-import secrets
 import socket
 import threading
 import time
 import urllib.error
 import urllib.request
-from http.cookies import SimpleCookie, CookieError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import urlsplit
 
-from bridge.features.auth.auth import Auth, LoginRejected
+from bridge.features.auth.auth import Auth, LoginRejected, canonical_ip
 from bridge.features.auth.pairing import Pairing
+from bridge.features.auth.tls import client_context
 from bridge.features.sessions.store import StoreUnavailable
 from bridge.clients.codex.ipc import IPCError
 from qr_png import pairing_image
 
-PROTOCOL = 3
-SESSION_ROUTE = re.compile(r'^/api/sessions/([0-9a-f-]{36})(?:/(send|steer|stop|respond))?$')
-ASSETS = {'/': ('index.html', 'text/html; charset=utf-8'),
-          '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
-          '/app.css': ('app.css', 'text/css; charset=utf-8')}
+PROTOCOL = 4
+
 
 
 def public_origin(value):
@@ -104,6 +98,14 @@ class Server(ThreadingHTTPServer):
             super().shutdown_request(request)
 
 
+class DockAuth(Auth):
+    def client(self, peer, headers, secure=False):
+        # Dock accepts arbitrary external reverse proxies. No proxy is configured
+        # as an identity authority, including an HTTP forward on loopback.
+        address = canonical_ip(peer)
+        return {'ip': address, 'peer': address, 'source': 'proxy' if secure else 'direct'}
+
+
 class State:
     def __init__(self, config, bridge, web_dir):
         self.config = config
@@ -111,7 +113,7 @@ class State:
         self.host = urlsplit(self.origin).netloc
         self.instance_id = config['instanceId']
         self.bridge = bridge
-        self.auth = Auth(config['auth'], config['dataDir'])
+        self.auth = DockAuth(config['auth'], config['dataDir'])
         # Remote access needs no proxy-IP allowlist. Without an explicitly trusted
         # forwarding peer, upstream Auth uses its socket address for rate limits
         # and device display, never arbitrary remote X-Forwarded-For values.
@@ -124,7 +126,8 @@ class State:
     def check_entry(self):
         # No ambient proxy, cookies, credentials, or redirects. TLS validation
         # stays enabled; a domain must prove it reaches this worker instance.
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect(),
+                                            urllib.request.HTTPSHandler(context=client_context()))
         try:
             with opener.open(urllib.request.Request(self.origin + '/api/auth', headers={'Accept': 'application/json'}), timeout=8) as response:
                 data = response.read(65537)
@@ -235,105 +238,6 @@ class BaseHandler(BaseHTTPRequestHandler):
         self.handle_call(True)
 
 
-class PublicHandler(BaseHandler):
-    def token(self):
-        raw = self.headers.get_all('Cookie', [])
-        if len(raw) > 1 or sum(map(len, raw)) > 8192:
-            return ''
-        try:
-            cookies = SimpleCookie(raw[0] if raw else '')
-            item = cookies.get(self.state.auth.cookie_name)
-            return item.value if item and re.fullmatch(r'[A-Za-z0-9_-]{43}', item.value) else ''
-        except CookieError:
-            return ''
-
-    def client(self):
-        return self.state.auth.client(self.client_address[0], self.headers, secure=True)
-
-    def cookie(self, token, clear=False):
-        value = f'{self.state.auth.cookie_name}={token}; Path=/; Secure; HttpOnly; SameSite=Strict'
-        age = 0 if clear else self.state.auth.cookie_age(token)
-        return value + (f'; Max-Age={age}' if age is not None else '')
-
-    def route(self, write):
-        peer = self.client_address[0]
-        # A localhost visit is a diagnostic landing page, never an HTTP login.
-        if (not write and self.path == '/' and peer == '127.0.0.1'
-                and self.headers.get_all('Host', []) == [f'127.0.0.1:{self.server.server_port}']):
-            entry = html.escape(self.state.origin, quote=True)
-            page = ('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Codex Dock · 手机连接</title>'
-                    '<h1>手机服务已运行</h1><p>请通过配置的 HTTPS 域名登录：</p>'
-                    f'<p><a href="{entry}">{entry}</a></p>'
-                    '<p>若域名返回 502，请检查反向代理目标、路由端口映射和电脑防火墙。</p>'
-                    '<p>本机 HTTP 地址仅用于诊断，不提供登录。</p></html>').encode('utf-8')
-            return self.output(200, page, content_type='text/html; charset=utf-8')
-        if self.headers.get_all('Host', []) != [self.state.host]:
-            raise PermissionError()
-        origins = self.headers.get_all('Origin', [])
-        if ((origins and origins != [self.state.origin]) or write and origins != [self.state.origin]
-                or self.headers.get('Sec-Fetch-Site') == 'cross-site'):
-            raise PermissionError()
-        url = urlsplit(self.path)
-        path = url.path
-        if not write and path in ASSETS and not url.query:
-            file, content_type = ASSETS[path]
-            return self.output(200, (self.state.web_dir / file).read_bytes(), content_type=content_type)
-        auth, client, user_agent = self.state.auth, self.client(), self.headers.get('User-Agent', '')
-        token = self.token()
-        session = auth.get(token, client, user_agent) if token else None
-        if not write and path == '/api/auth' and not url.query:
-            value = {'authenticated': bool(session), 'passwordless': False, 'instanceId': self.state.instance_id,
-                     'cookieName': auth.cookie_name, 'trustedDevice': bool(session and session.get('trustedDevice')),
-                     'csrf': session['csrf'] if session else None, 'notifications': False, 'transport': 'poll',
-                     'uiLanguage': 'zh', 'loginStatus': auth.login_status(client['ip'])}
-            if session:
-                value.update(enabledClients=['codex'], draftIdentity=auth.draft_identity,
-                             listCacheIdentity=hashlib.sha256((self.state.instance_id + '\0' + session['csrf']).encode()).hexdigest(),
-                             computer={'name': socket.gethostname(), 'platform': 'Windows'})
-            return self.output(200, value, cookie=self.cookie(token) if session else None)
-        if write and path in ('/api/login', '/api/pair') and not url.query:
-            body = self.read_json()
-            if path == '/api/login':
-                if (set(body) - {'username', 'password', 'remember'} or not isinstance(body.get('username'), str)
-                        or not isinstance(body.get('password'), str) or len(body['username']) > 200 or len(body['password']) > 1000):
-                    raise ValueError('账号或密码格式不正确')
-                new_token, new_session = auth.login(body['username'], body['password'], client['ip'], user_agent, client, body.get('remember'))
-            else:
-                if set(body) != {'token'}:
-                    raise ValueError('配对请求格式不正确')
-                new_token, new_session = self.state.pairing.exchange(body['token'], self.state.origin, client['ip'], user_agent, client)
-            if token:
-                auth.logout(token)
-            return self.output(200, {'csrf': new_session['csrf']}, cookie=self.cookie(new_token))
-        if not session:
-            return self.output(401, {'error': '请登录', 'code': 'unauthenticated'})
-        if write and (len(self.headers.get_all('X-CSRF-Token', [])) != 1 or not hmac.compare_digest(
-                self.headers.get('X-CSRF-Token', '').encode(), session['csrf'].encode())):
-            raise PermissionError()
-        if path == '/api/logout' and write and not url.query:
-            if self.read_json():
-                raise ValueError('退出请求格式不正确')
-            auth.logout(token)
-            return self.output(200, {'ok': True}, cookie=self.cookie('', clear=True))
-        if not write and path == '/api/sessions':
-            query = parse_qs(url.query, keep_blank_values=True)
-            if set(query) - {'q', 'offset'} or any(len(values) != 1 for values in query.values()):
-                raise ValueError('会话查询格式不正确')
-            search, offset = query.get('q', [''])[0], query.get('offset', ['0'])[0]
-            if len(search) > 200 or not re.fullmatch(r'[0-9]{1,6}', offset):
-                raise ValueError('会话查询范围无效')
-            return self.output(200, {'sessions': self.state.bridge.list(search, int(offset))})
-        route = SESSION_ROUTE.fullmatch(path)
-        if route and not url.query:
-            thread_id, operation = route.groups()
-            if not write and operation is None:
-                return self.output(200, self.state.bridge.view(thread_id))
-            if write and operation:
-                return self.output(200, self.state.bridge.mutate(thread_id, operation, self.read_json()))
-        # There is no catch-all filesystem path or passthrough desktop RPC.
-        return self.output(404, {'error': '精简版仅提供 Codex 本机聊天，此功能未启用。'})
-
-
 class ControlHandler(BaseHandler):
     def route(self, write):
         if (self.client_address[0] != '127.0.0.1' or self.headers.get_all('Host', []) != [f'127.0.0.1:{self.server.server_port}']
@@ -367,6 +271,10 @@ class ControlHandler(BaseHandler):
                     or set(body) == {'action', 'ip'} and body['action'] == 'unblock'):
                 raise ValueError('设备管理格式不正确')
             return self.output(200, self.state.auth.manage(body))
+        if write and self.path == '/manager':
+            if self.read_json():
+                raise ValueError('打开管理页面不接受额外字段')
+            return self.output(200, self.state.workbench.manager.issue(self.server.server_port))
         if write and self.path == '/stop':
             if self.read_json():
                 raise ValueError('停止请求不接受额外字段')

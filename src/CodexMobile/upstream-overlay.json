@@ -1,0 +1,28 @@
+{
+  "commit": "0721aa7dafa6177751ba7e568e0ad0efee05655b",
+  "files": {
+    "bridge/api/httpd.py": {
+      "sha256": "2afcef112f0846bbd16439f5449fc42cd2a0d3d87a5918a1ae1943d0e52bf9bb",
+      "reason": "Optional desktop session manager factory; upstream default remains unchanged."
+    },
+    "bridge/clients/manager.py": {
+      "sha256": "8b8c16399c160799208f79e8415808cf6c599a077ae0a6f3ddebd24885cb9c50",
+      "reason": "Optional provider selection prevents Codex-only status reads from probing other clients."
+    },
+    "bridge/features/auth/auth.py": {
+      "sha256": "2512625719f3182abd0b0d2417b2e147a8864e0294eefe09511943f1df320083",
+      "reason": "Separate failed-login source locks from valid device authorization (Dock P1 fix)."
+    },
+    "web/features/chat/composer-drafts.js": {
+      "sha256": "bc5bed5b6d8e78e63be7fec758e8cd11729a70a5e9f2c08e2ae3b0221d721077",
+      "reason": "Explicit import of old gateway-scoped Dock drafts into a verified Codex account, retaining uncertain IDs."
+    },
+    "web/shell/app.js": {
+      "sha256": "3669c48ac12fd7320bc4c7c8f36553c7062590e740a7b0843f399e97dc8789dc",
+      "reason": "Offer the explicit legacy Dock draft import only after native account identity is known."
+    }
+  },
+  "omitted": {
+    "deploy/nas/.env.example": "Unused public NAS deployment template excluded by the Dock private-config path policy."
+  }
+}

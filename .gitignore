@@ -25,3 +25,6 @@ artifacts/
 **/operations.json
 **/worker.lock
 **/manager.lock
+src/CodexMobile/upstream/.tmp/
+src/CodexMobile/upstream/.local/
+src/CodexMobile/upstream/dist/

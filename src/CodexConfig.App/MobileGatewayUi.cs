@@ -45,7 +45,7 @@ public partial class MainWindow
         }
         var setup = new StackPanel();
         setup.Children.Add(OverviewText("连接入口", size: 18));
-        var help = OverviewText("仅继续当前配置目录中的本机 Codex App 聊天。保持电脑和 Codex App 运行，手机沿用原聊天的模型和权限。", "Muted", 13);
+        var help = OverviewText("在手机使用完整 Codex 工作台：聊天、模型与权限、附件、文件、终端和通知。支持本机 App、CLI 以及已登记的 WSL / SSH 环境。", "Muted", 13);
         help.Margin = new(0, 9, 0, 0); setup.Children.Add(help);
         Field(setup, "HTTPS 域名", mobileUrl);
         setup.Children.Add(OverviewText("例如 https://codex.example.com。将已有 HTTPS 入口转发到本机端口，保留完整 Host（含外部端口）。", "Muted", 12));
@@ -64,6 +64,13 @@ public partial class MainWindow
         Action(controls, "启动", async () => { await MobileManager().StartAsync(lifetime.Token); await RefreshMobilePageAsync(); });
         Action(controls, "停止", StopMobileGatewayAsync);
         Action(controls, "刷新状态", () => RefreshMobilePageAsync());
+        Action(controls, "管理 Codex 接入", async () =>
+        {
+            using var result = await MobileManager().ControlAsync("manager", new { }, lifetime.Token);
+            var address = result.RootElement.GetProperty("url").GetString()!;
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(address) { UseShellExecute = true });
+            mobileStatus.Text = "已在本机浏览器打开 Codex 接入管理。";
+        });
         Action(controls, "检测 HTTPS 入口", async () =>
         {
             using var result = await MobileManager().ControlAsync("check", new { }, lifetime.Token);

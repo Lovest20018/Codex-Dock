@@ -1,0 +1,396 @@
+"""ConPTY integration tests run on Windows in the existing OS test matrix."""
+import os
+from contextlib import contextmanager, ExitStack
+import json
+import subprocess
+from pathlib import Path
+import tempfile
+import sys
+import threading
+import time
+from types import SimpleNamespace
+import unittest
+import uuid
+from unittest.mock import patch
+
+
+@contextmanager
+def terminal_runtime():
+    from bridge.platforms.windows import terminal
+    runtime = os.environ.get('CMB_TEST_RUNTIME')
+    with ExitStack() as stack:
+        if runtime:
+            stack.enter_context(patch.object(sys, 'executable', runtime))
+            stack.enter_context(patch.object(sys, 'frozen', True, create=True))
+            stack.enter_context(patch.object(terminal, 'project_root', return_value=Path(runtime).parent / '_internal'))
+        yield
+
+
+class ConPtyBundleTests(unittest.TestCase):
+    def test_source_without_bundle_keeps_inbox_but_frozen_cannot_fall_back(self):
+        from bridge.platforms.windows import terminal
+        with tempfile.TemporaryDirectory() as folder, patch.object(terminal, 'project_root', return_value=Path(folder)):
+            with patch.object(sys, 'frozen', False, create=True):
+                kernel = SimpleNamespace()
+                terminal._load_conpty(kernel)
+                self.assertFalse(hasattr(kernel, '_conpty_library'))
+            with patch.object(sys, 'frozen', True, create=True), self.assertRaises(OSError):
+                terminal._load_conpty(kernel)
+
+    def test_complete_bundle_uses_matching_create_resize_close_and_retains_library(self):
+        from bridge.platforms.windows import terminal
+        with tempfile.TemporaryDirectory() as folder, patch.object(terminal, 'project_root', return_value=Path(folder)), \
+             patch.object(sys, 'frozen', False, create=True):
+            root = Path(folder) / 'dist/conpty'
+            for name in ('conpty.dll', 'x64/OpenConsole.exe', 'arm64/OpenConsole.exe', 'x86/OpenConsole.exe'):
+                target = root / name; target.parent.mkdir(parents=True, exist_ok=True); target.touch()
+            library = SimpleNamespace(**{'Conpty' + name: object() for name in
+                ('CreatePseudoConsole', 'ResizePseudoConsole', 'ClosePseudoConsole')})
+            kernel = SimpleNamespace()
+            with patch.object(terminal.C, 'WinDLL', return_value=library, create=True) as load:
+                terminal._load_conpty(kernel)
+                load.assert_called_once_with(str(root / 'conpty.dll'), use_last_error=True)
+                self.assertIs(kernel._conpty_library, library)
+                for name in ('CreatePseudoConsole', 'ResizePseudoConsole', 'ClosePseudoConsole'):
+                    self.assertIs(getattr(kernel, name), getattr(library, 'Conpty' + name))
+                (root / 'x64/OpenConsole.exe').unlink()
+                load.reset_mock()
+                with self.assertRaises(OSError): terminal._load_conpty(SimpleNamespace())
+                load.assert_not_called()
+
+
+class TerminalStartupTests(unittest.TestCase):
+    def test_cmd_cwd_only_shortens_equivalent_extended_local_drive_paths(self):
+        from bridge.platforms.windows import terminal
+        local = '\\\\?\\C:\\project 中文 space'
+        with patch.object(terminal.os.path, 'samefile', return_value=True) as same:
+            self.assertEqual(terminal.cmd_working_directory(local), 'C:\\project 中文 space')
+            same.assert_called_once_with(local, 'C:\\project 中文 space')
+        with patch.object(terminal.os.path, 'samefile', return_value=False):
+            self.assertEqual(terminal.cmd_working_directory('\\\\?\\C:\\trailing. '), '\\\\?\\C:\\trailing. ')
+        with patch.object(terminal.os.path, 'samefile', side_effect=OSError):
+            self.assertEqual(terminal.cmd_working_directory(local), local)
+        with patch.object(terminal.os.path, 'samefile') as same:
+            for root in ('\\\\server\\share\\project', '\\\\?\\UNC\\server\\share\\project',
+                         '\\\\.\\C:\\device', 'C:\\project'):
+                self.assertEqual(terminal.cmd_working_directory(root), root)
+            same.assert_not_called()
+
+    def kernel(self, failure=None):
+        calls, next_pipe = [], [20]
+        def job(*args):
+            self.assertEqual(args, (None, None))
+            calls.append(('job',)); return 0 if failure == 'job' else 10
+        def limits(handle, kind, value, size):
+            self.assertEqual((handle, kind, value._obj.basic.flags), (10, 9, 0x2000))
+            calls.append(('limits',)); return failure != 'limits'
+        def pipe(read, write, *args):
+            read._obj.value = next_pipe[0]; write._obj.value = next_pipe[0]+1; next_pipe[0] += 2
+            return True
+        def console(size, read, write, flags, handle):
+            handle._obj.value = 30; return 0
+        def attributes(pointer, count, flags, size):
+            size._obj.value = 256; return True
+        def process(*args):
+            calls.append(('process', args[5]))
+            self.assertFalse(args[4])
+            if failure == 'process': return False
+            args[-1]._obj.hProcess = 40; args[-1]._obj.hThread = 41
+            return True
+        def assign(job, process):
+            calls.append(('assign', job, process)); return failure != 'assign'
+        def resume(thread):
+            calls.append(('resume', thread)); return 0xffffffff if failure == 'resume' else 1
+        kernel = SimpleNamespace(CreateJobObjectW=job, SetInformationJobObject=limits,
+            CreatePipe=pipe, CreatePseudoConsole=console, InitializeProcThreadAttributeList=attributes,
+            UpdateProcThreadAttribute=lambda *args: True, DeleteProcThreadAttributeList=lambda *args: None,
+            CreateProcessW=process, AssignProcessToJobObject=assign, ResumeThread=resume,
+            CloseHandle=lambda handle: calls.append(('close', getattr(handle, 'value', handle))),
+            ClosePseudoConsole=lambda handle: calls.append(('console-close', handle.value)),
+            TerminateProcess=lambda handle, code: calls.append(('terminate', handle)),
+            WaitForSingleObject=lambda handle, timeout: calls.append(('wait', handle)))
+        return kernel, calls
+
+    def create(self, kernel):
+        from bridge.platforms.windows import terminal
+        def checked(value):
+            if not value: raise OSError('fixture Windows API failure')
+        with patch.object(terminal, 'api', return_value=kernel), patch.object(terminal, 'checked', side_effect=checked), \
+             patch.object(terminal, 'default_shell', return_value='fixture-shell'), patch.object(terminal.threading, 'Thread'):
+            return terminal.WindowsTerminalSession(Path(__file__).parent)
+
+    def test_assigns_suspended_bootstrap_before_resume_and_closes_only_its_job(self):
+        kernel, calls = self.kernel()
+        session = self.create(kernel)
+        self.assertLess(calls.index(('process', 0x80004)), calls.index(('assign', 10, 40)))
+        self.assertLess(calls.index(('assign', 10, 40)), calls.index(('resume', 41)))
+        session._close_console(); session._close_console()
+        self.assertEqual(calls.count(('close', 10)), 1)
+        self.assertLess(calls.index(('close', 10)), calls.index(('console-close', 30)))
+        self.assertIsNone(session.job)
+        self.assertFalse(any(call[0] == 'terminate' for call in calls))
+
+    def test_startup_failures_release_owned_handles_without_running_an_unassigned_child(self):
+        for failure in ('job', 'limits', 'process', 'assign', 'resume'):
+            with self.subTest(failure=failure):
+                kernel, calls = self.kernel(failure)
+                with self.assertRaises(OSError): self.create(kernel)
+                self.assertEqual(calls.count(('close', 10)), 0 if failure == 'job' else 1)
+                if failure in ('assign', 'resume'):
+                    self.assertIn(('terminate', 40), calls)
+                    self.assertIn(('wait', 40), calls)
+                    self.assertEqual(calls.count(('close', 40)), 1)
+                    self.assertEqual(calls.count(('close', 41)), 1)
+                else:
+                    self.assertNotIn(('terminate', 40), calls)
+                if failure != 'resume': self.assertNotIn(('resume', 41), calls)
+
+
+class TerminalCompletionTests(unittest.TestCase):
+    def session(self):
+        from bridge.platforms.windows.terminal import WindowsTerminalSession
+        session = WindowsTerminalSession.__new__(WindowsTerminalSession)
+        session.done = threading.Event(); session.changed = threading.Event(); session.output_done = threading.Event()
+        session.close_lock = threading.Lock(); session.process_handle = 'process'; session.output_read = 'output'
+        exited, closed = threading.Event(), threading.Event()
+        def wait(handle, timeout):
+            self.assertEqual(handle, 'process')
+            self.assertTrue(exited.wait(1))
+            return 0
+        def close(handle):
+            if handle == 'process': closed.set()
+            return True
+        session.kernel = SimpleNamespace(WaitForSingleObject=wait,
+            GetExitCodeProcess=lambda handle, code: setattr(code._obj, 'value', 0),
+            CloseHandle=close, ReadFile=lambda *args: False)
+        session._close_console = lambda: None
+        session.append = lambda text: None
+        return session, exited, closed
+
+    def test_output_eof_does_not_mark_a_running_process_complete(self):
+        session, exited, _ = self.session()
+        session._read()
+        self.assertTrue(session.output_done.is_set())
+        self.assertFalse(session.done.is_set())
+        exited.set(); session._wait()
+        self.assertTrue(session.done.is_set())
+        self.assertIsNone(session.process_handle)
+
+    def test_process_exit_waits_for_output_drain(self):
+        session, exited, closed = self.session()
+        exited.set()
+        worker = threading.Thread(target=session._wait)
+        worker.start()
+        try:
+            self.assertTrue(closed.wait(1))
+            self.assertFalse(session.done.is_set())
+            session._read()
+        finally:
+            session.output_done.set(); worker.join(1)
+        self.assertFalse(worker.is_alive())
+        self.assertTrue(session.done.is_set())
+
+    def test_read_failure_still_allows_process_cleanup_to_complete(self):
+        session, exited, _ = self.session()
+        with patch.object(session.kernel, 'ReadFile', side_effect=OSError('closed pipe')):
+            with self.assertRaises(OSError): session._read()
+        self.assertTrue(session.output_done.is_set())
+        self.assertFalse(session.done.is_set())
+        exited.set(); session._wait()
+        self.assertTrue(session.done.is_set())
+
+
+@unittest.skipUnless(os.name == 'nt', 'ConPTY requires Windows')
+class ConPtyTests(unittest.TestCase):
+    def wait_for_output(self, session, marker, after=0, timeout=10):
+        deadline = time.monotonic() + timeout
+        output = ''
+        while time.monotonic() < deadline:
+            result = session.read(after)
+            output = result['output']
+            if marker(output): return result
+            self.assertTrue(result['running'], repr(result))
+            time.sleep(.05)
+        self.fail('Timed out waiting for terminal output: ' + repr(output[-1000:]))
+
+    def test_bundled_mouse_tracking_click_coordinates_and_vt_passthrough(self):
+        from bridge.platforms.windows import terminal
+        root = Path(__file__).resolve().parents[1]
+        if not os.environ.get('CMB_TEST_RUNTIME') and not (root / 'dist/conpty').exists():
+            self.skipTest('Prepare the app-local ConPTY bundle to test mouse support')
+        parent = root / '.tmp'; parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=parent) as folder:
+            with terminal_runtime():
+                session = terminal.WindowsTerminalSession(Path(folder), 80, 24)
+            try:
+                self.wait_for_output(session, lambda output: '>' in output)
+                for mode in ('native', 'vt'):
+                    result = Path(folder) / (mode + '.json')
+                    command = subprocess.list2cmdline([sys.executable, str(root / 'tests/fixtures/windows_terminal_mouse.py'), str(result), mode])
+                    cursor = session.read()['cursor']
+                    session.write(str(uuid.uuid4()), command + '\r')
+                    output = self.wait_for_output(session, lambda output: 'MOUSE_READY' in output, cursor)['output']
+                    self.assertIn('\x1b[?1000h', output)
+                    self.assertIn('\x1b[?1006h', output)
+                    click = '\x1b[<0;12;8M\x1b[<0;12;8m'
+                    session.write(str(uuid.uuid4()), click + '中q')
+                    self.wait_for_output(session, lambda output: 'MOUSE_DONE' in output, cursor)
+                    self.assertTrue(result.exists(), repr(session.read(cursor)))
+                    data = json.loads(result.read_text(encoding='utf-8'))
+                    if mode == 'native':
+                        self.assertEqual(data['mouse'], [[11, 7, 1, 0], [11, 7, 0, 0]])
+                        self.assertEqual(data['text'], '中q')
+                    else:
+                        self.assertEqual(data['text'], click + '中q')
+            finally:
+                session.stop(); self.assertTrue(session.done.wait(10))
+
+    def test_close_immediately_after_open_reaps_bootstrap(self):
+        from bridge.platforms.windows.terminal import WindowsTerminalSession
+        directory = Path(__file__).resolve().parents[1] / '.tmp'; directory.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=directory) as folder:
+            with terminal_runtime():
+                session = WindowsTerminalSession(Path(folder), 80, 24)
+            try:
+                session.stop()
+                self.assertTrue(session.done.wait(5), 'Immediate terminal close left its owned bootstrap running')
+                self.assertIsNone(session.process_handle)
+                self.assertIsNone(session.job)
+            finally:
+                session.stop(); session.done.wait(5)
+
+    def test_closing_one_terminal_preserves_another_terminal(self):
+        from bridge.platforms.windows.terminal import WindowsTerminalSession
+        directory = Path(__file__).resolve().parents[1] / '.tmp'; directory.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=directory) as folder:
+            root = Path(folder); sessions = []
+            try:
+                with terminal_runtime():
+                    for _ in range(2): sessions.append(WindowsTerminalSession(root, 80, 24))
+                first, second = sessions
+                first.stop(); self.assertTrue(first.done.wait(5))
+                second.write(str(uuid.uuid4()), 'echo independent> survived.txt && echo complete> survived.done\r')
+                deadline = time.monotonic()+10
+                while not (root/'survived.done').exists() and time.monotonic()<deadline: time.sleep(.05)
+                self.assertTrue((root/'survived.done').exists(), repr(second.read()))
+                self.assertEqual((root/'survived.txt').read_text().strip(), 'independent')
+                self.assertFalse(second.done.is_set())
+            finally:
+                for session in sessions: session.stop()
+                for session in sessions: self.assertTrue(session.done.wait(5))
+
+    def test_persistent_shell_unicode_resize_dedupe_and_close(self):
+        from bridge.platforms.windows.terminal import WindowsTerminalSession
+        directory = Path(__file__).resolve().parents[1] / '.tmp'; directory.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=directory) as folder:
+            root=Path(folder); (root/'nested folder').mkdir()
+            with terminal_runtime():
+                session=WindowsTerminalSession(root,80,24)
+            try:
+                deadline=time.monotonic()+10
+                while '>' not in session.read()['output'] and time.monotonic()<deadline:time.sleep(.05)
+                self.assertIn('>',session.read()['output'])
+                command='cd "nested folder"\rset BRIDGE_TEST=retained\r'
+                session.write(str(uuid.uuid4()),command)
+                key=str(uuid.uuid4());session.write(key,'echo %BRIDGE_TEST%> result.txt\r');session.write(key,'echo %BRIDGE_TEST%> result.txt\r')
+                deadline=time.monotonic()+10
+                while not (root/'nested folder/result.txt').exists() and time.monotonic()<deadline:time.sleep(.05)
+                self.assertTrue((root/'nested folder/result.txt').exists(),repr(session.read()))
+                self.assertEqual((root/'nested folder/result.txt').read_text().strip(),'retained')
+                self.assertEqual(os.path.normcase(session.current_cwd()), os.path.normcase(str(root/'nested folder')))
+                from bridge.features.terminals.completion import complete_path
+                suggestion = complete_path(session, 'type res', 8)
+                self.assertEqual(suggestion['candidates'][0]['insertText'], 'result.txt')
+                # Use CMD's explicit cross-drive form; a later input must keep
+                # that cwd instead of launching a fresh command from root.
+                session.write(str(uuid.uuid4()), 'cd /d "' + str(root) + '"\r')
+                session.write(str(uuid.uuid4()), 'cd > cwd-after.txt\r')
+                deadline = time.monotonic() + 10
+                while not (root/'cwd-after.txt').exists() and time.monotonic() < deadline: time.sleep(.05)
+                self.assertEqual((root/'cwd-after.txt').read_text().strip().casefold(), str(root).casefold())
+
+                self.assertTrue(session.resize(100,30)['resized'])
+                with self.assertRaises(ValueError):session.write(key,'echo unexpected\r\n')
+                self.assertFalse(session.done.is_set())
+            finally:
+                session.stop();self.assertTrue(session.done.wait(10))
+                self.assertIsNone(session.process_handle)
+
+    def test_extended_local_drive_start_cwd_and_cd_state(self):
+        from bridge.platforms.windows.terminal import WindowsTerminalSession
+        parent = Path(__file__).resolve().parents[1] / '.tmp'; parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='cmb cwd 中文 space ', dir=parent) as folder:
+            root = Path(folder); (root / 'nested').mkdir()
+            with terminal_runtime():
+                session = WindowsTerminalSession('\\\\?\\' + str(root), 80, 24)
+            try:
+                self.wait_for_output(session, lambda output: '>' in output)
+                marker = root / 'startup-cwd.txt'
+                session.write(str(uuid.uuid4()), 'cd > "' + str(marker) + '"\r')
+                deadline = time.monotonic() + 10
+                while not marker.exists() and time.monotonic() < deadline: time.sleep(.05)
+                self.assertTrue(marker.exists(), repr(session.read()))
+                self.assertIn(root.name.rsplit(' ', 1)[-1], marker.read_bytes().decode('ascii', 'ignore'))
+                session.write(str(uuid.uuid4()), 'cd nested\r')
+                session.write(str(uuid.uuid4()), 'echo retained> same-drive.txt\r')
+                same = root / 'nested' / 'same-drive.txt'
+                deadline = time.monotonic() + 10
+                while not same.exists() and time.monotonic() < deadline: time.sleep(.05)
+                self.assertEqual(same.read_text().strip(), 'retained')
+            finally:
+                session.stop(); self.assertTrue(session.done.wait(10))
+
+    def test_ping_output_ctrl_c_and_shell_survives(self):
+        from bridge.platforms.windows.terminal import WindowsTerminalSession
+        directory = Path(__file__).resolve().parents[1] / '.tmp'; directory.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=directory) as folder:
+            with terminal_runtime():
+                session = WindowsTerminalSession(Path(folder), 80, 24)
+            try:
+                self.wait_for_output(session, lambda output: '>' in output)
+                cursor = session.read()['cursor']
+                session.write(str(uuid.uuid4()), 'ping 127.0.0.1 -n 2\r')
+                # Command echo contributes one occurrence. The others must
+                # arrive from ping itself through the ConPTY output pipe.
+                self.wait_for_output(session, lambda output: output.count('127.0.0.1') >= 3, cursor, 15)
+                session.write(str(uuid.uuid4()), 'echo done> ping-done.txt\r')
+                deadline = time.monotonic() + 10
+                while not (Path(folder) / 'ping-done.txt').exists() and time.monotonic() < deadline: time.sleep(.05)
+                self.assertTrue((Path(folder) / 'ping-done.txt').exists(), repr(session.read(cursor)))
+
+                cursor = session.read()['cursor']
+                session.write(str(uuid.uuid4()), 'ping 127.0.0.1 -t\r')
+                self.wait_for_output(session, lambda output: output.count('127.0.0.1') >= 3, cursor, 15)
+                cursor = session.read()['cursor']
+                session.write(str(uuid.uuid4()), '\x03')
+                self.wait_for_output(session, lambda output: '>' in output, cursor, 10)
+                session.write(str(uuid.uuid4()), 'echo survived> after-ctrl-c.txt\r')
+                deadline = time.monotonic() + 10
+                while not (Path(folder) / 'after-ctrl-c.txt').exists() and time.monotonic() < deadline: time.sleep(.05)
+                self.assertEqual((Path(folder) / 'after-ctrl-c.txt').read_text().strip(), 'survived')
+                self.assertFalse(session.done.is_set())
+            finally:
+                session.stop(); self.assertTrue(session.done.wait(10))
+
+    def test_reopen_same_tab_preserves_shell_state(self):
+        from bridge.features.terminals.manager import TerminalManager
+        directory = Path(__file__).resolve().parents[1] / '.tmp'; directory.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=directory) as folder:
+            root = Path(folder); (root / 'nested').mkdir()
+            manager = TerminalManager(); identifier = str(uuid.uuid4()); session = None
+            try:
+                with terminal_runtime():
+                    manager.open_session('owner', 'thread', identifier, root, 80, 24)
+                session = manager.session('owner', 'thread', identifier)
+                self.wait_for_output(session, lambda output: '>' in output)
+                session.write(str(uuid.uuid4()), 'cd nested\rset CMB_RECONNECT=retained\r')
+                reopened = manager.open_session('owner', 'thread', identifier, root, 80, 24)
+                self.assertTrue(reopened['running'])
+                self.assertIs(manager.session('owner', 'thread', identifier), session)
+                session.write(str(uuid.uuid4()), 'echo %CMB_RECONNECT%> continuity.txt\r')
+                deadline = time.monotonic() + 10
+                while not (root / 'nested' / 'continuity.txt').exists() and time.monotonic() < deadline: time.sleep(.05)
+                self.assertEqual((root / 'nested' / 'continuity.txt').read_text().strip(), 'retained')
+            finally:
+                manager.close()
+                if session: self.assertTrue(session.done.wait(10))

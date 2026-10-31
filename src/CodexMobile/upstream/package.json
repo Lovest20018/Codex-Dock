@@ -1,0 +1,134 @@
+{
+  "name": "codex-mobile-bridge-desktop",
+  "desktopName": "codex-mobile-bridge.desktop",
+  "version": "2.1.7",
+  "description": "Codex App 手机网关桌面启动器",
+  "author": "try2love",
+  "license": "MIT",
+  "private": true,
+  "main": "desktop/main.cjs",
+  "scripts": {
+    "desktop": "electron .",
+    "test:desktop": "node scripts/test-frontend.cjs",
+    "test:windows-app": "node scripts/smoke-windows.cjs",
+    "icons:desktop": "electron scripts/build-icons.cjs",
+    "pack:desktop": "electron-builder --dir --publish never",
+    "build:mac": "electron-builder --mac dmg zip --publish never",
+    "build:windows": "electron-builder --win nsis zip --x64 --publish never",
+    "build:linux": "electron-builder --linux AppImage deb --publish never",
+    "test:linux-app": "node scripts/smoke-linux.cjs",
+    "test:pairing": "electron scripts/smoke-pairing.cjs",
+    "test:updater": "node --test tests/updater.test.cjs tests/update-handoff.test.cjs tests/update-controller.test.cjs",
+    "test:update-controller": "node scripts/smoke-update-controller.cjs",
+    "test:boundaries": "python3 -B scripts/check-boundaries.py",
+    "test:browser": "playwright test -c tests/browser/playwright.config.cjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "jsqr": "1.4.0",
+    "pngjs": "7.0.0"
+  },
+  "build": {
+    "appId": "io.github.try2love.codexmobilebridge",
+    "productName": "Codex Mobile Bridge",
+    "beforePack": "./scripts/verify-build.cjs",
+    "afterPack": "./scripts/verify-packaged-qr.cjs",
+    "directories": {
+      "output": "dist/desktop"
+    },
+    "files": [
+      "desktop/**",
+      "web/shared/i18n.js",
+      "web/shared/dialog-dismiss.js",
+      "web/features/accounts/account.js",
+      "web/features/accounts/accounts.js",
+      "web/features/accounts/client-accounts.js",
+      "web/features/accounts/cli-access.js",
+      "web/features/accounts/wsl-accounts.js",
+      "web/features/clients/client-lifecycle.css",
+      "web/features/clients/client-lifecycle.js",
+      "web/features/accounts/account.css",
+      "web/client-icons/**",
+      "package.json",
+      "LICENSE",
+      "web/features/workspace/file-actions.js"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/gateway",
+        "to": "gateway"
+      },
+      {
+        "from": "dist/update-version.json",
+        "to": "update-version.json"
+      }
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "desktop/assets/icon.png",
+      "category": "public.app-category.developer-tools",
+      "identity": "-",
+      "artifactName": "Codex-Mobile-Bridge-${version}-macOS-${arch}.${ext}"
+    },
+    "win": {
+      "electronLanguages": [
+        "en-GB",
+        "en-US",
+        "zh-CN",
+        "zh-TW"
+      ],
+      "icon": "desktop/assets/icon.ico",
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "artifactName": "Codex-Mobile-Bridge-${version}-Windows-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "desktop/assets/icon.png",
+      "category": "Development",
+      "executableName": "codex-mobile-bridge",
+      "syncDesktopName": true,
+      "artifactName": "Codex-Mobile-Bridge-${version}-Linux-${arch}.${ext}",
+      "maintainer": "try2love <try2love@users.noreply.github.com>"
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "libgbm1",
+        "libasound2",
+        "iproute2"
+      ]
+    },
+    "nsis": {
+      "artifactName": "Codex-Mobile-Bridge-${version}-Windows-${arch}-Setup.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "dependencies": {
+    "qrcode": "1.5.4"
+  }
+}

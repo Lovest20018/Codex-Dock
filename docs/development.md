@@ -1,6 +1,6 @@
 # 开发与构建
 
-Codex Dock 使用 C#、.NET 8、WPF 和 Tomlyn；独立手机 worker 使用 Python 3.12 标准库。面向使用者的安装与连接方式见 [README](../README.md)。
+Codex Dock 使用 C#、.NET 8、WPF 和 Tomlyn；独立手机 worker 使用 Python 3.12、完整上游 Codex 模块及 certifi。面向使用者的安装与连接方式见 [README](../README.md)。
 
 ## 本地构建
 
@@ -21,7 +21,7 @@ dotnet run --project src/CodexConfig.App/CodexConfig.App.csproj -c Release -- --
 
 核心和 UI 检查使用虚构凭据、隔离配置目录及测试环境变量。UI 检查覆盖布局、草稿、模板、备份恢复、托盘、开机启动和更新入口；缩放使用布局变换模拟。
 
-手机 Python 回归：`py -3.12 -B -m unittest discover -s tests/mobile -p 'test_*.py' -v`。浏览器 QA：先在 `tests/mobile` 执行 `npm ci`，再从仓库根执行 `node tests/mobile/browser-smoke.cjs`；需要本机 Chrome，可用 `CODEX_DOCK_TEST_PYTHON` 指定 Python 绝对路径。测试创建独立浏览器资料并在内存中拦截所有请求。回环套接字和测试子进程需要在环境许可下运行；不要禁用这些必要检查来生成发布包。
+手机 Python 回归：`py -3.12 -B -m unittest discover -s tests/mobile -p 'test_*.py' -v`。浏览器 QA：先在 `tests/mobile` 执行 `npm ci`，再从仓库根执行 `node tests/mobile/browser-smoke.cjs`；需要本机 Chrome，可用 `CODEX_DOCK_TEST_PYTHON` 指定 Python 绝对路径。测试创建独立浏览器资料和临时 Codex 数据目录；HTTPS 请求仅转到隔离 worker。上游浏览器用例通过 `tests/mobile/playwright.config.cjs` 复用，Windows 夹具使用生产服务相同的 HTTP/1.1。上游 Node / Python 原始用例保存在 `src/CodexMobile/upstream/tests`。回环套接字和测试子进程需要在环境许可下运行；不要禁用这些必要检查来生成发布包。
 
 设置 `CODEX_CONFIG_TEST_CLI` 为原生 `codex.exe` 的绝对路径，可加入两项 app-server 兼容检查，分别验证内置 `openai` 与旧 provider。它们只使用本机模拟上游与虚构官方登录，不消耗真实模型额度。网关进程用例使用测试程序自身的专用入口，界面用例使用实际 CodexDock 程序。
 
@@ -57,3 +57,7 @@ pwsh -NoProfile -File scripts/verify-package.ps1
 进程与主程序集使用 CodexDock；内部命名空间、用户数据目录和原有加密参数保留兼容。0.12.0 恢复可选混合连接，默认 PAT 编辑流程保持。网关使用 ASP.NET Core 共享运行时并随自包含发布一起打包；每个配置目录一个独立 worker，管理端点与模型路由分别鉴权。实现与真实线路边界见 [0.12.0 审查](review-0.12.0.md)。
 
 历史界面设计与审查记录保留在 docs 中，用于维护参考，不代表额外承诺的产品能力。
+
+每次冻结前 `scripts/verify-mobile-upstream.py` 校验原始快照与显式覆盖，禁止构建时自动接受散列变化。`freeze-mobile.py` 校验微软官方 ConPTY 锁定摘要、构建并自检原生 Codex 退出助手，收集远端注入源码与 certifi 证书。相关许可随运行时提供。
+
+`python -B tests/mobile/upstream_codex_regression.py` 按模块在独立解释器运行固定上游的 Codex 相关回归，保留原始断言。测试中的 WSL 发行版列表使用夹具，避免依赖本机 WSL 服务延迟；无 Windows 符号链接权限的用例明确跳过，目录 junction 边界另有原生测试。该入口不代替安卓真机、真实 SSH / WSL 或模型任务验收。

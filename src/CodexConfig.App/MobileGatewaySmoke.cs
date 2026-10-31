@@ -17,6 +17,7 @@ public partial class MainWindow
         var manager = MobileManager();
         Assert(manager.Load() is null && manager.StateDirectory.StartsWith(output, StringComparison.OrdinalIgnoreCase), "smoke mode uses isolated mobile state only");
         Assert(mobilePort.Text == "13090", "default mapped-access port remains editable");
+        Assert(mobileActions.Any(button => Equals(button.Content, "管理 Codex 接入")), "local Codex enrollment manager is available");
         mobileUrl.Text = "https://phone.example.com"; mobileUsername.Text = "test-user"; mobilePassword.Password = "fake-mobile-ui-password"; mobilePort.Text = "13092";
         ShowPage("connection"); ShowPage("mobile"); await Settle();
         Assert(mobileUrl.Text == "https://phone.example.com" && mobilePort.Text == "13092" && mobilePassword.Password == "fake-mobile-ui-password" && ModelBox.Text.EndsWith("-mobile-draft"), "mobile and model drafts survive navigation independently");
@@ -62,6 +63,6 @@ public partial class MainWindow
             await fixtureManager.StopAsync(); fixture.exitReady = true; fixture.Close();
         }
         ShowPage("connection"); await Settle();
-        checks.AddRange(["Independent mobile navigation and save actions", "Mobile and model drafts survive navigation", "Mobile URL validation before process launch", "Mobile smoke isolates all device data", "Mobile minimum-size and dark layouts", "Device revocation and IP unblock controls", "Mobile UI leaves native login and model configuration unchanged", "Editable port 13090 without a proxy IP field; invalid port cannot start service"]);
+        checks.AddRange(["Independent mobile navigation and save actions", "Mobile and model drafts survive navigation", "Mobile URL validation before process launch", "Mobile smoke isolates all device data", "Mobile minimum-size and dark layouts", "Device revocation and IP unblock controls", "Mobile UI leaves native login and model configuration unchanged", "Editable port 13090 without a proxy IP field; invalid port cannot start service", "Local Codex account and CLI enrollment entry"]);
     }
 }

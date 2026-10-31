@@ -1,4 +1,5 @@
-# Build-only tools; the frozen worker itself uses the standard library.
+# Build-only tools; certificate roots are included in the frozen worker.
+certifi==2026.7.22
 altgraph==0.17.5
 packaging==26.3
 pefile==2024.8.26

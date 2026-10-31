@@ -22,12 +22,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Mobile build requires Windows x64 Python 3.12.
 if ($LASTEXITCODE -ne 0) { throw 'Mobile build dependencies are inconsistent.' }
 $taskSource = Join-Path $taskRoot 'src\CodexMobile'
 $taskDist = Join-Path $taskArtifacts 'mobile-worker'
-& $taskBuildPython -m PyInstaller --noconfirm --clean --onedir --console --noupx --name CodexDock.Mobile --contents-directory runtime `
-    --distpath $taskDist --workpath (Join-Path $taskArtifacts 'mobile-build') --specpath (Join-Path $taskArtifacts 'mobile-spec') `
-    --add-data ((Join-Path $taskSource 'web') + ';web') `
-    --add-data ((Join-Path $taskSource 'UPSTREAM-LICENSE') + ';licenses') `
-    --add-data ((Join-Path $taskSource 'UPSTREAM.md') + ';licenses') `
-    (Join-Path $taskSource 'main.py')
+& $taskBuildPython (Join-Path $PSScriptRoot 'freeze-mobile.py')
 if ($LASTEXITCODE -ne 0) { throw 'Mobile worker freeze failed.' }
 $taskPayload = Join-Path $taskDist 'CodexDock.Mobile'
 $taskLicenseDir = Join-Path $taskPayload 'licenses'
@@ -40,7 +35,7 @@ $taskHashes = foreach ($taskFile in $taskFiles) {
     [ordered]@{path=$taskFile.FullName.Substring($taskPayload.Length + 1).Replace('\','/'); sha256=(Get-FileHash -LiteralPath $taskFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
 }
 [ordered]@{
-    name='CodexDock.Mobile'; protocol=3; upstreamCommit='0721aa7dafa6177751ba7e568e0ad0efee05655b'
+    name='CodexDock.Mobile'; protocol=4; upstreamCommit='0721aa7dafa6177751ba7e568e0ad0efee05655b'
     python=(& $taskBuildPython -c 'import platform; print(platform.python_version())')
     pyinstaller=(& $taskBuildPython -m PyInstaller --version)
     createdAtUtc=[DateTimeOffset]::UtcNow.ToString('o'); files=$taskHashes

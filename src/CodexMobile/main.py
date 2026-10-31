@@ -7,8 +7,19 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 
-from gateway import PROTOCOL, ControlHandler, PublicHandler, Server, State, public_origin
-from service import Bridge
+from vendor_bootstrap import activate
+UPSTREAM = activate()
+
+if len(sys.argv) == 3 and sys.argv[1] == '--terminal-child':
+    from bridge.platforms.windows.terminal import child_main
+    child_main(sys.argv[2])
+    sys.exit(0)
+
+from gateway import PROTOCOL, Server, public_origin
+from bridge.app.service import Bridge
+from migration import migrate_receipts
+from local_manager import ManagerControlHandler
+from workbench import Workbench
 
 
 @contextmanager
@@ -50,24 +61,29 @@ def run(config):
     config = validate(config)
     directory = Path(config['dataDir'])
     with worker_lock(directory):
+        migrate_receipts(directory)
         bridge = Bridge(config['codexHome'], directory)
-        public = control = None
+        public = control = workbench = None
+        threads = []
         try:
-            state = State(config, bridge, Path(__file__).resolve().parent / 'web')
-            public = Server(('0.0.0.0', config['port']), PublicHandler, state)
-            control = Server(('127.0.0.1', config['controlPort']), ControlHandler, state)
+            workbench = Workbench(config, bridge, UPSTREAM / 'web')
+            state = workbench.state
+            public = workbench.public
+            control = Server(('127.0.0.1', config['controlPort']), ManagerControlHandler, state)
             threads = [threading.Thread(target=server.serve_forever, daemon=True) for server in (public, control)]
+            workbench.start()
             for thread in threads:
                 thread.start()
             state.stop.wait()
-            for server in (public, control):
-                server.shutdown()
-            for thread in threads:
-                thread.join(timeout=2)
         finally:
-            for server in (public, control):
-                if server is not None:
-                    server.server_close()
+            for server, thread in zip((public, control), threads):
+                if thread.is_alive():
+                    server.shutdown()
+                    thread.join(timeout=2)
+            if control is not None:
+                control.server_close()
+            if workbench is not None:
+                workbench.close()
             bridge.close()
 
 

@@ -36,10 +36,10 @@ function Check-Bytes([string]$Name, [byte[]]$Bytes) {
         if ($taskUtf8.Contains($taskSecret) -or $taskUnicode.Contains($taskSecret)) { throw "Personal credential found in release input: $Name (value hidden)" }
     }
 }
-$taskFiles = git -C $taskRoot ls-files --cached --others --exclude-standard
+$taskFiles = git -C $taskRoot -c core.quotepath=false ls-files --cached --others --exclude-standard
 foreach ($taskName in $taskFiles) { Check-Bytes $taskName ([IO.File]::ReadAllBytes((Join-Path $taskRoot $taskName))) }
 if ($History) {
-    foreach ($taskObject in (git -C $taskRoot rev-list --objects --all)) {
+    foreach ($taskObject in (git -C $taskRoot -c core.quotepath=false rev-list --objects --all)) {
         if ($taskObject -notmatch '^([0-9a-f]+) (.+)$') { continue }
         $taskId = $Matches[1]; $taskName = $Matches[2]
         if ($taskName -match '\.(cs|json|md|ps1|iss|xaml|toml|txt|props|csproj)$' -or $taskName -match '(auth\.json|config\.toml|\.dat|\.backup)$') {

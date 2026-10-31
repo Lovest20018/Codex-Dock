@@ -10,6 +10,8 @@ from pathlib import Path
 from unittest.mock import patch
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src' / 'CodexMobile'))
+from vendor_bootstrap import activate
+activate()
 from bridge.features.auth.auth import Auth, LoginRejected, access_policy, password_record, session_hours
 from bridge.features.auth.pairing import Pairing, phone_origin
 ROOT = Path(__file__).resolve().parents[2] / 'artifacts' / 'mobile-tests'

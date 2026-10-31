@@ -1,41 +1,34 @@
-# Codex-only mobile worker
+# Codex workbench integration
 
-Selected modules from `try2love/codex-mobile-bridge`, commit
-`0721aa7dafa6177751ba7e568e0ad0efee05655b` (MIT, version 2.1.7):
+The source snapshot is from `try2love/codex-mobile-bridge` 2.1.7, commit
+`0721aa7dafa6177751ba7e568e0ad0efee05655b`, MIT. The complete Codex backend
+and Web UI are reused. The upstream Android app (build 40) remains the mobile host.
+No Electron or Android executable is rebuilt or bundled by Dock.
 
-- `bridge/clients/codex/ipc.py`, `transport.py` and the Windows/POSIX byte-stream transports.
-- `bridge/features/auth/auth.py`, `pairing.py`.
-- `bridge/features/sessions/store.py`, `model.py`, `tool_images.py`.
+`upstream-manifest.json` records original SHA-256 digests. `upstream-overlay.json`
+enumerates every intentional modification and omitted file. Run
+`scripts/verify-mobile-upstream.py` before building; unexpected edits fail the build.
+Upstream tests, architecture notes, native helpers and licenses accompany the source.
 
-The account-namespace helper `draft_identity` and image-signature helper `image_type`
-are isolated into `auth/identity.py` and `sessions/image_signatures.py`; two imports
-were changed accordingly. Auth is adapted in Dock 0.13.3: failed-login source
-locks restrict new authentication without revoking existing sessions behind a
-shared proxy. Explicit IP policy and device revocation remain authoritative.
-Upstream copyright and license: `UPSTREAM-LICENSE`.
+Dock owns only startup/configuration, fixed HTTPS ingress, local WPF control,
+Codex-only filtering, a loopback enrollment host, and migration. The shared-source
+login fix from 0.13.3 is retained: new authentication is restricted after failures;
+valid sessions remain usable until explicit policy, expiry or revocation applies.
+Legacy uncertain submissions never resend automatically. Legacy browser drafts
+are imported only after the user confirms the current account scope.
 
-`main.py`, `gateway.py`, `service.py` and `web/` are Dock's narrow integration.
-They expose existing local Desktop sessions only, with a fixed HTTPS reverse-proxy
-entry, an IPv4 listener accepting reverse proxies and port forwarding without a
-proxy-IP allowlist, a separate loopback control listener, and no generic RPC, CLI launcher,
-SSH, tunnels, terminal, account management or filesystem endpoints.
-An explicit Desktop snapshot must match the saved session ID, cwd and provider.
-Mutations use the original owner. Unknown operations are recorded before dispatch
-and never replayed automatically. Only saved native message IDs reconcile a lost
-send/steer response; prepared live turns do not establish acceptance.
+All original Codex session/workspace/account/notification APIs use the upstream
+ownership, host, provider, authentication and CSRF checks. Other client providers
+are disabled. The local enrollment host reuses the upstream account and CLI panels;
+its one-use 60-second link exchanges for a 30-minute HttpOnly cookie and CSRF token.
+The public listener never exposes enrollment credentials or generic desktop RPC.
 
-Android compatibility is maintained through the `/api/auth`, `/api/login`,
-`/api/pair`, `/api/logout` and cookie contracts, `#app` visibility and the
-`bridge-authenticated`, `bridge-logged-out`, `bridge-auth-lost`,
-`bridge-chat-visible` events. Phone UI is text-focused. External forms, plan
-implementation and unsupported approval types require Desktop in this version.
+The public entry remains Dock's single configured HTTPS origin and IPv4 listener.
+External reverse proxy, certificates, tunnels and router rules are operator managed.
+Upstream alternate network provisioning and other AI clients are outside this build.
 
-QR encoding uses Project Nayuki's MIT `qrcodegen.py`, v1.8.0:
-https://github.com/nayuki/QR-Code-generator/blob/v1.8.0/python/qrcodegen.py
-SHA-256: `b089855caf16185c61421ea4927c1b213cf9468940d71fa8ab11ef83662dcc84`.
-PNG rendering is local and uses the standard library. No token-bearing URL goes
-to an external image service. See `third_party/nayuki-qrcodegen-LICENSE.txt`.
-
-Build with Python 3.12 on Windows using `scripts/build-mobile.ps1`.
-The runtime requires no pip packages. PyInstaller and its pinned dependencies
-are build tools only. Keep the whole `mobile` directory beside CodexDock.exe.
+Build with Python 3.12 and `scripts/build-mobile.ps1`. The frozen worker includes
+certifi trust roots, pinned Microsoft ConPTY, the native Codex quit helper, remote
+adapter Python sources, Web vendor libraries and their license files. Keep the entire
+`mobile` directory beside CodexDock.exe. Local QR generation uses Nayuki 1.8.0;
+no token-bearing URL is sent to an image service.

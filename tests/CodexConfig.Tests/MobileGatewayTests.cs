@@ -39,7 +39,7 @@ public static class MobileGatewayTests
             var bytes = await File.ReadAllBytesAsync(manager.SettingsPath);
             Assert(!Encoding.UTF8.GetString(bytes).Contains("isolated-test-password") && !Encoding.UTF8.GetString(bytes).Contains(saved.ControlToken), "no plaintext password or control bearer on disk");
             Assert(manager.Load() == saved, "encrypted round trip");
-            foreach (var protocol in new[] { 1, 2 })
+            foreach (var protocol in new[] { 1, 2, 3 })
             {
                 var oldJson = JsonNode.Parse(JsonSerializer.Serialize(saved, new JsonSerializerOptions(JsonSerializerDefaults.Web)))!;
                 oldJson["protocol"] = protocol;
@@ -114,12 +114,35 @@ public static class MobileGatewayTests
                     var result = JsonDocument.Parse(await response.Content.ReadAsByteArrayAsync(timeout.Token));
                     return (result, response.Headers.TryGetValues("Set-Cookie", out var cookies) ? cookies.First().Split(';')[0] : null);
                 }
-                var probe = await Request("/api/auth"); using (probe.Data) Assert(!probe.Data.RootElement.GetProperty("authenticated").GetBoolean(), "Android unauthenticated probe");
+                var probe = await Request("/api/auth");
+                using (probe.Data)
+                {
+                    Assert(!probe.Data.RootElement.GetProperty("authenticated").GetBoolean(), "Android unauthenticated probe");
+                    Assert(probe.Data.RootElement.GetProperty("notifications").GetBoolean(), "frozen worker exposes upstream notifications");
+                }
                 var login = await Request("/api/login", new { username = "tester", password = "isolated-test-password" });
                 string csrf; using (login.Data) csrf = login.Data.RootElement.GetProperty("csrf").GetString()!;
                 var cookie = login.Cookie ?? throw new InvalidOperationException("missing secure session cookie");
                 var authorized = await Request("/api/auth", cookie: cookie);
-                using (authorized.Data) Assert(authorized.Data.RootElement.GetProperty("trustedDevice").GetBoolean(), "Android receives durable device authorization");
+                using (authorized.Data)
+                {
+                    Assert(authorized.Data.RootElement.GetProperty("trustedDevice").GetBoolean(), "Android receives durable device authorization");
+                    Assert(authorized.Data.RootElement.GetProperty("enabledClients").EnumerateArray().Select(value => value.GetString()).SequenceEqual(new[] { "codex" }), "frozen navigation contains only Codex");
+                }
+                foreach (var asset in new[] { "/", "/accounts.js", "/cli-access.js", "/timeline.js", "/vendor/xterm/xterm.js" })
+                {
+                    using var assetRequest = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{saved.Port}" + asset);
+                    assetRequest.Headers.Host = "phone.example.com";
+                    using var assetResponse = await client.SendAsync(assetRequest, timeout.Token);
+                    Assert(assetResponse.IsSuccessStatusCode && (await assetResponse.Content.ReadAsByteArrayAsync(timeout.Token)).Length > 100, "complete upstream assets are frozen: " + asset);
+                }
+                using (var localManager = await manager.ControlAsync("manager", new { }, timeout.Token))
+                {
+                    var url = new Uri(localManager.RootElement.GetProperty("url").GetString()!);
+                    Assert(url.Host == "127.0.0.1" && url.Port == saved.ControlPort && url.AbsolutePath == "/manager/" && url.Fragment.Length > 32, "manager link is local with one-use fragment");
+                    using var managerPage = await client.GetAsync(new UriBuilder(url) { Fragment = "" }.Uri, timeout.Token);
+                    Assert(managerPage.IsSuccessStatusCode && (await managerPage.Content.ReadAsStringAsync(timeout.Token)).Contains("管理 Codex 接入"), "actual frozen manager assets are present");
+                }
                 await replacement.StopAsync(timeout.Token);
                 Assert(await manager.StatusAsync(timeout.Token) is null, "authenticated stop closes worker");
                 await manager.StartAsync(timeout.Token, executable);
@@ -166,10 +189,10 @@ public static class MobileGatewayTests
                 using (authorized.Data) Assert(authorized.Data.RootElement.GetProperty("authenticated").GetBoolean(), "valid cookie returns to the shared source");
                 for (var attempt = 0; attempt < 5; attempt++)
                 {
-                    var failed = await Request("/api/login", new { username = "tester", password = "wrong" }, expected: HttpStatusCode.Unauthorized);
+                    var failed = await Request("/api/login", new { username = "tester", password = "wrong" }, expected: HttpStatusCode.Forbidden);
                     failed.Data.Dispose();
                 }
-                var blockedLogin = await Request("/api/login", new { username = "tester", password = "isolated-test-password" }, expected: HttpStatusCode.Unauthorized);
+                var blockedLogin = await Request("/api/login", new { username = "tester", password = "isolated-test-password" }, expected: HttpStatusCode.Forbidden);
                 using (blockedLogin.Data) Assert(blockedLogin.Data.RootElement.GetProperty("loginStatus").GetProperty("blocked").GetBoolean(), "new authentication remains limited");
                 await manager.StopAsync(timeout.Token);
                 await manager.StartAsync(timeout.Token, executable);
