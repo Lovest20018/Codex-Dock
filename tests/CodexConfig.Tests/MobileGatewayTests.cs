@@ -66,6 +66,23 @@ public static class MobileGatewayTests
             Assert(manager.Load() == saved && saved.Auth == previous.Auth && saved.InstanceId == previous.InstanceId, "port update preserves password and instance");
             Assert(!JsonSerializer.Serialize(saved, new JsonSerializerOptions(JsonSerializerDefaults.Web)).Contains("proxyAddress"), "boot contract no longer includes a proxy IP");
         }));
+        tests.Add(("mobile status treats a truncated health response as unavailable without changing settings", async () =>
+        {
+            var manager = new MobileGatewayManager(Home(), Path.Combine(root, "mobile-truncated-status"));
+            var saved = await manager.SaveAsync("https://phone.example.com", "tester", "isolated-test-password", Port());
+            using var listener = new TcpListener(IPAddress.Loopback, saved.ControlPort); listener.Start();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var interrupted = Task.Run(async () =>
+            {
+                using var peer = await listener.AcceptTcpClientAsync(timeout.Token);
+                await using var stream = peer.GetStream();
+                await stream.ReadAsync(new byte[4096], timeout.Token);
+                await stream.WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 80\r\nConnection: close\r\n\r\n{"), timeout.Token);
+            }, timeout.Token);
+            Assert(await manager.StatusAsync(timeout.Token) is null, "partial health body must not escape as a transport exception");
+            await interrupted;
+            Assert(manager.Load() == saved, "unavailable status preserves encrypted settings and identity");
+        }));
         tests.Add(("packaged mobile worker survives manager disposal, persists Android login and revokes devices", async () =>
         {
             var executable = Path.GetFullPath("artifacts/mobile-worker/CodexDock.Mobile/CodexDock.Mobile.exe");

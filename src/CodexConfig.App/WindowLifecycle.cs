@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using CodexConfig.Core;
 
 namespace CodexConfig.App;
 
@@ -15,8 +16,38 @@ public partial class MainWindow
 
     private void InitializeTray()
     {
-        try { tray = new TrayIcon(() => Dispatcher.Invoke(RestoreWindow), () => Dispatcher.Invoke(RequestExit)); }
+        try
+        {
+            tray = new TrayIcon(() => Dispatcher.Invoke(RestoreWindow), () => Dispatcher.Invoke(RequestExit),
+                () => Dispatcher.InvokeAsync(ReadTrayGatewaysAsync).Task.Unwrap(),
+                () => Dispatcher.InvokeAsync(() => RunMobileActionAsync(StopMobileGatewayAsync)).Task.Unwrap(),
+                () => Dispatcher.InvokeAsync(StopModelGatewayAsync).Task.Unwrap(), notifications: smokeOutput is null);
+        }
         catch (Exception) { SetStatus("系统托盘暂不可用，关闭窗口将退出程序。", true); }
+    }
+
+    private async Task<TrayGatewayState> ReadTrayGatewaysAsync()
+    {
+        var expectedHome = home;
+        var manager = MobileManager();
+        async Task<bool?> MobileRunning()
+        {
+            try { return await manager.StatusAsync(lifetime.Token) is not null; }
+            catch { return null; }
+        }
+        async Task<bool?> ModelRunning()
+        {
+            try
+            {
+                var saved = await Task.Run(() => store.Load(expectedHome), lifetime.Token);
+                return saved.Bridge is { } bytes && await BridgeProcess.StatusAsync(MixedConnection.Read(bytes), lifetime.Token) is not null;
+            }
+            catch { return null; }
+        }
+        // Status checks never start a stopped worker or apply unsaved drafts.
+        var mobile = MobileRunning(); var model = ModelRunning();
+        await Task.WhenAll(mobile, model);
+        return closing || expectedHome != home ? new(null, null) : new(mobileBusy ? null : mobile.Result, gatewayPolling ? null : model.Result);
     }
 
     internal void RestoreWindow()

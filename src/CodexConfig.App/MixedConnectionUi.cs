@@ -137,10 +137,26 @@ public partial class MainWindow
     private async void RefreshGatewayClicked(object sender, RoutedEventArgs e) => await RefreshGatewayAsync();
     private async void StopGatewayClicked(object sender, RoutedEventArgs e)
     {
-        if (snapshot?.Bridge is not { } bytes || gatewayPolling) return;
-        stoppedGatewayHomes.Add(home); gatewayPolling = true; RefreshMixedUi();
-        try { await BridgeProcess.StopAsync(bytes, lifetime.Token); gatewayStatus = null; }
+        try { await StopModelGatewayAsync(); }
         catch (Exception) { GatewayStatusText.Text = "网关尚未停止，请稍后重试。"; }
-        finally { gatewayPolling = false; await RefreshGatewayAsync(); }
+    }
+
+    private async Task StopModelGatewayAsync()
+    {
+        if (gatewayPolling || closing) throw new InvalidOperationException("模型网关正在处理操作，请稍后重试。");
+        var expectedHome = home;
+        stoppedGatewayHomes.Add(expectedHome); gatewayPolling = true; RefreshMixedUi();
+        try
+        {
+            // Stop the saved connection, preserving any draft in the editor.
+            var saved = await Task.Run(() => store.Load(expectedHome), lifetime.Token);
+            if (saved.Bridge is { } bytes) await BridgeProcess.StopAsync(bytes, lifetime.Token);
+            if (home == expectedHome) gatewayStatus = null;
+        }
+        finally
+        {
+            gatewayPolling = false;
+            if (!closing && home == expectedHome) await RefreshGatewayAsync();
+        }
     }
 }

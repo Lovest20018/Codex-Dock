@@ -62,7 +62,7 @@ public partial class MainWindow
         mobileStatus.Margin = new(0, 10, 0, 9); runtime.Children.Add(mobileStatus); runtime.Children.Add(mobileEndpoint);
         var controls = new WrapPanel { Margin = new(0, 16, 0, 0) };
         Action(controls, "启动", async () => { await MobileManager().StartAsync(lifetime.Token); await RefreshMobilePageAsync(); });
-        Action(controls, "停止", async () => { await MobileManager().StopAsync(lifetime.Token); ClearMobileQr(); await RefreshMobilePageAsync(); });
+        Action(controls, "停止", StopMobileGatewayAsync);
         Action(controls, "刷新状态", () => RefreshMobilePageAsync());
         Action(controls, "检测 HTTPS 入口", async () =>
         {
@@ -98,17 +98,31 @@ public partial class MainWindow
     private async Task MobileActionAsync(Func<Task> action)
     {
         if (mobileBusy) return;
+        try { await RunMobileActionAsync(action); }
+        catch (OperationCanceledException) { mobileStatus.Text = "操作已取消，请刷新状态。"; }
+        catch (Exception error) { mobileStatus.Text = error.Message; }
+    }
+
+    private async Task RunMobileActionAsync(Func<Task> action)
+    {
+        if (mobileBusy || closing) throw new InvalidOperationException("手机网关正在处理操作，请稍后重试。");
         mobileBusy = true; foreach (var button in mobileActions) button.IsEnabled = false;
         mobileUrl.IsEnabled = mobileUsername.IsEnabled = mobilePort.IsEnabled = mobilePassword.IsEnabled = false;
         mobileStatus.Text = "正在处理…";
         try { await action(); }
-        catch (OperationCanceledException) { mobileStatus.Text = "操作已取消，请刷新状态。"; }
-        catch (Exception error) { mobileStatus.Text = error.Message; }
+        catch (Exception error) { mobileStatus.Text = error.Message; throw; }
         finally
         {
             mobileBusy = false; foreach (var button in mobileActions) button.IsEnabled = true;
             mobileUrl.IsEnabled = mobileUsername.IsEnabled = mobilePort.IsEnabled = mobilePassword.IsEnabled = true;
         }
+    }
+
+    private async Task StopMobileGatewayAsync()
+    {
+        var expectedHome = home;
+        await MobileManager().StopAsync(lifetime.Token);
+        if (expectedHome == home && !closing) { ClearMobileQr(); await RefreshMobilePageAsync(); }
     }
 
     private async Task SaveAndStartMobileAsync()

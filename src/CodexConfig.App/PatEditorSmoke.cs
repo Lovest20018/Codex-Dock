@@ -69,6 +69,8 @@ public partial class MainWindow
         fixture.Loaded -= fixture.WindowLoaded;
         fixture.Show(); fixture.InitializeTray();
         Assert(fixture.tray is not null, "System tray icon created");
+        await fixture.tray!.RefreshGatewayActionsAsync();
+        Assert(!fixture.tray.StopMobileItem.Enabled && !fixture.tray.StopModelItem.Enabled && fixture.tray.StopMobileItem.Text?.Contains("未运行") == true, "Tray marks both stopped gateways without starting them");
         fixture.ApiKeyBox.Password = "fake-tray-draft"; fixture.Close();
         Assert(!fixture.IsVisible && fixture.Dirty, "Close hides to tray and preserves PAT draft");
         fixture.RestoreWindow();
@@ -78,7 +80,7 @@ public partial class MainWindow
         fixture.RestoreWindow(); fixture.Reload(); fixture.RequestExit();
         for (var attempt = 0; attempt < 100 && (!fixture.exitReady || fixture.tray is not null); attempt++) await Task.Delay(100);
         Assert(fixture.exitReady && fixture.tray is null, "Exit disposes the tray without a background gateway");
-        checks.AddRange(["Close hides to tray and preserves PAT draft", "Tray restore and taskbar minimize", "Exit removes the tray without a background gateway"]);
+        checks.AddRange(["Close hides to tray and preserves PAT draft", "Tray restore and taskbar minimize", "Exit removes the tray without a background gateway", "Tray gateway status check leaves stopped services stopped"]);
     }
 
     private sealed class DelayedModelCatalogHandler : System.Net.Http.HttpMessageHandler

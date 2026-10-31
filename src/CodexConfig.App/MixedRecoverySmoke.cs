@@ -39,6 +39,20 @@ public partial class MainWindow
             await fixture.RefreshGatewayAsync(start: true);
             Assert(fixture.gatewayStatus is not null && !fixture.Dirty && !fixture.SaveButton.IsEnabled, "Saved connection starts an independent gateway and reloads cleanly");
             var connection = MixedConnection.Read(bridge);
+            fixture.InitializeTray();
+            await fixture.tray!.RefreshGatewayActionsAsync();
+            Assert(fixture.tray.StopModelItem.Enabled && !fixture.tray.StopMobileItem.Enabled, "Tray shows the running model gateway independently");
+            var beforeTrayStop = fixtureStore.Load(fixtureHome);
+            fixture.ModelBox.Text = "unsaved-tray-model"; fixture.Hide();
+            fixture.tray.StopModelItem.PerformClick();
+            for (var i = 0; i < 150 && fixture.tray.GatewayActionInProgress; i++) await Task.Delay(100);
+            await fixture.RefreshLocalCodexStateAsync();
+            Assert(!fixture.tray.GatewayActionInProgress && !fixture.IsVisible && fixture.Dirty && fixture.ModelBox.Text == "unsaved-tray-model" &&
+                await BridgeProcess.StatusAsync(connection) is null && !fixture.tray.StopModelItem.Enabled && beforeTrayStop.SameContents(fixtureStore.Load(fixtureHome)),
+                "Tray stops the actual model gateway while hidden, retains the draft, and prevents timer restart");
+            fixture.RestoreWindow(); fixture.Reload(); fixture.stoppedGatewayHomes.Remove(fixtureHome); await fixture.RefreshGatewayAsync(start: true);
+            Assert(fixture.gatewayStatus is not null, "Explicit model start works after a tray stop");
+            checks.AddRange(["Tray reports model gateway independently", "Tray stops model worker while hidden without applying drafts or restarting on polling", "Explicit model start works after tray stop"]);
             Assert(new TomlDocument(fixtureStore.Load(fixtureHome).Config).String("model_provider") == "openai" && File.ReadAllBytes(Path.Combine(fixtureHome, "auth.json")).SequenceEqual(auth), "Mixed UI preserves native provider identity and login");
             fixture.detailedChanges["analytics.enabled"] = "false"; fixture.MarkDirty();
             Assert(fixture.SaveCurrent() && File.ReadAllBytes(Path.Combine(fixtureHome, "auth.json")).SequenceEqual(auth), "Ordinary mixed-mode settings save does not rewrite the login");

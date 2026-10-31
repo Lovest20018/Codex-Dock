@@ -38,6 +38,29 @@ public partial class MainWindow
         mobilePassword.Clear(); mobileUrl.Clear(); mobileUsername.Text = "codex"; ModelBox.Text = previousModel;
         ClearMobileQr(); await RefreshMobilePageAsync();
         Assert(before.SameContents(store.Load(home)) && !File.Exists(manager.SettingsPath), "viewing mobile UI leaves native auth, config, and worker settings untouched");
+        var fixture = new MainWindow(store, home, output, environment);
+        fixture.Loaded -= fixture.WindowLoaded;
+        var fixtureManager = fixture.MobileManager();
+        try
+        {
+            using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0); listener.Start();
+            var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
+            var config = await fixtureManager.SaveAsync("https://phone.example.com", "tester", "fake-tray-mobile-password", port);
+            await fixtureManager.StartAsync();
+            fixture.InitializeTray(); await fixture.tray!.RefreshGatewayActionsAsync();
+            Assert(fixture.tray.StopMobileItem.Enabled && !fixture.tray.StopModelItem.Enabled, "Tray shows the running mobile gateway independently");
+            fixture.ModelBox.Text = "unsaved-mobile-tray-model";
+            fixture.tray.StopMobileItem.PerformClick();
+            for (var i = 0; i < 150 && fixture.tray.GatewayActionInProgress; i++) await Task.Delay(100);
+            Assert(!fixture.tray.GatewayActionInProgress && !fixture.IsVisible && fixture.Dirty && fixture.ModelBox.Text == "unsaved-mobile-tray-model" &&
+                await fixtureManager.StatusAsync() is null && !fixture.tray.StopMobileItem.Enabled && fixtureManager.Load() == config && before.SameContents(store.Load(home)),
+                "Tray stops the actual mobile worker while hidden and preserves drafts, credentials and configuration");
+            checks.AddRange(["Tray reports mobile gateway independently", "Tray stops mobile worker while hidden without changing credentials or drafts"]);
+        }
+        finally
+        {
+            await fixtureManager.StopAsync(); fixture.exitReady = true; fixture.Close();
+        }
         ShowPage("connection"); await Settle();
         checks.AddRange(["Independent mobile navigation and save actions", "Mobile and model drafts survive navigation", "Mobile URL validation before process launch", "Mobile smoke isolates all device data", "Mobile minimum-size and dark layouts", "Device revocation and IP unblock controls", "Mobile UI leaves native login and model configuration unchanged", "Editable port 13090 without a proxy IP field; invalid port cannot start service"]);
     }

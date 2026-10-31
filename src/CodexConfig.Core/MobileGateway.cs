@@ -129,7 +129,7 @@ public sealed partial class MobileGatewayManager
             var status = result.Deserialize<MobileGatewayStatus>(Json);
             return status is { Service: "codex-dock-mobile" } && status.InstanceId == config.InstanceId && status.PublicUrl == config.PublicUrl && status.Port == config.Port ? status : null;
         }
-        catch (Exception error) when (error is HttpRequestException or OperationCanceledException or InvalidDataException or JsonException) { return null; }
+        catch (Exception error) when (error is HttpRequestException or OperationCanceledException or IOException or JsonException) { return null; }
     }
 
     public async Task<MobileGatewayStatus> StartAsync(CancellationToken cancellation = default, string? workerExecutable = null, string? workerScript = null)
