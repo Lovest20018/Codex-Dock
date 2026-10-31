@@ -54,18 +54,6 @@ jobs:
         with:
           python-version: '3.12'
           architecture: x64
-      - name: Core and gateway checks
-        run: |
-          python -B -m unittest discover -s tests/release -p 'test_*.py' -v
-          if ($LASTEXITCODE -ne 0) { throw 'Release pipeline tests failed.' }
-          dotnet build tests/CodexConfig.Tests/CodexConfig.Tests.csproj -c Release
-          if ($LASTEXITCODE -ne 0) { throw 'Core test build failed.' }
-          & ./tests/CodexConfig.Tests/bin/Release/net8.0-windows/CodexConfig.Tests.exe
-          if ($LASTEXITCODE -ne 0) { throw 'Core tests failed.' }
-          python -B -m unittest discover -s tests/mobile -p 'test_*.py' -v
-          if ($LASTEXITCODE -ne 0) { throw 'Gateway tests failed.' }
-          node --test tests/mobile/dock-drafts.test.cjs tests/mobile/client-status.test.cjs
-          if ($LASTEXITCODE -ne 0) { throw 'Web state tests failed.' }
       - name: Prepare locked build tools
         run: |
           python -m venv artifacts/mobile-build-venv
@@ -79,6 +67,18 @@ jobs:
         run: |
           ./scripts/package.ps1 -Version $env:RELEASE_WINDOWS
           ./scripts/verify-package.ps1 -Version $env:RELEASE_WINDOWS
+      - name: Core and gateway checks
+        run: |
+          python -B -m unittest discover -s tests/release -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Release pipeline tests failed.' }
+          dotnet build tests/CodexConfig.Tests/CodexConfig.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Core test build failed.' }
+          & ./tests/CodexConfig.Tests/bin/Release/net8.0-windows/CodexConfig.Tests.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Core tests failed.' }
+          python -B -m unittest discover -s tests/mobile -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Gateway tests failed.' }
+          node --test tests/mobile/dock-drafts.test.cjs tests/mobile/client-status.test.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Web state tests failed.' }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-release
@@ -96,6 +96,7 @@ jobs:
         with:
           name: windows-failure-evidence
           if-no-files-found: ignore
+          include-hidden-files: true
           path: |
             .ui-test-*/failure.txt
             .ui-test-*/report.json

@@ -1,7 +1,7 @@
 # The pinned snapshot is verified byte-for-byte against the upstream manifest.
 src/CodexMobile/upstream/** -text -whitespace
 # Android source archives and APK provenance use the same canonical bytes.
-LICENSE text eol=lf
+/LICENSE text eol=lf
 src/CodexAndroid/** text eol=lf
 scripts/build-android.py text eol=lf
 scripts/init-android-signing.ps1 text eol=lf
