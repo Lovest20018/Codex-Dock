@@ -128,8 +128,9 @@ target.getSharedPreferences("bridge",0).edit().clear().putBoolean("alerts",true)
   check(Boolean.TRUE.equals(js("document.documentElement.scrollWidth<=innerWidth+2")),"Landscape chat layout fits the WebView");shot("landscape");
   ui(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
   until(()->activity.getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_PORTRAIT,"Portrait configuration restored");Thread.sleep(400);
-  ui(()->{WebView v=(WebView)field("web");v.setLayoutParams(new FrameLayout.LayoutParams(Math.round(320*activity.getResources().getDisplayMetrics().density),-1));v.getSettings().setTextZoom(130);});Thread.sleep(500);
-  check(Boolean.TRUE.equals(js("innerWidth<=322&&document.documentElement.scrollWidth<=innerWidth+2")),"320dp viewport fits with enlarged WebView text");shot("narrow-large-text");
+  ui(()->{WebView v=(WebView)field("web");v.setLayoutParams(new FrameLayout.LayoutParams(Math.round(320*activity.getResources().getDisplayMetrics().density),-1));v.getSettings().setTextZoom(130);});
+  until(()->Boolean.TRUE.equals(js("innerWidth<=322")),"Narrow viewport layout applied after rotation");
+  check(Boolean.TRUE.equals(js("document.documentElement.scrollWidth<=innerWidth+2")),"320dp viewport fits with enlarged WebView text "+js("JSON.stringify({width:innerWidth,scroll:document.documentElement.scrollWidth,visual:visualViewport.width,scale:visualViewport.scale})"));shot("narrow-large-text");
   ui(()->{WebView v=(WebView)field("web");v.setLayoutParams(new FrameLayout.LayoutParams(-1,-1));v.getSettings().setTextZoom(100);});
   ui(()->((WebView)field("web")).loadDataWithBaseURL(base+"/","<html><body>Offline fixture</body></html>","text/html","UTF-8",null));Thread.sleep(500);
   final boolean[] left={false};ui(()->call("beforeLeave",new Class<?>[]{Runnable.class},(Runnable)()->left[0]=true));until(()->left[0],"An unavailable page without a draft can switch computers");check(left[0],"Offline fallback does not trap the user on an unavailable page");
