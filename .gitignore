@@ -28,3 +28,6 @@ artifacts/
 src/CodexMobile/upstream/.tmp/
 src/CodexMobile/upstream/.local/
 src/CodexMobile/upstream/dist/
+*.p12
+*.jks
+**/store-password.txt

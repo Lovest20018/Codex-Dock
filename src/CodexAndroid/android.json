@@ -1,0 +1,26 @@
+{
+  "applicationId": "io.github.lovest20018.codexdock",
+  "versionName": "0.1.0",
+  "versionCode": 1,
+  "minSdk": 26,
+  "targetSdk": 35,
+  "upstreamCommit": "0721aa7dafa6177751ba7e568e0ad0efee05655b",
+  "javaOverrides": [
+    "MainActivity.java",
+    "SettingsPage.java",
+    "MobileStrings.java"
+  ],
+  "excludedJava": [
+    "DshMobileActivity.java",
+    "DshMobileStore.java",
+    "DshMobileURL.java",
+    "GatewayUpdate.java",
+    "UpdateInstallSession.java"
+  ],
+  "dependency": {
+    "name": "com.google.zxing:core",
+    "version": "3.5.3",
+    "url": "https://repo.maven.apache.org/maven2/com/google/zxing/core/3.5.3/core-3.5.3.jar",
+    "sha256": "8d8064c1636fdaef7189dd9055c7d59950a8940a12f2293956446ec3c109fd82"
+  }
+}

@@ -6,7 +6,7 @@ Copyright (c) 2026 try2love. MIT.
 
 Source: https://github.com/try2love/codex-mobile-bridge/tree/0721aa7dafa6177751ba7e568e0ad0efee05655b
 
-The full Codex backend and Web UI are reused in the mobile worker. Source provenance and explicit overlays are documented in `src/CodexMobile/UPSTREAM.md`. The full license is in `third_party/codex-mobile-bridge-LICENSE.txt` and `src/CodexMobile/UPSTREAM-LICENSE`. Upstream Electron and Android executables are not bundled. Other AI providers are disabled by the Dock adapter; their source remains in the auditable upstream snapshot.
+The full Codex backend and Web UI are reused in the mobile worker. Source provenance and explicit overlays are documented in `src/CodexMobile/UPSTREAM.md`. The full license is in `third_party/codex-mobile-bridge-LICENSE.txt` and `src/CodexMobile/UPSTREAM-LICENSE`. Upstream Electron and Android executables are not bundled. The separate Dock Android APK compiles pinned Android helper sources with Dock-owned Activity, settings and branding; its notice and included upstream licenses are specified in `src/CodexAndroid/NOTICE.md`. QR scanning uses ZXing Core 3.5.3 (Apache-2.0), with its full license in the APK; menu icons use Lucide 0.468.0 (ISC), with attribution in the upstream mobile notice. Other AI providers are disabled by the Dock adapter; their source remains in the auditable upstream snapshot.
 
 ## Project Nayuki QR Code generator 1.8.0
 

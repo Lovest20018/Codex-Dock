@@ -1,16 +1,48 @@
-# Dock 独立安卓壳边界
+# Codex Dock 独立安卓客户端
 
-建议维护 Dock 自有原生壳，Web 与安卓共用 Codex 工作台。电脑侧的配置、账号登记、两个网关生命周期仍由 Windows Dock 管理；手机使用已授权接入。无需复制聊天协议、另建账号存储或重写发送状态机。
+Android 0.1.0 是独立安装的 Codex Dock 原生壳，连接 Windows Dock 0.15.1 的共享 Codex 工作台。聊天、审批、项目、Git、文件、终端、通知及 WSL / SSH 沿用电脑侧能力；电脑配置、账号登记和网关生命周期继续由 Windows Dock 管理。
 
-本轮完成共享网页收敛：保留聊天、审批、项目、Git、文件、终端、通知及 WSL / SSH；移除其他 AI 偏好、上游 Codex / APK 协助更新、临时 HTTPS 与网络部署设置。现有安卓 APK 继续加载同一套网页，因此同步获得这些调整。
+## 安装与连接
 
-独立壳下一阶段负责以下原生交互：
+安装 `CodexDock-Android-0.1.0.apk`（Android 8 / API 26 及以上）。它的 applicationId 为 `io.github.lovest20018.codexdock`，与旧上游 App 并存。旧 App 的私有电脑列表和 Cookie 不跨应用读取，首次使用需重新扫码或添加网关并登录；电脑上的聊天记录不受影响。
 
-- 电脑列表、域名输入、扫码配对与连接故障提示。
-- WebView 容器、键盘与返回导航、安全区、文件选择和下载。
-- 设备 Cookie、通知授权、后台通知与通知跳转。
-- Dock 品牌和独立更新入口；移除上游其他 AI、部署指导和更新菜单。
+在 Windows Dock 的“手机连接”中生成配对码，用安卓首页“扫码连接电脑”连接；也可输入完整网关地址并用网关账号密码登录。公网地址必须为 HTTPS，HTTP 仅接受明确的局域网 / 回环 IP。App 不代办域名、证书和穿透配置。
 
-保持现有 origin、主框架、点击来源、当前 WebView、token 和回调代际校验。电脑列表与网页聊天的选择状态分开管理，调整窗口和打开设置不重建会话、不丢失草稿。原生通知、Cookie 恢复和文件回调继续使用已验证的边界。
+原生电脑列表支持状态刷新、改名和移除；聊天菜单保留返回电脑列表、账号与接入、通知收件箱、外观、手机设置和刷新。原生设置提供任务通知、按电脑控制通知来源、后台通知、主题、当前版本及 Dock 发布页。没有 DSH、其他 AI、上游部署 / APK 更新入口。版本页打开 Dock GitHub Releases，由用户选择安装 APK；本版不自动下载或安装更新。
 
-当前没有生成或签名 Dock Android APK。发布独立壳前需确定 applicationId、长期签名密钥、升级来源及是否迁移上游 APK 的电脑列表；不同包名不能直接读取旧 App 的私有 Cookie。需要 Android 构建、签名校验和真机键盘、返回、扫码、通知、文件选择验收。Windows 的安装包不包含安卓壳，旧 APK 自带的原生更新菜单仍属于旧 App。
+普通 APK 不包含 Firebase SDK。前台同步和用户主动开启的后台通知沿用已鉴权的网关连接，后台使用带常驻通知的 Android 前台服务；不承诺进程被系统终止后仍可收到任务提醒。聊天、登录和工作台需要电脑网关在线。
+
+## 源码与构建
+
+Dock 自有源码位于 `src/CodexAndroid/`，包含 MainActivity、SettingsPage、MobileStrings、清单和品牌资源。其余扫码、下载、Cookie、设备绑定和通知帮助类复用固定上游快照；上游源码与七项既有 Web 覆盖未因本轮修改。构建校验全部上游散列，不复制共享 Web 脚本，资源只在临时目录叠加。
+
+构建需要 JDK 17、Android SDK platform 35、build-tools 35.0.0、Python 3.12+。从 `src/CodexAndroid/android.json` 的固定 URL 下载 ZXing Core 3.5.3 到 `artifacts/android-deps/zxing-core-3.5.3.jar`，构建检查 SHA-256。
+
+首次生成长期签名（只运行一次，禁止覆盖旧密钥）：
+
+```powershell
+pwsh -NoProfile -File scripts/init-android-signing.ps1 -Jdk C:/path/to/jdk-17
+```
+
+默认保存在 `%LOCALAPPDATA%/CodexDock/android-signing`，仅当前用户和 SYSTEM 可访问。请将整个私有签名目录安全备份，后续升级必须沿用同一密钥；不要提交或分发密钥与密码文件。APK 和 manifest 只公开证书与公钥指纹。
+
+审查、测试并提交后，从干净工作区构建：
+
+```powershell
+python -B scripts/build-android.py --jdk C:/path/to/jdk-17 --sdk C:/path/to/Android/Sdk
+```
+
+输出 APK、SHA-256 清单和包含源提交 / 输入散列 / 签名验证结果的 manifest。临时验证可加 `--allow-dirty`，其输出带 `-qa` 后缀，不作为发布包。Windows 安装器和自更新版本仍为 0.15.1，Android 单独使用 versionName 0.1.0 / versionCode 1；后续 Android 更新须递增 versionCode，并同步 `android.json` 和清单。
+
+## 验证与边界
+
+`tests/android/run-smoke.py` 在单独签名的测试 APK 中运行 Instrumentation，目标 APK 不加入测试钩子、不开放调试。使用明确的模拟器 serial、ADB 回环端口转发和临时 Codex 数据；拒绝直接在真机 serial 运行。
+
+```powershell
+python -B tests/android/run-smoke.py --jdk C:/path/to/jdk-17 --sdk C:/path/to/Android/Sdk --device emulator-5562 --apk artifacts/CodexDock-Android-0.1.0.apk
+node --test src/CodexMobile/upstream/mobile/tests/*.test.cjs
+```
+
+隔离测试的网关运行生产 Python / Web 代码，并在仅回环的测试代理映射 Host、Origin 和 Cookie Secure 属性，让模拟器通过 HTTP 测试页面；不改变生产安全设置。此测试不代表公网 HTTPS 或证书验收。执行端使用不存在的原生程序，不发起模型任务。
+
+验收记录见 [Android 0.1.0 审查](review-android-0.1.0.md)。Android 14 模拟器可以验证界面、WebView、文件与系统通知流程；真实相机扫码、厂商键盘 / 后台策略、公网接入和真实 Codex / SSH / WSL 任务仍需真机与对应环境验证。
