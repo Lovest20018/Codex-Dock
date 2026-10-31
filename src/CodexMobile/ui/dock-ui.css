@@ -1,0 +1,77 @@
+/* Product presentation: existing feature and host layout boundaries stay intact. */
+.dock-ui{--dock-panel:#fff;--dock-surface:#f5f6fa;--dock-text:#242b38;--dock-warning:#865619;--dock-warning-bg:#fff4df;color:var(--dock-text)}
+:root[data-theme=dark] .dock-ui{--dock-panel:#17181c;--dock-surface:#20222a;--dock-text:#e4e7ed;--dock-warning:#f0c17b;--dock-warning-bg:#33291b}
+.dock-ui #sidebar{background:var(--dock-surface);padding:16px 14px 0;gap:12px}
+.dock-ui #sidebar .list-heading{gap:10px;padding:0;flex-wrap:wrap}
+.dock-ui #sidebar .list-heading h2{font-size:18px;flex:1}
+.dock-ui #sidebar .list-heading .appearance-button{display:none}
+.dock-ui #new-chat{min-height:40px;background:var(--accent);color:var(--accent-ink);border-radius:9px;padding:9px 13px}
+.dock-ui .chat-list-toolbar{display:flex;flex-direction:column;gap:10px}
+.dock-ui #search{width:100%;min-width:0;font-size:14px;background:var(--dock-panel)}
+.dock-ui .dock-filters summary{color:var(--muted);font-size:12px;cursor:pointer;padding:5px 2px;overflow-wrap:anywhere}
+.dock-ui .dock-filters .list-filters{display:flex;flex-wrap:wrap;gap:8px;padding:8px 0;max-width:100%}
+.dock-ui .dock-filters label{min-width:0;max-width:100%}
+.dock-ui .dock-device{display:flex!important;position:static!important;max-width:100%;width:100%;padding:13px 0;border-top:1px solid var(--line);font-size:12px}
+:root[data-show-computer=false] .dock-ui .dock-device{display:none!important}
+.dock-ui .dock-device span{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.dock-ui .client-switch-dock,.dock-ui #sidebar .sidebar-foot #accounts-button,.dock-ui #sidebar .sidebar-foot #pushplus-settings{display:none!important}
+.dock-ui .client-navigation{gap:8px;padding-top:10px}
+.dock-ui #sidebar .sidebar-foot{display:flex;flex-wrap:wrap;gap:6px;border:0;padding:4px 0 12px;justify-content:flex-start}
+.dock-ui #sidebar .sidebar-foot button{font-size:13px;min-height:40px;padding:8px}
+.dock-ui #sidebar .sidebar-foot #clients-button,.dock-ui #sidebar .sidebar-foot #dock-settings{display:block!important}
+.dock-ui .dock-empty{padding:20px 10px;overflow-wrap:anywhere}
+.dock-ui .dock-empty h3{font-size:15px;margin:0 0 8px}.dock-ui .dock-empty p{font-size:13px}
+.dock-ui .dock-empty button{margin:4px 6px 0 0}
+.dock-ui #sessions>p:only-child{display:none}
+.dock-ui .session-list-region{display:flex;flex-direction:column;overflow:auto}
+.dock-ui #sessions{flex:1;min-height:0}
+.dock-ui .dock-welcome-actions{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:18px}
+.dock-ui #welcome p{max-width:540px;overflow-wrap:anywhere}
+.dock-ui .chat-head{padding:13px 20px;min-height:68px;border-bottom:1px solid var(--line)}
+.dock-ui .chat-info{min-width:0}.dock-ui #chat-title{overflow-wrap:anywhere}
+.dock-ui .dock-chat-context{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dock-ui #composer{margin:0 20px max(12px,env(safe-area-inset-bottom));border-radius:14px;background:var(--dock-panel);border:1px solid var(--line);padding:12px}
+.dock-ui .composer-tools{gap:8px;align-items:center;flex-wrap:wrap;overflow:visible}
+.dock-ui #model-button{max-width:100%;overflow-wrap:anywhere;white-space:normal}
+.dock-ui .dock-composer-more{position:relative;margin-left:auto;font-size:13px}
+.dock-ui .dock-composer-more>summary{cursor:pointer;min-height:38px;padding:9px;border-radius:8px}
+.dock-ui .dock-advanced-controls{display:flex;flex-wrap:wrap;gap:10px;align-items:end;padding:12px 0}
+.dock-ui .dock-advanced-controls label{display:grid;gap:5px;font-size:12px;color:var(--muted);max-width:100%}
+.dock-ui .dock-advanced-controls select{max-width:100%;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--dock-panel);color:var(--dock-text)}
+.dock-ui .dock-composer-more[open]{flex:1 1 100%;order:10;border-top:1px solid var(--line)}
+.dock-ui .dock-selection{font-size:12px;color:var(--green);margin:6px 0;overflow-wrap:anywhere}.dock-ui .dock-selection:empty{display:none}
+.dock-ui .dock-keyboard-hint{font-size:12px;color:var(--muted);margin:8px 0 0}
+.dock-ui #message{font-size:var(--message-size,16px);min-height:64px}
+.dock-ui #composer .compose-bottom{display:flex;gap:10px;flex-wrap:wrap;justify-content:space-between}.dock-ui #composer .compose-actions{margin-left:auto;gap:8px;flex:0 0 auto}
+.dock-ui #appearance-dialog .dock-obsolete-shortcut{display:none!important}.dock-ui .dock-list-empty #host-errors{display:none!important}
+.dock-ui #sidebar #search{min-height:42px;padding:10px 12px}
+.dock-ui .dock-delivery{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;font-size:13px;color:var(--muted)}
+.dock-ui .dock-delivery[data-state=unknown],.dock-ui .dock-delivery[data-state=rejected]{color:var(--dock-warning);background:var(--dock-warning-bg);padding:10px;border-radius:8px}
+.dock-ui #composer:has(#dock-delivery[data-state=unknown]:not([hidden])) #send-error,.dock-ui #composer:has(#dock-delivery[data-state=rejected]:not([hidden])) #send-error{display:none}
+.dock-ui .dock-settings-tabs{display:flex;gap:5px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:12px}
+.dock-ui .dock-settings-tabs button{flex:1;padding:10px 8px;border:0;border-radius:8px;background:var(--dock-surface);color:inherit;min-width:100px}
+.dock-ui .dock-settings-tabs [aria-selected=true]{background:var(--soft);color:var(--green)}
+.dock-ui #dock-settings-scope{font-size:12px;margin:12px 0;color:var(--muted)}
+.dock-ui .dock-connection-summary{border-bottom:1px solid var(--line);padding:12px 0;margin-bottom:16px}
+.dock-ui .dock-connection-summary p{font-size:13px;overflow-wrap:anywhere;margin:10px 0}
+.dock-ui .dock-connection-summary strong{font-weight:550}
+.dock-ui [data-dock-settings-panel]{min-width:0}.dock-ui .picker{max-height:90dvh}
+.dock-ui .picker input,.dock-ui .picker select{max-width:100%}
+.dock-ui .timeline{scrollbar-gutter:stable}.dock-ui .message{overflow-wrap:anywhere}
+@media(min-width:1101px){.dock-ui #app{grid-template-columns:300px minmax(0,1fr)}.dock-ui #messages,.dock-ui #approvals,.dock-ui #queued{width:100%;max-width:900px;margin-left:auto;margin-right:auto}}
+@media(max-width:720px){
+ .dock-ui{height:var(--dock-visible-height,100dvh)}
+ .dock-ui #sidebar{padding:14px 12px 0}.dock-ui #new-chat{min-height:44px}
+ .dock-ui #search,.dock-ui input:not([type=checkbox]),.dock-ui select,.dock-ui textarea{font-size:16px}
+ .dock-ui .dock-filters summary{min-height:44px;padding:12px 2px}.dock-ui .dock-filters .list-filters{align-items:center}
+ .dock-ui .chat-head{padding:10px 12px;gap:8px}.dock-ui .chat-title-button{min-width:0}
+ .dock-ui #composer{margin:0 8px max(8px,env(safe-area-inset-bottom));padding:10px}
+ .dock-ui .composer-tools .tool-button{min-height:44px;white-space:normal}.dock-ui .dock-composer-more>summary{min-height:44px}
+ .dock-ui .dock-keyboard-hint{display:none}.dock-ui #message{min-height:56px}
+ .dock-ui .picker:not(.session-menu-dialog){width:100%;max-width:100%;height:100%;max-height:100%;margin:0;border-radius:0;padding:18px 16px max(18px,env(safe-area-inset-bottom))}
+ .dock-ui .picker button{min-height:44px}.dock-ui .dock-settings-tabs button{min-width:0;font-size:13px}
+ .dock-ui .dock-device{padding:10px 0}.dock-ui #sidebar .sidebar-foot button{min-height:44px}
+ .dock-ui.dock-keyboard .chat-head{min-height:48px}.dock-ui.dock-keyboard #message{max-height:100px}
+}
+@media(pointer:coarse){.dock-ui button{min-height:44px}.dock-ui .dock-filters summary{min-height:44px}}
+@media(prefers-reduced-motion:reduce){.dock-ui *{scroll-behavior:auto!important}}

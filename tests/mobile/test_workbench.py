@@ -111,6 +111,11 @@ class WorkbenchTests(unittest.TestCase):
             code, content, _ = self.request(path)
             self.assertEqual(code, 200, path)
             self.assertGreater(len(content), 100, path)
+            if path in ('/app.js', '/style.css'):
+                name = 'dock-ui.js' if path == '/app.js' else 'dock-ui.css'
+                self.assertTrue(content.endswith((SOURCE / 'ui' / name).read_bytes()), path)
+        for path in ('/ui/dock-ui.js', '/dock-ui.js'):
+            self.assertEqual(self.request(path)[0], 404, path)
 
     def test_client_status_reads_stay_responsive_during_native_inspection(self):
         self.login()

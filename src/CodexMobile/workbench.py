@@ -12,6 +12,7 @@ from bridge.features.accounts.cli_access import CliAccess
 from bridge.features.accounts.wsl_accounts import WslAccounts
 from gateway import State
 from local_manager import LocalManager
+from bridge.api.assets import served_asset_bytes
 
 
 class CodexSessions(DesktopSessions):
@@ -66,6 +67,16 @@ class CodexSessions(DesktopSessions):
 
 
 class CodexHandler(Handler):
+    def static_output(self, path, content_type):
+        # Dock presentation shares the existing public URLs and upstream order.
+        # output() retains request checks, CSP, compression and no-store headers.
+        extra = {'/app.js': 'dock-ui.js', '/style.css': 'dock-ui.css'}.get(path)
+        if extra:
+            data = served_asset_bytes(self.server.web_dir, path)
+            data += b'\n' + (Path(__file__).resolve().parent / 'ui' / extra).read_bytes()
+            return self.output(200, data, content_type)
+        return super().static_output(path, content_type)
+
     def _handle_method(self, write):
         path = urlsplit(self.path).path
         if (not write and self.path == '/' and self.client_address[0] == '127.0.0.1'

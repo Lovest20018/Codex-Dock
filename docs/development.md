@@ -63,3 +63,5 @@ pwsh -NoProfile -File scripts/verify-package.ps1
 `python -B tests/mobile/upstream_codex_regression.py` 按模块在独立解释器运行固定上游的 Codex 相关回归，保留原始断言。测试中的 WSL 发行版列表使用夹具，避免依赖本机 WSL 服务延迟；无 Windows 符号链接权限的用例明确跳过，目录 junction 边界另有原生测试。该入口不代替安卓真机、真实 SSH / WSL 或模型任务验收。
 
 0.14.1 的草稿与轮询决策见 [审查记录](review-0.14.1.md)。内容版本忽略光标位置；身份尚未核验的发送只记录本次首次提升的范围，不迁移未知请求。后台状态读取与显式刷新共用读取逻辑，后台失败退避并去重提醒，显式操作仍即时反馈。定向验证入口为 `node --test tests/mobile/dock-drafts.test.cjs tests/mobile/client-status.test.cjs` 和 `node tests/mobile/composer-send.browser.cjs`；后者实际运行生产 JS、延迟确认、身份变化和应用管理重试界面。
+
+0.15.0 的 Dock 展示模块位于 `src/CodexMobile/ui/`，通过现有 `/app.js`、`/style.css` 响应追加，冻结时复制到 `runtime/ui`；不新增公开资源路由或改变上游加载顺序。`node tests/mobile/dock-ui.browser.cjs` 覆盖实际 Dock 页面交互；`node tests/mobile/ui-performance.browser.cjs` 在同一隔离网关中移除精确的追加字节作为对照，记录合成长列表与长聊天的本机渲染耗时。前者包含合成文件/终端标签的状态保留，不代表真实终端已验收。见 [UI 实施记录](ui-optimization-plan.md) 和 [0.15.0 审查](review-0.15.0.md)。

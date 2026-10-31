@@ -24,14 +24,14 @@ function proxy(request,port){return new Promise((resolve,reject)=>{
   browser=await chromium.launch({executablePath:process.env.CODEX_DOCK_TEST_CHROME||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
   const context=await browser.newContext({viewport:{width:1180,height:900}}),page=await context.newPage(),errors=[];
   page.on('pageerror',error=>errors.push(error.message));
-  await page.goto(value.url);await page.locator('#cli .cli-access-form').waitFor();
+  await page.goto(value.url);await page.getByRole('tab',{name:'新增 / 编辑 API',exact:true}).click();await page.locator('#cli .cli-access-form').waitFor();
   assert.equal(new URL(page.url()).hash,'');
   await page.getByRole('button',{name:'保存 API 接入',exact:true}).waitFor();
-  await page.getByText('添加账号或 API',{exact:true}).first().waitFor();
+  await page.getByRole('tab',{name:'已保存接入',exact:true}).click();await page.getByText('添加账号或 API',{exact:true}).first().waitFor();
   assert.equal(await page.getByText('Claude Code',{exact:true}).count(),0);
   await page.screenshot({path:path.join(out,'codex-manager-desktop.png'),fullPage:true});
   checks.push('One-use local manager ticket removed; original accounts and Codex API forms render');
-  await page.reload();await page.locator('#cli .cli-access-form').waitFor();
+  await page.reload();await page.locator('#content').waitFor();
   assert.equal(await page.locator('#content').isVisible(),true);
   await page.setViewportSize({width:390,height:844});
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
@@ -59,7 +59,7 @@ function proxy(request,port){return new Promise((resolve,reject)=>{
   assert(await mobile.locator('#harness-open').isHidden());
   assert(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await mobile.screenshot({path:path.join(out,'upstream-workbench-android-host.png'),fullPage:true});
-  await mobile.locator('#accounts-button').click();await mobile.locator('.accounts-panel').first().waitFor();
+  await mobile.locator('#clients-button').click();await mobile.locator('#dock-connection-summary button').click();await mobile.locator('.accounts-panel').first().waitFor();
   checks.push('Full production web assets login through real gateway; upstream Android session hooks and account panel');
   await mobile.reload();await mobile.locator('#app').waitFor();
   // The Android host hides the Web logout button; its native menu invokes it.

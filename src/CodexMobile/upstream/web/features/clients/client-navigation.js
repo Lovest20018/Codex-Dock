@@ -195,13 +195,14 @@ class ClientNavigation {
     else if(id!==this.provider||this.view.provider!==(isCodexClient(id)?'codex':id||'codex'))this.choose(id,{activate:false,fromStatus:true}).catch(error=>this.notify(error.message));
     else{if(id&&this.view.previewOnly)this.view.confirmCachedList();this.paint();}
     this.onClientStates?.(this.clients);
+    globalThis.DockUI?.clients(this);
   }
   async refresh({background=false}={}){
     if(this.loading||this.pending.size||this.choosing||document.getElementById('app').hidden)return;
     if(background&&Date.now()<(this.statusRetryAt||0))return;
     this.loading=true;const revision=this.revision;
-    try{const data=await ClientLifecycle.request(signal=>this.request('/api/clients',undefined,signal),{timeout:this.statusTimeout??10000,uncertain:false,message:'客户端状态读取超时，请重试。'});if(revision===this.revision){this.statusPending=data.pending===true;if(data.refreshError)throw Error(data.refreshError);this.statusFailure='';this.statusFailures=0;this.statusRetryAt=0;if(!this.statusPending){ClientLifecycle.reconcile(this.operationFailures,this.managementClients(data.clients));this.applyClients(data);}}}
-    catch(error){if(revision===this.revision&&!document.getElementById('app').hidden){const previous=this.statusFailure;this.statusFailure=error.message;this.statusFailures=(this.statusFailures||0)+1;this.statusRetryAt=Date.now()+Math.min(60000,15000*2**Math.min(this.statusFailures-1,2));if(!background||previous!==error.message)this.notify(error.message);}}finally{this.loading=false;this.paint();}
+    try{const data=await ClientLifecycle.request(signal=>this.request('/api/clients',undefined,signal),{timeout:this.statusTimeout??10000,uncertain:false,message:'客户端状态读取超时，请重试。'});if(revision===this.revision){this.statusPending=data.pending===true;if(data.refreshError)throw Error(data.refreshError);this.statusFailure='';this.statusFailures=0;this.statusRetryAt=0;this.lastStatusSuccess=Date.now();if(!this.statusPending){ClientLifecycle.reconcile(this.operationFailures,this.managementClients(data.clients));this.applyClients(data);}}}
+    catch(error){if(revision===this.revision&&!document.getElementById('app').hidden){const previous=this.statusFailure;this.statusFailure=error.message;this.statusFailures=(this.statusFailures||0)+1;this.statusRetryAt=Date.now()+Math.min(60000,15000*2**Math.min(this.statusFailures-1,2));if(!background||previous!==error.message)this.notify(error.message);}}finally{this.loading=false;this.paint();globalThis.DockUI?.clients(this);}
     if(this.clientsKnown&&this.pendingChatLink&&!document.getElementById('app').hidden){const {hash,openCodex}=this.pendingChatLink;this.pendingChatLink=null;try{await this.openChatLink(hash,openCodex);}catch(error){this.notify(error.message);}}
   }
   clear(){this.revision++;this.statusFailure='';this.statusFailures=0;this.statusRetryAt=0;this.statusPending=false;this.clients=[];this.clientsKnown=false;this.enabledClients=null;this.pendingChatLink=null;this.choosing=null;this.pending.clear();this.operationFailures?.clear();this.swipeSnapshots.clear();}
@@ -345,6 +346,7 @@ class ClientNavigation {
       if(!failure&&state.canStartDesktop&&this.gatewayRunning!==false){const start=document.createElement('button');start.type='button';start.textContent=BridgeI18n.t('启动 Desktop');start.disabled=this.pending.size>0||!!this.choosing||this.hasUncertain();start.onclick=()=>this.initialize(client.id).catch(error=>this.notify(error.message));control.append(start);}
     }
     note.textContent=BridgeI18n.t(this.gatewayRunning===false?'网关未启动，开关仅保存下次启动时的选择，不会打开或退出应用。':'安装和登录请在电脑端完成。关闭接入可保留或退出电脑 App。macOS Claude 默认后台启动并尝试恢复已有连接；“初始化连接”经确认后使用电脑前台。Windows 优先尝试后台初始化。')+' '+BridgeI18n.t(ClientLifecycle.sessionNotice(this.windowsSession));
+    globalThis.DockUI?.clients(this);
   }
   openManager(){
     if(this.manager?.dialog.open)return;
@@ -352,6 +354,7 @@ class ClientNavigation {
     if(this.wslSupported){const scan=document.createElement('button');scan.type='button';scan.textContent=BridgeI18n.t('扫描 WSL 应用');scan.onclick=()=>this.scanWsl(scan);dialog.append(scan);}
     const title=dialog.querySelector('.picker-head h2');title.classList.add('dialog-content-start');title.tabIndex=-1;title.autofocus=true;dialog.append(status,retry,list,note);this.manager={dialog,list,note,status,retry};
     this.createNetworkAdaptation();
+    globalThis.DockUI?.manager(this);
     dialog.addEventListener('close',()=>{if(this.manager?.dialog===dialog)this.manager=null;});dialog.showModal();this.renderManager();this.refresh();this.readNetworkAdaptation();
   }
 

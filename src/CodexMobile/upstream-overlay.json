@@ -18,12 +18,16 @@
       "reason": "Explicit legacy Dock import and content-only revisions; clear confirmed provisional promotions without deleting later drafts."
     },
     "web/shell/app.js": {
-      "sha256": "ec341b36ea3eb1b304b6c0f162363b511ec5b9f791b0a031b97d1e0675a4b42b",
-      "reason": "Legacy Dock import and account-scoped cleanup when a submitted provisional draft gains its first verified identity."
+      "sha256": "979009eef26a60884fe37b5bd4d3e5ddcfc6a81dd21240af8d9f8fa1cc532078",
+      "reason": "Legacy Dock draft cleanup plus optional presentation hooks for scoped delivery, list and queue; uncertain identical submissions open existing message management, IME composition cannot submit."
     },
     "web/features/clients/client-navigation.js": {
-      "sha256": "d6d64ccf72d941defb0192f261e04c7cefede769c6183d2fa2d9cd2ebdb27e27",
-      "reason": "Deduplicate passive status failures, back off read retries, expose manual refresh, and suppress stale-login errors."
+      "sha256": "590748409796459d67eef4f8cb4cb8eb774899388dfc1ce225790e54fd336efa",
+      "reason": "Passive status failure deduplication and read backoff, manual retry, stale-login guard, and optional Dock layered connection presentation."
+    },
+    "web/features/settings/presentation.js": {
+      "sha256": "c1e50982371fcbb2b2ee7801b83aaa4e63d70242d6641bb3662e84058e8b029f",
+      "reason": "Expose existing browser appearance reset and optional Dock chat-open presentation cleanup; upstream default remains unchanged."
     }
   },
   "omitted": {

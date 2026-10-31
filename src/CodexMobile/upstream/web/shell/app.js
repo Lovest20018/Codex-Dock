@@ -46,7 +46,7 @@ function hostUrl(path,host=currentHost){const value=/^\/api\/sessions\/[0-9a-f-]
 let listLoading=0;
 let modelCatalogGeneration=0;const modelCatalogs=new Map();let catalogData={models:null,skills:null};let catalogResults={models:null,skills:null};let catalogTasks={models:null,skills:null};let selectedSkills=new Set(),invalidSkills=new Set(),skillIndex=new Map(),skillTotal=0,skillPages=[],skillQuery={q:'',offset:0,limit:200},skillSearchTimer,skillRequest=0;
 function el(tag,cls,text){const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;}
-function toast(text){text=t(text);$('toast').textContent=text;$('toast').hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').hidden=true,4200);}
+function toast(text){text=t(text);if(globalThis.DockUI?.inlineError(text))return;$('toast').textContent=text;$('toast').hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').hidden=true,4200);}
 function renderHostErrors(hosts){
   const root=$('host-errors'),gateway=(window.BridgeRelayBase||location.origin||'')+'|';
   const active=new Set(hosts.map(host=>gateway+(host.host||host.label)));
@@ -295,6 +295,7 @@ function sessionAccess(access){
 function currentAccess(){return sessionAccess(state?.access||listRows.find(row=>row.id===currentId&&row.host===currentHost)?.access);}
 function sourceLabel(access){return access?.runtime==='wsl'?'WSL':access?.source==='cli'?'CLI':access?.source==='ide'?'IDE':access?.source==='unknown'?t('其他来源'):'APP';}
 function renderList(){
+  globalThis.DockUI?.list({phase:listReadFinished?(listComplete?'ready':'error'):'loading',count:listRows.length,error:$('host-errors').textContent});
   const displayedRows=listRows.map(row=>pinRow(row));
   const stamp=JSON.stringify([$('list-mode').value,currentId,currentHost,listHasMore,BridgeI18n.locale(),availableSources,listRows.length?null:[listComplete,listReadFinished],displayedRows.map(row=>[row.id,row.host,row.title,row.projectKey,row.projectName,row.hostLabel,row.recency,row.bridgePinned,row.pinPending,row.archived,row.access])]);
   if(stamp===listRenderStamp&&$('sessions').children.length){renderActivity();return;}
@@ -935,7 +936,7 @@ function applyEntryCapabilities(view){
 }
 function renderState(view){
   applyEntryCapabilities(view);
-  contextUsageControl.update(view);state=view;if(typeof bindCodexDraft==='function')bindCodexDraft(view);
+  contextUsageControl.update(view);state=view;if(typeof bindCodexDraft==='function')bindCodexDraft(view);globalThis.DockUI?.view();
   if(typeof messageManagement!=='undefined')messageManagement?.reconcile();
   if(typeof document!=='undefined')for(const dialog of document.querySelectorAll('dialog[data-permission-runtime]')){
     if(!view.connected||dialog.dataset.permissionThread!==currentId||dialog.dataset.permissionHost!==currentHost||
@@ -1044,6 +1045,7 @@ async function ignoreSubmission(value){
 function renderQueue(rows){
   $('queued').replaceChildren();
   const pending=codexDraftScope&&composerDrafts?.pendingRecords(codexDraftScope,{temporary:sessionStorage,temporaryKey:'pending:'+chatKey()})||[];
+  globalThis.DockUI?.queue(rows,pending);
   if(rows.length||pending.length){const manage=el('button','plain',t('消息管理'));manage.type='button';manage.onclick=openMessageManagement;$('queued').append(manage);}
   const target=currentId,host=currentHost;
   for(const row of rows){
@@ -1079,13 +1081,14 @@ $('composer').onsubmit=async event=>{
   if(invalidSkills.size){$('send-error').textContent=t('已选 Skill 已失效，请刷新列表后重新选择');return;}
   const skills=[...selectedSkills].sort(),scope=codexDraftScope,submittedGateway=draftGateway;
   const body={text,mode,skills,workMode,attachments:attachmentIds,uiLocale:BridgeI18n.locale()};if(references.length)body.references=references;
+  if(globalThis.DockUI?.checkPending(body))return;
   const revision=saveDraft()?.revision,submittedProvisional=codexProvisionalDrafts.get(chatKey());
   const provisionalSend=!scope?{key:chatKey(),gateway:draftGateway,draft:submittedProvisional,body}:null;
   const submittedKey=chatKey(),legacyKey='pending:'+submittedKey;let legacy=composerDrafts.temporaryPending.get(legacyKey);try{legacy=JSON.parse(sessionStorage.getItem(legacyKey))||legacy;}catch{}
   const matchingLegacy=legacy?.id&&legacy.gateway===draftGateway&&legacy.target===submittedKey&&(!legacy.account||legacy.account===scope?.account);
   const sameLegacy=matchingLegacy&&['text','mode','workMode','skills','attachments','references','uiLocale'].every(field=>JSON.stringify(legacy[field])===JSON.stringify(body[field]));
   const attempt=uuid(),target=currentId,targetHost=currentHost;
-  let pending,usedDurable=false;
+  let pending,usedDurable=false,requestStarted=false;
   sending=true;
   composerDrafts.provisionalSend=provisionalSend;
   try{
@@ -1096,9 +1099,11 @@ $('composer').onsubmit=async event=>{
       pending={...pending,attempts:[...(sameLegacy&&Array.isArray(legacy.attempts)?legacy.attempts:[]),attempt],untracked:!!(sameLegacy&&(legacy.untracked||!Array.isArray(legacy.attempts)))};composerDrafts.temporaryPending.set(legacyKey,pending);try{sessionStorage.setItem(legacyKey,JSON.stringify(pending));}catch{} }
     if(provisionalSend)provisionalSend.id=pending.id;
     attachments.setLocked(true);workModes.render(state,mode,true);$('send').disabled=true;$('send-error').textContent='';
+    requestStarted=true;globalThis.DockUI?.delivery('sending',target,targetHost,submittedGateway,scope?.account);
     const result=await api(sessionUrl(target,'send',targetHost),{...body,id:pending.id});
     if(result.status==='ignored')throw Error(t('这条未确认记录已忽略，请刷新后重新编辑消息。'));
     if(result.status==='unknown')throw Error(t('消息可能已送达，请检查聊天记录。再次点击不会重复提交。'));
+    globalThis.DockUI?.delivery(result.status==='queued'?'queued':'accepted',target,targetHost,submittedGateway,scope?.account||provisionalSend?.promoted?.scope?.account);
     bumpRecency(target,targetHost);
     const settledScope=scope||provisionalSend?.promoted?.scope||null;
     const currentProvisional=codexProvisionalDrafts.get(chatKey(target,targetHost));
@@ -1121,6 +1126,7 @@ $('composer').onsubmit=async event=>{
     toast(workMode==='goal'?(result.activation?.status==='queued'?t('目标已创建，启动已排队'):result.activation?t('目标已创建，正在启动'):t('已提交目标请求，等待桌面确认')):result.status==='queued'?t('已加入待发送队列'):t('已发送到会话'));
   }catch(error){
     // Only an explicit pre-submission rejection permits changing this request.
+    if(requestStarted)globalThis.DockUI?.delivery(error.status===400&&error.code==='send_not_submitted'?'rejected':'unknown',target,targetHost,submittedGateway,scope?.account||provisionalSend?.promoted?.scope?.account,error.message);
     // Unknown delivery and network failures retain their original pending ID.
     if(error.status===400&&error.code==='send_not_submitted'){
       if(usedDurable)await composerDrafts.settleSend(scope,pending.id,attempt,'reject');
@@ -1131,7 +1137,7 @@ $('composer').onsubmit=async event=>{
   }
   finally{if(composerDrafts.provisionalSend===provisionalSend)composerDrafts.provisionalSend=null;sending=false;attachments.setLocked(false);workModes.render(state,$('send-mode').value,false);$('send').disabled=!state||state.loadingHistory||state.activating||!attachments.ready()||!currentAccess().canSend;}
 };
-$('message').onkeydown=event=>{if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)){event.preventDefault();$('composer').requestSubmit();}};
+$('message').onkeydown=event=>{if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229&&(event.metaKey||event.ctrlKey)){event.preventDefault();$('composer').requestSubmit();}};
 $('stop').onclick=async()=>{if(!currentAccess().canInterrupt)return;try{await api(sessionUrl(currentId,'stop'),{});toast('已请求停止');}catch(e){toast(e.message);}};
 $('history').onclick=async()=>{$('history').disabled=true;try{await api('/api/sessions/'+currentId+'/history',{});}catch(e){toast(e.message);}finally{$('history').disabled=false;}};
 $('reconnect').onclick=async()=>{if(state?.desktopRestartRecommended){clientNavigation.openManager();return;}const access=currentAccess();if(!access.canReconnect)return;const id=currentId,host=currentHost,rebuild=state?.rebuildRecommended===true;$('reconnect').disabled=true;reconnectFailure=null;try{await api(sessionUrl(id,'reconnect',host),{activate:true,...(rebuild?{rebuild:true}:{})});}catch(e){if(id===currentId&&host===currentHost){reconnectFailure=e.message;$('notice').hidden=false;$('notice-text').textContent=t(e.message);}toast(e.message);}finally{$('reconnect').disabled=false;}};

@@ -36,6 +36,7 @@ def main():
         command.extend(['--add-data', str(source) + ';' + destination])
     data(UPSTREAM / 'web', 'web')
     data(SOURCE / 'manager', 'manager')
+    data(SOURCE / 'ui', 'ui')
     data(SOURCE / 'upstream-manifest.json', 'licenses')
     data(SOURCE / 'upstream-overlay.json', 'licenses')
     for name in ('UPSTREAM-LICENSE', 'UPSTREAM.md'):

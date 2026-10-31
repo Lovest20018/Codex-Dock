@@ -125,7 +125,7 @@ if(typeof document!=='undefined')(()=>{
   get('appearance-accounts').onchange=()=>change({showAccounts:get('appearance-accounts').checked});
   get('appearance-reset').onclick=()=>change(ChatAppearance.defaults);
   system.addEventListener('change',()=>{if(settings.theme==='system')preserveReading(apply);});
-  window.BridgePresentation={resizeMessage,relabel,openChat:()=>{setCollapsed(false);requestAnimationFrame(resizeMessage);},showError:()=>setCollapsed(false)};
+  window.BridgePresentation={resizeMessage,relabel,resetAppearance:()=>change(ChatAppearance.defaults),openChat:()=>{globalThis.DockUI?.opened();setCollapsed(false);requestAnimationFrame(resizeMessage);},showError:()=>setCollapsed(false)};
   apply();nativeTheme();relabel();resizeMessage();
   document.body.classList.toggle('chat-detail',!get('app').hidden&&get('app').classList.contains('chat-open'));
 })();
