@@ -27,7 +27,8 @@ public final class AndroidSmoke extends Instrumentation {
  private void until(BooleanSupplier predicate,String message)throws Exception{long end=SystemClock.elapsedRealtime()+20000;while(SystemClock.elapsedRealtime()<end){if(predicate.getAsBoolean())return;Thread.sleep(150);}throw new AssertionError(message);}
  private Object js(String script){try{CountDownLatch done=new CountDownLatch(1);String[] result={null};ui(()->((WebView)field("web")).evaluateJavascript(script,value->{result[0]=value;done.countDown();}));if(!done.await(12,TimeUnit.SECONDS))throw new AssertionError("JS timeout");return new JSONTokener(result[0]).nextValue();}catch(Exception e){throw new RuntimeException(e);}}
  private String text(View view){if(view.getVisibility()!=View.VISIBLE)return "";StringBuilder result=new StringBuilder();if(view instanceof TextView)result.append(((TextView)view).getText()).append('\n');if(view instanceof ViewGroup)for(int n=0;n<((ViewGroup)view).getChildCount();n++)result.append(text(((ViewGroup)view).getChildAt(n)));return result.toString();}
- private void shot(String name)throws Exception{waitForIdleSync();Thread.sleep(600);waitForIdleSync();Bitmap b=getUiAutomation().takeScreenshot();File dir=getTargetContext().getExternalFilesDir(null);if(dir==null)throw new IOException("Missing target external files directory");try(FileOutputStream out=new FileOutputStream(new File(dir,name+".png"))){b.compress(Bitmap.CompressFormat.PNG,100,out);}b.recycle();}
+ // Active chat progress animates continuously; a UI barrier avoids waiting forever for idle.
+ private void shot(String name)throws Exception{ui(()->{});Thread.sleep(600);ui(()->{});Bitmap b=getUiAutomation().takeScreenshot();File dir=getTargetContext().getExternalFilesDir(null);if(dir==null)throw new IOException("Missing target external files directory");try(FileOutputStream out=new FileOutputStream(new File(dir,name+".png"))){b.compress(Bitmap.CompressFormat.PNG,100,out);}b.recycle();}
  @Override public void onStart(){Bundle result=new Bundle();try{
   base=options.getString("base");Context target=getTargetContext();
   if("seed".equals(options.getString("mode"))){target.getSharedPreferences("bridge",0).edit().putString("upgrade-marker","keep").putString("settingsTheme","dark").putStringSet("origins",new java.util.HashSet<>(java.util.Arrays.asList("https://upgrade.invalid"))).commit();result.putString("report","SEEDED");finish(Activity.RESULT_OK,result);return;}
@@ -46,6 +47,7 @@ target.getSharedPreferences("bridge",0).edit().clear().putBoolean("alerts",true)
   check(Boolean.TRUE.equals(js("prompt('codexbridge-copy:wrong-token','rejected')===null&&prompt('codexbridge-theme:wrong-token','light')===null")),"Forged native bridge tokens are rejected");
   final boolean[] blocked={false};ui(()->{WebView v=(WebView)field("web");blocked[0]=v.getWebViewClient().shouldOverrideUrlLoading(v,new WebResourceRequest(){public Uri getUrl(){return Uri.parse("https://untrusted.invalid/");}public boolean isForMainFrame(){return true;}public boolean isRedirect(){return false;}public boolean hasGesture(){return false;}public String getMethod(){return "GET";}public java.util.Map<String,String> getRequestHeaders(){return java.util.Collections.emptyMap();}});});check(blocked[0],"External navigation without a user gesture is blocked");
   until(()->Boolean.TRUE.equals(js("window.LovestShell?.version===1&&document.documentElement.classList.contains('lovest-shell')")),"Versioned owned adapter acknowledged");
+  if("send".equals(options.getString("mode"))){composerSend(target);result.putString("report",new JSONObject().put("status","PASS").put("checks",checks).toString());finish(Activity.RESULT_OK,result);return;}
   js("localStorage.setItem('android-fixture-draft','retained');true");WebView original=(WebView)field("web");
   ui(()->call("settings"));waitForIdleSync();Dialog settings=(Dialog)field("settingsPage");
   ui(()->visible[0]=text(settings.getWindow().getDecorView()));
@@ -132,8 +134,41 @@ target.getSharedPreferences("bridge",0).edit().clear().putBoolean("alerts",true)
   until(()->Boolean.TRUE.equals(js("innerWidth<=322")),"Narrow viewport layout applied after rotation");
   check(Boolean.TRUE.equals(js("document.documentElement.scrollWidth<=innerWidth+2")),"320dp viewport fits with enlarged WebView text "+js("JSON.stringify({width:innerWidth,scroll:document.documentElement.scrollWidth,visual:visualViewport.width,scale:visualViewport.scale})"));shot("narrow-large-text");
   ui(()->{WebView v=(WebView)field("web");v.setLayoutParams(new FrameLayout.LayoutParams(-1,-1));v.getSettings().setTextZoom(100);});
+  composerSend(target);
   ui(()->((WebView)field("web")).loadDataWithBaseURL(base+"/","<html><body>Offline fixture</body></html>","text/html","UTF-8",null));Thread.sleep(500);
   final boolean[] left={false};ui(()->call("beforeLeave",new Class<?>[]{Runnable.class},(Runnable)()->left[0]=true));until(()->left[0],"An unavailable page without a draft can switch computers");check(left[0],"Offline fallback does not trap the user on an unavailable page");
   result.putString("report",new JSONObject().put("status","PASS").put("checks",checks).toString());finish(Activity.RESULT_OK,result);
  }catch(Throwable failure){try{shot("failure");}catch(Exception ignored){}result.putString("report","FAIL "+failure);result.putString("stack",android.util.Log.getStackTraceString(failure));finish(Activity.RESULT_CANCELED,result);}}
+ private void composerSend(Context target)throws Exception{
+  try(InputStream input=getContext().getAssets().open("composer.js");ByteArrayOutputStream source=new ByteArrayOutputStream()){byte[] buffer=new byte[4096];int count;while((count=input.read(buffer))!=-1)source.write(buffer,0,count);js(source.toString("UTF-8"));}
+  until(()->Boolean.TRUE.equals(js("window.ComposerQA?.ready||!!window.ComposerQA?.error")),"Send fixture prepared");
+  check(Boolean.TRUE.equals(js("ComposerQA.ready")),"Production composer initialized "+js("ComposerQA.error||''"));
+  shot("send-before");
+  WebView view=(WebView)field("web");
+  js("document.getElementById('dock-composer-more').open=true;document.getElementById('composer-toggle').click();true");Thread.sleep(200);
+  check(Boolean.TRUE.equals(js("!document.getElementById('composer-body').hidden&&getComputedStyle(document.getElementById('composer-toggle')).display==='none'")),"Android keeps text input expanded independently of advanced options");
+  js("document.getElementById('composer-toggle').onclick();true");
+  until(()->Boolean.TRUE.equals(js("!document.getElementById('composer-body').hidden&&!document.getElementById('composer').classList.contains('is-collapsed')&&document.getElementById('composer-toggle').getAttribute('aria-expanded')==='true'")),"Restored collapsed state is expanded consistently");
+  check(Boolean.TRUE.equals(js("document.getElementById('dock-composer-more').open")),"Recovering the text input preserves advanced options");
+  for(int attempt=0;attempt<3;attempt++){
+   js("ComposerQA.edit('发送后继续输入，第 '+"+attempt+"+' 条');true");
+   ui(()->view.requestFocus());js("document.getElementById('message').focus();true");
+   ui(()->((android.view.inputmethod.InputMethodManager)target.getSystemService(Context.INPUT_METHOD_SERVICE)).showSoftInput(view,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT));Thread.sleep(800);
+   shot("send-keyboard-"+attempt);
+   check(Boolean.TRUE.equals(js("ComposerQA.visible()")),"Input and send visible with keyboard "+attempt+" "+js("ComposerQA.metrics()"));
+   tapElement("send");
+   final int expected=attempt+1;until(()->Boolean.TRUE.equals(js("ComposerQA.calls==="+expected+"&&!sending")),"Actual production send completes");
+   check(Boolean.TRUE.equals(js("document.getElementById('message').value===''")),"Successful send clears submitted text "+attempt);
+   shot("send-accepted-"+attempt);
+   check(Boolean.TRUE.equals(js("ComposerQA.visible()")),"Input and send remain visible after send "+attempt+" "+js("ComposerQA.metrics()"));
+   ui(()->((android.view.inputmethod.InputMethodManager)target.getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(view.getWindowToken(),0));js("document.getElementById('message').blur();ComposerQA.active();ComposerQA.reply();true");Thread.sleep(700);
+   shot("send-after-"+attempt);
+   check(Boolean.TRUE.equals(js("ComposerQA.visible()&&state.status==='active'&&!document.getElementById('stop').hidden")),"Active task keeps input, send and stop visible after keyboard hides and long reply "+attempt+" "+js("ComposerQA.metrics()"));
+  }
+ }
+ private void tapElement(String id)throws Exception{
+  JSONArray point=new JSONArray((String)js("JSON.stringify((()=>{const r=document.getElementById('"+id+"').getBoundingClientRect(),v=visualViewport;return [(r.left+r.width/2-v.offsetLeft)/v.width,(r.top+r.height/2-v.offsetTop)/v.height]})())"));
+  final float[] screenPoint={0,0};ui(()->{WebView v=(WebView)field("web");int[] location=new int[2];v.getLocationOnScreen(location);try{screenPoint[0]=location[0]+(float)point.getDouble(0)*v.getWidth();screenPoint[1]=location[1]+(float)point.getDouble(1)*v.getHeight();}catch(JSONException e){throw new RuntimeException(e);}});
+  long now=SystemClock.uptimeMillis();MotionEvent down=MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,screenPoint[0],screenPoint[1],0),up=MotionEvent.obtain(now,now+70,MotionEvent.ACTION_UP,screenPoint[0],screenPoint[1],0);try{sendPointerSync(down);sendPointerSync(up);}finally{down.recycle();up.recycle();}
+ }
 }

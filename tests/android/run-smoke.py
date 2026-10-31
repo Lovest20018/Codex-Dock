@@ -15,6 +15,7 @@ parser.add_argument('--jdk', type=Path, required=True)
 parser.add_argument('--sdk', type=Path, required=True)
 parser.add_argument('--apk', type=Path, required=True)
 parser.add_argument('--device', default='emulator-5562')
+parser.add_argument('--mode', choices=('full', 'send'), default='full')
 parser.add_argument('--signing-home', type=Path, default=Path(os.environ['LOCALAPPDATA']) / 'CodexDock/android-signing')
 args = parser.parse_args()
 if not args.device.startswith('emulator-'):
@@ -40,6 +41,7 @@ def adb(*command, capture=False):
 with zipfile.ZipFile(args.apk) as archive:
     names = archive.namelist()
     assert not any('Smoke' in n or n.endswith(('.p12', '.jks')) for n in names)
+    assert not {'assets/composer.js', 'assets/presentation.js'}.intersection(names)
     for name in ('assets/mobile-ui.js', 'assets/mobile-clipboard.js', 'assets/mobile-system-bars.js', 'assets/mobile-session.js'):
         assert name in names
     assert 'assets/codex.png' in names and 'assets/claude.png' not in names and 'assets/deepseek.png' not in names
@@ -58,6 +60,7 @@ with zipfile.ZipFile(out / 'base.apk') as source, zipfile.ZipFile(out / 'unsigne
         dest.writestr(item, source.read(item))
     dest.write(out / 'dex/classes.dex', 'classes.dex')
     dest.write(ROOT / 'tests/android/presentation.js', 'assets/presentation.js')
+    dest.write(ROOT / 'tests/android/composer.js', 'assets/composer.js')
 run(tools / 'zipalign.exe', '-f', '4', out / 'unsigned.apk', out / 'aligned.apk')
 run(tools / 'apksigner.bat', 'sign', '--ks', args.signing_home / 'codex-dock.p12', '--ks-key-alias', 'codex-dock', '--ks-pass', 'env:CODEX_DOCK_ANDROID_STORE_PASSWORD', '--out', out / 'test.apk', out / 'aligned.apk')
 fixture = subprocess.Popen([sys.executable, '-B', ROOT / 'tests/android/gateway_fixture.py'], cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=(out / 'fixture-errors.log').open('w'), text=True)
@@ -74,24 +77,30 @@ try:
     endpoint = json.loads(line[0])
     port = str(endpoint['port'])
     adb('reverse', 'tcp:' + port, 'tcp:' + port)
-    previous = ROOT / 'artifacts/LovestCode-Android-0.2.0.apk'
-    if not previous.exists():
-        previous = ROOT / 'artifacts/LovestCode-Android-0.1.1.apk'
+    target_version = tuple(map(int, re.search(r'Android-(\d+\.\d+\.\d+)', args.apk.name)[1].split('.')))
+    previous_versions = []
+    for candidate in (ROOT / 'artifacts').glob('LovestCode-Android-*.apk'):
+        match = re.fullmatch(r'LovestCode-Android-(\d+\.\d+\.\d+)\.apk', candidate.name)
+        if match:
+            version = tuple(map(int, match[1].split('.')))
+            if version < target_version:
+                previous_versions.append((version, candidate))
+    previous = max(previous_versions)[1] if previous_versions else None
     adb('install', '-r', out / 'test.apk')
     # Downgrading only this disposable emulator is necessary on repeated QA runs.
-    if previous.exists():
+    if previous and args.mode == 'full':
         if adb('shell', 'pm', 'path', 'io.github.lovest20018.codexdock', capture=True).strip():
             adb('uninstall', 'io.github.lovest20018.codexdock')
         adb('install', previous)
         seeded = adb('shell', 'am', 'instrument', '-w', '-e', 'mode', 'seed', 'io.github.lovest20018.codexdock.test/io.github.lovest20018.codexdock.test.AndroidSmoke', capture=True)
         assert 'SEEDED' in seeded
     adb('install', '-r', args.apk.resolve())
-    if previous.exists():
+    if previous and args.mode == 'full':
         upgraded = adb('shell', 'am', 'instrument', '-w', '-e', 'mode', 'upgrade', 'io.github.lovest20018.codexdock.test/io.github.lovest20018.codexdock.test.AndroidSmoke', capture=True)
         assert 'UPGRADE_PASS' in upgraded
 
     adb('shell', 'pm', 'grant', 'io.github.lovest20018.codexdock', 'android.permission.POST_NOTIFICATIONS')
-    result = adb('shell', 'am', 'instrument', '-w', '-r', '-e', 'base', endpoint['url'], 'io.github.lovest20018.codexdock.test/io.github.lovest20018.codexdock.test.AndroidSmoke', capture=True)
+    result = adb('shell', 'am', 'instrument', '-w', '-r', '-e', 'base', endpoint['url'], '-e', 'mode', args.mode, 'io.github.lovest20018.codexdock.test/io.github.lovest20018.codexdock.test.AndroidSmoke', capture=True)
     (out / 'instrumentation.txt').write_text(result, encoding='utf-8')
     print(result)
     adb('pull', '/sdcard/Android/data/io.github.lovest20018.codexdock/files', out / 'screenshots')
@@ -101,7 +110,7 @@ try:
     data = json.loads(report[1])
     assert data['status'] == 'PASS'
     data['apk'] = args.apk.name
-    data['upgradeFrom'] = previous.name if previous.exists() else None
+    data['upgradeFrom'] = previous.name if previous and args.mode == 'full' else None
     (out / 'report.json').write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 finally:
     if 'port' in locals():

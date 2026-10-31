@@ -78,7 +78,7 @@
     '.lovest-shell .dock-ui #model-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.lovest-shell .dock-ui .context-usage{min-width:36px;width:36px;padding:8px}',
     '.lovest-shell .dock-ui .context-usage-ring{width:15px;height:15px}',
-    '.lovest-shell .dock-ui #composer-toggle{width:36px;min-width:36px;min-height:40px;height:40px;padding:8px;border:0;background:transparent}',
+    '.lovest-shell .dock-ui #composer-toggle{display:none!important}',
     '.lovest-shell .dock-ui .dock-composer-more{font-size:12px;margin-left:auto}',
     '.lovest-shell .dock-ui .dock-composer-more>summary{display:flex;align-items:center;justify-content:flex-end;min-height:40px;padding:6px 4px;list-style:none;color:var(--muted)}',
     '.lovest-shell .dock-ui .dock-composer-more>summary::-webkit-details-marker{display:none}',
@@ -121,11 +121,20 @@
   const more=document.querySelector('.dock-composer-more>summary');
   function moreLabel(){if(more){const value=label(more.parentElement.open?'收起选项':'选项',more.parentElement.open?'Less':'Options');if(more.textContent!==value)more.textContent=value;}}
   more?.parentElement.addEventListener('toggle',moreLabel);
+  // Keep writing available on phones; advanced options have their own toggle.
+  const composer=document.getElementById('composer'),composerBody=document.getElementById('composer-body');
+  const composerToggle=document.getElementById('composer-toggle');
+  function keepComposerOpen(){
+    if(!composerBody?.hidden)return;
+    if(window.BridgePresentation?.showError)window.BridgePresentation.showError();
+    else{composerBody.hidden=false;composer?.classList.remove('is-collapsed');composerToggle?.setAttribute('aria-expanded','true');}
+  }
   const approval=document.createElement('button');approval.type='button';approval.className='lovest-approval';approval.hidden=true;
   document.getElementById('composer')?.before(approval);
   approval.onclick=()=>document.getElementById('approvals')?.scrollIntoView({block:'start'});
   function sync() {
     scheduled=false;
+    keepComposerOpen();
     const auth=!app.hidden,detail=auth&&app.classList.contains('chat-open'),modal=!!document.querySelector('dialog[open]');
     const c=context(),value={action:'state',authenticated:auth,detail,modal,threadId:detail?c.id:null,host:c.host};
     const stamp=JSON.stringify(value);if(stamp!==last){last=stamp;native(value);}
@@ -150,6 +159,7 @@
   if(native({action:'ready'})!=='ready')return;
   for(const rule of rules)sheet.insertRule(rule,sheet.cssRules.length);
   document.documentElement.classList.add('lovest-shell');
+  composerToggle?.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();},true);
   new MutationObserver(schedule).observe(app,{subtree:true,childList:true,attributes:true,attributeFilter:['class','hidden','open']});
   new MutationObserver(schedule).observe(document.body,{subtree:true,attributes:true,attributeFilter:['open']});
   document.addEventListener('bridge-language',schedule);

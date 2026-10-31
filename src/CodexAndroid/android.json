@@ -1,8 +1,8 @@
 {
   "applicationId": "io.github.lovest20018.codexdock",
   "displayName": "Lovest Code",
-  "versionName": "0.2.1",
-  "versionCode": 4,
+  "versionName": "0.2.2",
+  "versionCode": 5,
   "minSdk": 26,
   "targetSdk": 35,
   "upstreamCommit": "0721aa7dafa6177751ba7e568e0ad0efee05655b",

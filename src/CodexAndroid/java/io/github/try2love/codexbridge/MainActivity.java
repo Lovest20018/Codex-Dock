@@ -463,7 +463,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
  void settings(){if(settingsPage==null||!settingsPage.isShowing()){settingsPage=new SettingsPage(this,0);settingsPage.show();}}
  void reopenSettings(SettingsPage previous){if(previous!=settingsPage||!previous.isShowing()||previous.isClosing())return;SettingsPage replacement=previous.replacement();previous.dismiss();settingsPage=replacement;settingsPage.show();}
  String currentComputerName(){return origin.isEmpty()?L("尚未连接"):computerName(origin);}
- String appVersion(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception e){return "0.2.1";}}
+ String appVersion(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception e){return "0.2.2";}}
  void openDockReleases(){try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/Lovest20018/Codex-Dock/releases")));}catch(ActivityNotFoundException e){message(L("没有可用的浏览器，请在电脑上打开 Lovest Code 发布页。"));}}
  void toggleBackgroundNotifications(){
   if(prefs.getBoolean("backgroundNotifications",false)){prefs.edit().putBoolean("backgroundNotifications",false).apply();MonitorService.refresh();return;}
