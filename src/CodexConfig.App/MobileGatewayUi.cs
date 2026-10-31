@@ -15,9 +15,8 @@ public partial class MainWindow
     private readonly TextBox mobileUsername = new() { Text = "codex", MaxLength = 200 };
     private readonly PasswordBox mobilePassword = new() { MaxLength = 256 };
     private readonly TextBox mobilePort = new() { Text = MobileGatewayManager.DefaultPort.ToString(), MaxLength = 5 };
-    private readonly TextBox mobileProxy = new() { MaxLength = 15 };
     private readonly TextBlock mobileStatus = OverviewText("尚未设置手机连接。", "Muted");
-    private readonly TextBlock mobileEndpoint = OverviewText($"反向代理目标：127.0.0.1:{MobileGatewayManager.DefaultPort}", "Muted", 12);
+    private readonly TextBlock mobileEndpoint = OverviewText($"HTTP 端口：{MobileGatewayManager.DefaultPort} · 接受端口映射和反向代理连接", "Muted", 12);
     private readonly TextBlock mobilePasswordHint = OverviewText("设置 12 至 256 个字符的独立密码。", "Muted", 12);
     private readonly StackPanel mobileDevices = new();
     private readonly Image mobileQr = new() { Width = 240, Height = 240, Stretch = Stretch.Uniform };
@@ -49,10 +48,9 @@ public partial class MainWindow
         var help = OverviewText("仅继续当前配置目录中的本机 Codex App 聊天。保持电脑和 Codex App 运行，手机沿用原聊天的模型和权限。", "Muted", 13);
         help.Margin = new(0, 9, 0, 0); setup.Children.Add(help);
         Field(setup, "HTTPS 域名", mobileUrl);
-        setup.Children.Add(OverviewText("例如 https://codex.example.com。使用已有 HTTPS 反向代理，保留 Host 并转发客户端 IP；填写域名不会建立网络通道。", "Muted", 12));
+        setup.Children.Add(OverviewText("例如 https://codex.example.com。将已有 HTTPS 入口转发到本机端口，保留完整 Host（含外部端口）。", "Muted", 12));
         Field(setup, "本机监听端口", mobilePort); mobilePort.MaxWidth = 160; mobilePort.HorizontalAlignment = HorizontalAlignment.Left;
-        Field(setup, "反向代理来源 IP（可选）", mobileProxy);
-        setup.Children.Add(OverviewText("代理从其他设备连接时，填写电脑实际看到的来源 IPv4。局域网直连填代理 IP，经过公网/NAT 则填其出口公网 IP；仅允许该来源和本机。本机代理 / FRP 留空。", "Muted", 12));
+        setup.Children.Add(OverviewText("支持本机代理、群晖和路由端口映射，无需填写代理来源 IP。", "Muted", 12));
         Field(setup, "手机登录账号", mobileUsername);
         Field(setup, "手机访问密码", mobilePassword); mobilePasswordHint.Margin = new(0, 7, 0, 0); setup.Children.Add(mobilePasswordHint);
         var save = new WrapPanel { Margin = new(0, 20, 0, 0) };
@@ -101,7 +99,7 @@ public partial class MainWindow
     {
         if (mobileBusy) return;
         mobileBusy = true; foreach (var button in mobileActions) button.IsEnabled = false;
-        mobileUrl.IsEnabled = mobileUsername.IsEnabled = mobilePort.IsEnabled = mobileProxy.IsEnabled = mobilePassword.IsEnabled = false;
+        mobileUrl.IsEnabled = mobileUsername.IsEnabled = mobilePort.IsEnabled = mobilePassword.IsEnabled = false;
         mobileStatus.Text = "正在处理…";
         try { await action(); }
         catch (OperationCanceledException) { mobileStatus.Text = "操作已取消，请刷新状态。"; }
@@ -109,7 +107,7 @@ public partial class MainWindow
         finally
         {
             mobileBusy = false; foreach (var button in mobileActions) button.IsEnabled = true;
-            mobileUrl.IsEnabled = mobileUsername.IsEnabled = mobilePort.IsEnabled = mobileProxy.IsEnabled = mobilePassword.IsEnabled = true;
+            mobileUrl.IsEnabled = mobileUsername.IsEnabled = mobilePort.IsEnabled = mobilePassword.IsEnabled = true;
         }
     }
 
@@ -117,7 +115,7 @@ public partial class MainWindow
     {
         if (!int.TryParse(mobilePort.Text, out var port)) throw new ArgumentException("请输入有效的本机端口。");
         var manager = MobileManager();
-        await manager.SaveAsync(mobileUrl.Text, mobileUsername.Text, mobilePassword.Password, port, lifetime.Token, mobileProxy.Text);
+        await manager.SaveAsync(mobileUrl.Text, mobileUsername.Text, mobilePassword.Password, port, lifetime.Token);
         mobilePassword.Clear(); ClearMobileQr();
         mobilePasswordHint.Text = "密码已设置；留空沿用。填写新密码将撤销已有设备授权。";
         await manager.StartAsync(lifetime.Token);
@@ -136,17 +134,13 @@ public partial class MainWindow
                 ClearMobileQr(); mobilePassword.Clear(); mobileLoadedHome = home;
                 mobileUrl.Text = config?.PublicUrl ?? ""; mobileUsername.Text = config?.Auth.Username ?? "codex";
                 mobilePort.Text = (config?.Port ?? MobileGatewayManager.DefaultPort).ToString();
-                mobileProxy.Text = config?.ProxyAddress ?? "";
                 mobilePasswordHint.Text = config is null ? "设置 12 至 256 个字符的独立密码。" : "密码已设置；留空沿用。填写新密码将撤销已有设备授权。";
             }
             var status = await manager.StatusAsync(lifetime.Token);
             if (requestedHome != home || closing) return;
-            mobileEndpoint.Text = config?.ProxyAddress.Length > 0 ?
-                $"代理目标：http://电脑可达的IP:{config.Port} · 仅允许来源 {config.ProxyAddress} 和本机；管理端口仅本机" :
-                $"反向代理目标：http://127.0.0.1:{config?.Port ?? MobileGatewayManager.DefaultPort} · 仅监听本机";
+            mobileEndpoint.Text = $"HTTP 端口：{config?.Port ?? MobileGatewayManager.DefaultPort} · 代理目标为电脑可达的 IP 和此端口 · 管理端口仅本机";
             mobileStatus.Text = status is null ? config is null ? "尚未设置手机连接。" : "服务已停止。点击启动后，检测 HTTPS 入口。" :
                 status.Checked ? "服务运行中 · HTTPS 入口已检测通过" : "服务运行中 · 尚未检测 HTTPS 入口";
-            if (status?.LastRejectedPeer.Length > 0) mobileStatus.Text += $" · 最近被拒绝的来源：{status.LastRejectedPeer}，请核对代理出口 IP";
             mobileDevices.Children.Clear();
             if (status is null) { mobileDevices.Children.Add(OverviewText("启动服务后可查看和撤销设备。", "Muted", 13)); return; }
             using var result = await manager.ControlAsync("devices", new { action = "list" }, lifetime.Token);

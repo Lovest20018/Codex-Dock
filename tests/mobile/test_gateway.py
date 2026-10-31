@@ -13,7 +13,7 @@ from unittest.mock import patch, Mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src' / 'CodexMobile'))
 from bridge.features.auth.auth import password_record
-from gateway import State, Server, PublicHandler, ControlHandler, public_origin, proxy_address
+from gateway import PROTOCOL, State, Server, PublicHandler, ControlHandler, public_origin
 from main import validate
 
 ORIGIN = 'https://phone.example.com'
@@ -37,7 +37,7 @@ class HTTPTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.directory = Path(self.temp.name)
         (self.directory / 'home').mkdir()
-        self.config = {'protocol': 2, 'publicUrl': ORIGIN, 'port': 13090, 'controlPort': 13091, 'proxyAddress': '',
+        self.config = {'protocol': PROTOCOL, 'publicUrl': ORIGIN, 'port': 13090, 'controlPort': 13091,
                        'controlToken': 'b' * 64, 'instanceId': 'a' * 32, 'auth': copy.deepcopy(AUTH),
                        'codexHome': str(self.directory / 'home'), 'dataDir': str(self.directory)}
         self.bridge = FakeBridge()
@@ -124,48 +124,49 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.request('/health', private=True, headers={'X-Forwarded-For': '192.0.2.1'})[0], 403)
         self.assertEqual(self.request('/health', private=True, headers={'Sec-Fetch-Site': 'same-origin'})[0], 403)
 
-    def test_lan_proxy_allowlist_is_based_on_socket_peer_and_preserves_client_ip(self):
-        self.state.proxy_address = '192.168.8.2'
-        self.state.auth.policy['trustedProxies'] = ['192.168.8.2']
-        original_setup = PublicHandler.setup
-        peer = '192.168.8.3'
-        def setup(handler):
-            original_setup(handler)
-            handler.client_address = (peer, handler.client_address[1])
-        with patch.object(PublicHandler, 'setup', setup):
-            for path in ('/', '/app.js', '/api/auth'):
-                self.assertEqual(self.request(path, headers={'X-Forwarded-For': '192.168.8.2'})[0], 403)
-            self.assertEqual(self.request('/health', private=True)[1]['lastRejectedPeer'], peer)
-            peer = '192.168.8.2'
-            self.assertEqual(self.request('/api/auth')[0], 200)
-            # The proxy appends the real client to a potentially forged left end.
-            code, body, headers = self.request('/api/login', {'username': 'tester', 'password': PASSWORD},
-                                              headers={'X-Forwarded-For': '198.51.100.1, 192.0.2.77'})
-            self.assertEqual(code, 200)
-            self.cookie = headers['Set-Cookie'].split(';')[0]
-            self.assertTrue(self.request('/api/auth', headers={'X-Forwarded-For': '192.0.2.77'})[1]['authenticated'])
-            self.assertEqual(self.request('/api/auth', headers={'Host': 'wrong.example.com'})[0], 403)
-            self.assertEqual(self.request('/api/logout', {}, headers={'X-Forwarded-For': '192.0.2.77', 'Origin': 'https://other.example.com'})[0], 403)
-        devices = self.request('/devices', {'action': 'list'}, private=True)[1]['sessions']
-        self.assertEqual(devices[0]['ip'], '192.0.2.77')
-        # A persisted policy cannot add another transport peer on restart.
-        self.state.auth.policy['trustedProxies'] = ['192.168.8.99']
-        self.state.auth.persist()
-        restarted = State(self.config, self.bridge, self.state.web_dir)
-        self.assertEqual(restarted.auth.policy['trustedProxies'], [])
-
-    def test_public_nat_proxy_peer_is_allowed_without_trusting_the_original_lan_ip(self):
-        self.state.proxy_address = '198.51.100.2'
-        self.state.auth.policy['trustedProxies'] = ['198.51.100.2']
+    def test_remote_proxy_needs_no_allowlist_and_forwarded_headers_cannot_reset_limits(self):
         original_setup = PublicHandler.setup
         peer = '198.51.100.2'
         def setup(handler):
             original_setup(handler)
             handler.client_address = (peer, handler.client_address[1])
         with patch.object(PublicHandler, 'setup', setup):
-            self.assertEqual(self.request('/api/auth')[0], 200)
+            for path in ('/', '/app.js', '/api/auth'):
+                self.assertEqual(self.request(path)[0], 200)
+            self.assertEqual(self.request('/api/sessions')[0], 401)
+            for number in range(5):
+                self.assertEqual(self.request('/api/login', {'username': 'tester', 'password': 'wrong'},
+                                              headers={'X-Forwarded-For': f'192.0.2.{number + 1}'})[0], 401)
+            self.assertTrue(self.request('/api/auth', headers={'X-Forwarded-For': '192.0.2.99'})[1]['loginStatus']['blocked'])
+            blocks = self.request('/devices', {'action': 'list'}, private=True)[1]['autoBlocks']
+            self.assertEqual([row['ip'] for row in blocks], [peer])
+            self.assertEqual(self.request('/devices', {'action': 'unblock', 'ip': peer}, private=True)[0], 200)
+            self.login()
+            self.assertEqual(self.request('/api/auth', headers={'Host': 'wrong.example.com'})[0], 403)
+            self.assertEqual(self.request('/api/logout', {}, headers={'Origin': 'https://other.example.com'})[0], 403)
+            self.assertEqual(self.request('/api/logout', {}, headers={'X-CSRF-Token': None})[0], 403)
+
+    def test_android_login_survives_proxy_address_changes_and_drops_old_forwarding_trust(self):
+        original_setup = PublicHandler.setup
+        peer = '198.51.100.2'
+        def setup(handler):
+            original_setup(handler)
+            handler.client_address = (peer, handler.client_address[1])
+        with patch.object(PublicHandler, 'setup', setup):
+            self.login()
             peer = '192.168.8.2'
-            self.assertEqual(self.request('/api/auth', headers={'X-Forwarded-For': '198.51.100.2'})[0], 403)
+            self.assertTrue(self.request('/api/auth', headers={'X-Forwarded-For': '192.0.2.77'})[1]['authenticated'])
+        devices = self.request('/devices', {'action': 'list'}, private=True)[1]['sessions']
+        self.assertEqual(devices[0]['ip'], peer)
+        self.state.auth.policy['trustedProxies'] = ['192.168.8.2']
+        self.state.auth.persist()
+        restarted = State(self.config, self.bridge, self.state.web_dir)
+        self.assertEqual(restarted.auth.policy['trustedProxies'], [])
+
+    def test_boot_contract_has_no_proxy_setting_and_requires_current_worker_protocol(self):
+        self.assertEqual(validate(self.config), self.config)
+        with self.assertRaises(ValueError): validate({**self.config, 'proxyAddress': '198.51.100.2'})
+        with self.assertRaises(ValueError): validate({**self.config, 'protocol': 2})
 
     def test_local_diagnostic_page_uses_https_without_allowing_http_login(self):
         local_host = f'127.0.0.1:{self.public.server_port}'
@@ -249,13 +250,6 @@ class HTTPTests(unittest.TestCase):
 
 
 class ConfigTests(unittest.TestCase):
-    def test_proxy_requires_one_canonical_unicast_ipv4(self):
-        self.assertEqual(proxy_address(''), '')
-        for value in ('192.168.8.2', '10.2.3.4', '172.16.1.2', '172.31.255.254', '198.51.100.2'):
-            self.assertEqual(proxy_address(value), value)
-        for value in ('0.0.0.0', '0.2.3.4', '127.0.0.1', '224.0.0.1', '255.255.255.255', '169.254.1.2', '192.168.8.0/24', '*', 'localhost', '::1', '192.168.008.2', None, 123):
-            with self.assertRaises(ValueError, msg=value): proxy_address(value)
-
     def test_only_https_root_domains_and_explicit_boot_inputs(self):
         self.assertEqual(public_origin('https://PHONE.example.com:443/'), ORIGIN)
         for value in ('http://phone.example.com', ORIGIN + '/proxy', ORIGIN + '?token=x', ORIGIN + '#pair=x',

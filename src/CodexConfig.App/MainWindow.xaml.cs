@@ -466,7 +466,7 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) == true)
         {
             home = dialog.FolderName; mobileLoadedHome = null; ClearMobileQr(); mobileDevices.Children.Clear();
-            mobilePassword.Clear(); mobileUrl.Clear(); mobileProxy.Clear(); mobileUsername.Text = "codex"; mobilePort.Text = MobileGatewayManager.DefaultPort.ToString();
+            mobilePassword.Clear(); mobileUrl.Clear(); mobileUsername.Text = "codex"; mobilePort.Text = MobileGatewayManager.DefaultPort.ToString();
             CloseOverlay(); Reload(); if (currentPage == "mobile") _ = RefreshMobilePageAsync();
         }
     }

@@ -4,7 +4,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>CodexDock</AssemblyName>
     <RootNamespace>CodexConfig.App</RootNamespace>
-    <Version>0.13.1</Version>
+    <Version>0.13.2</Version>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Product>Codex Dock</Product>
