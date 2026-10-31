@@ -57,6 +57,7 @@ with zipfile.ZipFile(out / 'base.apk') as source, zipfile.ZipFile(out / 'unsigne
     for item in source.infolist():
         dest.writestr(item, source.read(item))
     dest.write(out / 'dex/classes.dex', 'classes.dex')
+    dest.write(ROOT / 'tests/android/presentation.js', 'assets/presentation.js')
 run(tools / 'zipalign.exe', '-f', '4', out / 'unsigned.apk', out / 'aligned.apk')
 run(tools / 'apksigner.bat', 'sign', '--ks', args.signing_home / 'codex-dock.p12', '--ks-key-alias', 'codex-dock', '--ks-pass', 'env:CODEX_DOCK_ANDROID_STORE_PASSWORD', '--out', out / 'test.apk', out / 'aligned.apk')
 fixture = subprocess.Popen([sys.executable, '-B', ROOT / 'tests/android/gateway_fixture.py'], cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=(out / 'fixture-errors.log').open('w'), text=True)
@@ -73,7 +74,9 @@ try:
     endpoint = json.loads(line[0])
     port = str(endpoint['port'])
     adb('reverse', 'tcp:' + port, 'tcp:' + port)
-    previous = ROOT / 'artifacts/LovestCode-Android-0.1.1.apk'
+    previous = ROOT / 'artifacts/LovestCode-Android-0.2.0.apk'
+    if not previous.exists():
+        previous = ROOT / 'artifacts/LovestCode-Android-0.1.1.apk'
     adb('install', '-r', out / 'test.apk')
     # Downgrading only this disposable emulator is necessary on repeated QA runs.
     if previous.exists():
@@ -98,7 +101,7 @@ try:
     data = json.loads(report[1])
     assert data['status'] == 'PASS'
     data['apk'] = args.apk.name
-    data['upgradeFrom011'] = previous.exists()
+    data['upgradeFrom'] = previous.name if previous.exists() else None
     (out / 'report.json').write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
 finally:
     if 'port' in locals():

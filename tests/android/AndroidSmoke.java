@@ -31,7 +31,7 @@ public final class AndroidSmoke extends Instrumentation {
  @Override public void onStart(){Bundle result=new Bundle();try{
   base=options.getString("base");Context target=getTargetContext();
   if("seed".equals(options.getString("mode"))){target.getSharedPreferences("bridge",0).edit().putString("upgrade-marker","keep").putString("settingsTheme","dark").putStringSet("origins",new java.util.HashSet<>(java.util.Arrays.asList("https://upgrade.invalid"))).commit();result.putString("report","SEEDED");finish(Activity.RESULT_OK,result);return;}
-  if("upgrade".equals(options.getString("mode"))){android.content.SharedPreferences before=target.getSharedPreferences("bridge",0);check("keep".equals(before.getString("upgrade-marker",""))&&"dark".equals(before.getString("settingsTheme",""))&&before.getStringSet("origins",java.util.Collections.emptySet()).contains("https://upgrade.invalid"),"0.1.1 upgrade preserves preferences and computers");result.putString("report","UPGRADE_PASS");finish(Activity.RESULT_OK,result);return;}
+  if("upgrade".equals(options.getString("mode"))){android.content.SharedPreferences before=target.getSharedPreferences("bridge",0);check("keep".equals(before.getString("upgrade-marker",""))&&"dark".equals(before.getString("settingsTheme",""))&&before.getStringSet("origins",java.util.Collections.emptySet()).contains("https://upgrade.invalid"),"Previous version upgrade preserves preferences and computers");result.putString("report","UPGRADE_PASS");finish(Activity.RESULT_OK,result);return;}
 target.getSharedPreferences("bridge",0).edit().clear().putBoolean("alerts",true).putString("language","zh").commit();
   Intent intent=new Intent(Intent.ACTION_MAIN).setClassName(target.getPackageName(),"io.github.try2love.codexbridge.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK);
   activity=startActivitySync(intent);waitForIdleSync();
@@ -83,6 +83,29 @@ target.getSharedPreferences("bridge",0).edit().clear().putBoolean("alerts",true)
   js("codexDraftScope=testScope;codexProvisionalDrafts.clear();currentId='12345678-1234-1234-1234-123456789abc';codexDraftScope={...codexDraftScope,session:currentId};document.getElementById('app').classList.add('chat-open');document.getElementById('chat').hidden=false;document.getElementById('welcome').hidden=true;document.getElementById('chat-title').textContent='Fixture navigation';document.getElementById('messages').replaceChildren();for(let i=0;i<30;i++){const p=document.createElement('p');p.className='message';p.textContent='Isolated navigation fixture '+i;document.getElementById('messages').append(p);}true");
   until(()->Boolean.TRUE.equals(field("chatDetail")),"Native shell observes detail navigation");
   ui(()->visible[0]=text(((LinearLayout)field("tabs"))));check(visible[0].isEmpty(),"Chat detail hides primary navigation");shot("chat-detail");
+  try(InputStream input=getContext().getAssets().open("presentation.js");ByteArrayOutputStream source=new ByteArrayOutputStream()){byte[] buffer=new byte[4096];int count;while((count=input.read(buffer))!=-1)source.write(buffer,0,count);js(source.toString("UTF-8"));}
+  ui(()->target.getSharedPreferences("bridge",0).edit().putString("settingsTheme","light").apply());
+  js("LovestPresentationQA.list();true");shot("ui-list");
+  check(Boolean.TRUE.equals(js("document.getElementById('search').getBoundingClientRect().height<=48&&document.querySelectorAll('#sessions>.session').length===5&&document.documentElement.scrollWidth<=innerWidth+2")),"Populated list keeps compact search and fits viewport");
+  js("LovestPresentationQA.chat();true");shot("ui-chat");
+  check(Boolean.TRUE.equals(js("document.getElementById('dock-chat-context').getBoundingClientRect().top>=document.getElementById('chat-title').getBoundingClientRect().bottom-1&&document.getElementById('composer').getBoundingClientRect().height<210")),"Chat title and path use separate lines with compact composer");
+  js("document.getElementById('dock-composer-more').open=true;true");shot("ui-options");
+  check(Boolean.TRUE.equals(js("document.getElementById('send').getBoundingClientRect().bottom<=innerHeight+1&&document.getElementById('composer').getBoundingClientRect().height<innerHeight*.65")),"Expanded options leave send and message reachable");
+  js("document.getElementById('dock-composer-more').open=false;LovestPresentationQA.models();true");shot("ui-models");
+  check(Boolean.TRUE.equals(js("(()=>{const d=document.getElementById('model-dialog').getBoundingClientRect(),b=document.getElementById('model-save').getBoundingClientRect();return d.top>24&&Math.abs(d.bottom-innerHeight)<2&&b.bottom<=innerHeight+1&&d.width<=innerWidth+1})()")),"Model settings appear as a fitted bottom sheet with visible apply action");
+  ui(()->target.getSharedPreferences("bridge",0).edit().putString("settingsTheme","dark").apply());shot("ui-models-dark");
+  js("document.getElementById('model-dialog').close();true");shot("ui-chat-dark");
+  ui(()->{WebView v=(WebView)field("web");v.requestFocus();});js("document.getElementById('message').focus();true");
+  ui(()->((android.view.inputmethod.InputMethodManager)target.getSystemService(Context.INPUT_METHOD_SERVICE)).showSoftInput((WebView)field("web"),android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT));Thread.sleep(700);shot("ui-keyboard");
+  check(Boolean.TRUE.equals(js("document.getElementById('send').getBoundingClientRect().bottom<=innerHeight+1&&document.getElementById('message').getBoundingClientRect().bottom<=innerHeight+1")),"Focused composer keeps input and send inside resized viewport");
+  ui(()->((android.view.inputmethod.InputMethodManager)target.getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(((WebView)field("web")).getWindowToken(),0));js("document.getElementById('message').blur();true");Thread.sleep(400);
+  ui(()->{WebView v=(WebView)field("web");v.setLayoutParams(new FrameLayout.LayoutParams(Math.round(320*activity.getResources().getDisplayMetrics().density),-1));v.getSettings().setTextZoom(130);});Thread.sleep(400);
+  js("document.getElementById('dock-composer-more').open=true;true");shot("ui-options-narrow");
+  check(Boolean.TRUE.equals(js("document.documentElement.scrollWidth<=innerWidth+2&&document.getElementById('send').getBoundingClientRect().bottom<=innerHeight+1")),"Narrow enlarged-text composer remains on screen");
+  js("document.getElementById('dock-composer-more').open=false;LovestPresentationQA.models();true");shot("ui-models-narrow");
+  check(Boolean.TRUE.equals(js("document.getElementById('model-dialog').scrollWidth<=document.getElementById('model-dialog').clientWidth+2")),"Enlarged-text model settings avoid horizontal overflow");
+  js("document.getElementById('model-dialog').close();LovestPresentationQA.restore();document.getElementById('messages').replaceChildren();for(let i=0;i<30;i++){const p=document.createElement('p');p.className='message';p.textContent='Isolated navigation fixture '+i;document.getElementById('messages').append(p);}true");
+  ui(()->{WebView v=(WebView)field("web");v.setLayoutParams(new FrameLayout.LayoutParams(-1,-1));v.getSettings().setTextZoom(100);});Thread.sleep(400);
   js("document.getElementById('timeline').scrollTop=150;window.LovestShell.persist();true");
   check(Boolean.TRUE.equals(js("Math.abs(Number(localStorage.getItem(composerDrafts.key(codexDraftScope,'reading')))-150)<2")),"Reading position persists with verified account and chat scope");
   final String[] resume={null};ui(()->resume[0]=(String)call("resumeUrl",new Class<?>[]{String.class},base));check(resume[0].contains("12345678-1234-1234-1234-123456789abc"),"Startup locator restores last verified chat");

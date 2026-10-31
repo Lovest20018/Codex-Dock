@@ -61,7 +61,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
  LinearLayout card(){LinearLayout c=column();c.setPadding(dp(16),dp(10),dp(12),dp(10));c.setBackground(background(surfaceColor(),12));return c;}
  ImageButton icon(String name,String description,Runnable action){ImageButton b=new ImageButton(ui.context);b.setImageResource(getResources().getIdentifier(name,"drawable",getPackageName()));b.setColorFilter(textColor());b.setContentDescription(description);b.setPadding(dp(12),dp(12),dp(12),dp(12));android.util.TypedValue ripple=new android.util.TypedValue();ui.context.getTheme().resolveAttribute(android.R.attr.selectableItemBackgroundBorderless,ripple,true);b.setBackgroundResource(ripple.resourceId);b.setOnClickListener(v->action.run());return b;}
  void header(boolean chat){
-  bar.setVisibility(chat?View.GONE:View.VISIBLE);if(chat)return;bar.removeAllViews();
+  bar.setVisibility(chat?View.GONE:View.VISIBLE);if(chat)return;bar.removeAllViews();bar.setBackgroundColor(surfaceColor());
   ImageView logo=new ImageView(ui.context);logo.setImageResource(getResources().getIdentifier("ic_bridge","drawable",getPackageName()));
   LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(dp(28),dp(28));lp.setMarginEnd(dp(10));bar.addView(logo,lp);
   String title="computers".equals(selectedPage)?L("电脑"):"me".equals(selectedPage)?L("我的"):web!=null?computerName(origin):"Lovest Code";
@@ -72,8 +72,8 @@ public final class MainActivity extends Activity implements SharedPreferences.On
  }
  void renderTabs(){
   if(tabs==null)return;tabs.removeAllViews();tabs.setBackgroundColor(surfaceColor());
-  String[] ids={"chat","computers","me"},labels={"聊天","电脑","我的"};
-  for(int i=0;i<ids.length;i++){final String page=ids[i];Button tab=button(L(labels[i]),()->selectPage(page));boolean selected=page.equals(selectedPage);tab.setSelected(selected);tab.setTextColor(selected?(ui.dark?0xffb4a5ff:0xff5944d8):mutedColor());tab.setBackgroundColor(android.graphics.Color.TRANSPARENT);tab.setPadding(dp(4),dp(10),dp(4),dp(10));tab.setMinHeight(dp(56));tabs.addView(tab,new LinearLayout.LayoutParams(0,-2,1));}
+  String[] ids={"chat","computers","me"},labels={"聊天","电脑","我的"},icons={"ic_chat","ic_computer","ic_menu_user_round"};
+  for(int i=0;i<ids.length;i++){final String page=ids[i];Button tab=button(L(labels[i]),()->selectPage(page));boolean selected=page.equals(selectedPage);int color=selected?(ui.dark?0xffb4a5ff:0xff5944d8):mutedColor();tab.setSelected(selected);tab.setTextColor(color);tab.setTextSize(11);tab.setSingleLine(true);tab.setBackgroundColor(android.graphics.Color.TRANSPARENT);tab.setPadding(dp(4),dp(7),dp(4),dp(7));tab.setMinHeight(dp(62));android.graphics.drawable.Drawable glyph=getDrawable(getResources().getIdentifier(icons[i],"drawable",getPackageName())).mutate();glyph.setTint(color);glyph.setBounds(0,0,dp(21),dp(21));tab.setCompoundDrawables(null,glyph,null,null);tab.setCompoundDrawablePadding(dp(4));tabs.addView(tab,new LinearLayout.LayoutParams(0,-2,1));}
   tabs.setVisibility("chat".equals(selectedPage)&&(chatDetail||webModal)?View.GONE:View.VISIBLE);
  }
  void hideNative(){if(embeddedSettings!=null){embeddedSettings.stopEmbedded();embeddedSettings=null;}nativeHost.removeAllViews();nativeHost.setVisibility(View.GONE);}
@@ -463,7 +463,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
  void settings(){if(settingsPage==null||!settingsPage.isShowing()){settingsPage=new SettingsPage(this,0);settingsPage.show();}}
  void reopenSettings(SettingsPage previous){if(previous!=settingsPage||!previous.isShowing()||previous.isClosing())return;SettingsPage replacement=previous.replacement();previous.dismiss();settingsPage=replacement;settingsPage.show();}
  String currentComputerName(){return origin.isEmpty()?L("尚未连接"):computerName(origin);}
- String appVersion(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception e){return "0.2.0";}}
+ String appVersion(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception e){return "0.2.1";}}
  void openDockReleases(){try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/Lovest20018/Codex-Dock/releases")));}catch(ActivityNotFoundException e){message(L("没有可用的浏览器，请在电脑上打开 Lovest Code 发布页。"));}}
  void toggleBackgroundNotifications(){
   if(prefs.getBoolean("backgroundNotifications",false)){prefs.edit().putBoolean("backgroundNotifications",false).apply();MonitorService.refresh();return;}

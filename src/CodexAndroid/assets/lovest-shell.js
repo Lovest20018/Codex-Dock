@@ -37,30 +37,78 @@
   }
   const rules=[
     '.lovest-shell #sidebar .sidebar-foot,.lovest-shell .dock-device{display:none!important}',
-    '.lovest-shell .list-heading{padding:4px 56px 4px 0;gap:6px;flex-wrap:wrap}',
-    '.lovest-shell #sidebar{padding:0 16px 8px;gap:10px}',
-    '.lovest-shell .list-heading h2{font-size:20px}',
+    '.lovest-shell .dock-ui #sidebar{padding:0 16px 8px;gap:8px;background:var(--dock-panel)}',
+    '.lovest-shell .dock-ui #sidebar .list-heading{display:flex;height:auto;min-height:56px;padding:4px 0!important;gap:8px;flex-wrap:nowrap}',
+    '.lovest-shell .dock-ui #sidebar .list-heading h2{flex:1;min-width:0;gap:7px;font-size:20px;margin:0}',
+    '.lovest-shell .dock-ui .list-heading .client-badge{font-size:11px;font-weight:500;color:var(--muted);gap:4px}',
+    '.lovest-shell .dock-ui .list-heading .client-icon{width:18px;height:18px}',
+    '.lovest-shell .dock-ui .list-heading .connected-computer{display:none}',
+    '.lovest-shell .dock-ui .list-actions{margin:0;gap:0}',
     '.lovest-shell #sidebar #sessions{height:auto;flex:1 1 auto}',
     '.lovest-shell #sidebar.dock-list-empty #sessions{display:none}',
-    '.lovest-shell #search{font-size:16px!important}',
-    '.lovest-shell .session strong{font-size:15px}',
-    '.lovest-shell .session small{font-size:12px}',
-    '.lovest-shell .session-list-region{justify-content:flex-start}',
+    '.lovest-shell .dock-ui #sidebar #search{flex:none;box-sizing:border-box;width:100%;height:44px;min-height:44px;padding:10px 14px;border-radius:12px;font-size:14px!important;background:var(--dock-surface)!important;border-color:transparent!important}',
+    '.lovest-shell .dock-ui #sessions{padding:0;display:block}',
+    '.lovest-shell .dock-ui .session{margin:0;padding:16px 2px;border-radius:0;border-bottom:1px solid var(--line);min-height:76px}',
+    '.lovest-shell .dock-ui .session strong{font-size:15px;font-weight:550;line-height:1.5}',
+    '.lovest-shell .dock-ui .session small{font-size:11px;line-height:1.5;margin-top:6px}',
+    '.lovest-shell .dock-ui .session-list-region{justify-content:flex-start}',
     '.lovest-shell .dock-empty{padding:18px 0}',
-    '.lovest-shell .chat-head{padding:4px 56px 4px 4px;min-height:56px}',
-    '.lovest-shell #composer{border-radius:12px;margin:0 8px 8px;padding:10px}',
-    '.lovest-shell #message{font-size:16px;min-height:48px}',
-    '.lovest-shell #new-chat{font-size:14px;min-height:48px;padding:8px 12px}',
-    '.lovest-shell .lovest-bell{min-width:48px;min-height:48px;padding:8px;border:0;background:transparent;color:var(--text)}',
+    '.lovest-shell .dock-ui .chat-head{height:64px;min-height:64px;padding:4px 56px 4px 4px!important;gap:6px}',
+    '.lovest-shell .dock-ui .chat-head .chat-info{display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:1px;overflow:hidden}',
+    '.lovest-shell .dock-ui .chat-head .chat-title-button{display:block;height:auto;min-height:24px;flex:none;padding:0}',
+    '.lovest-shell .dock-ui #chat-title,.lovest-shell .dock-ui .ds-title{font-size:15px;line-height:24px;letter-spacing:0}',
+    '.lovest-shell .dock-ui .chat-head .dock-chat-context{display:block;font-size:10px;line-height:16px;max-width:100%}',
+    '.lovest-shell .dock-ui .chat-head>.client-icon{width:18px;height:18px}',
+    '.lovest-shell .dock-ui .chat-head>.status{font-size:10px;padding:4px 6px;height:auto;max-width:64px}',
+    '.lovest-shell .dock-ui #composer{border-radius:18px;margin:0 8px 8px;padding:8px 10px;background:var(--dock-panel);box-shadow:0 2px 12px #00000005}',
+    '.lovest-shell .dock-ui #message{font-size:16px;min-height:48px;height:48px;max-height:140px;padding:10px 12px;border:0;border-radius:10px;background:var(--dock-surface);resize:none}',
+    '.lovest-shell .dock-ui .list-heading #new-chat{font-size:13px;height:40px;min-height:40px;padding:8px 12px;border-radius:12px;gap:4px}',
+    '.lovest-shell .dock-ui #new-chat .header-icon{width:18px;height:18px}',
+    '.lovest-shell .lovest-bell{display:grid;place-items:center;flex:none;width:44px;height:44px;min-height:44px;padding:10px;border:0;border-radius:12px;background:transparent;color:var(--muted)}',
     '.lovest-shell .lovest-approval{display:block;width:100%;padding:12px;text-align:left;background:var(--soft);color:var(--text);border:0;border-radius:8px;margin:0 0 8px}',
     '.lovest-shell .lovest-approval[hidden]{display:none}',
-    '.lovest-shell button,.lovest-shell select{min-height:48px}',
-    '.lovest-shell .dock-chat-context{font-size:12px}',
-    '.lovest-shell .dock-filters{font-size:13px}',
+    '.lovest-shell .dock-ui button,.lovest-shell .dock-ui select{min-height:44px}',
+    '.lovest-shell .dock-ui .dock-filters{font-size:12px;width:100%}',
+    '.lovest-shell .dock-ui .dock-filters>summary{min-height:40px;padding:10px 2px;font-size:11px;text-align:left;list-style:none}',
+    '.lovest-shell .dock-ui .dock-filters>summary::before{content:"≡";margin-right:6px;font-size:14px}',
     '.lovest-shell .dock-keyboard-hint{display:none}',
-    '.lovest-shell .chat-title-button{min-width:0}',
-    '.lovest-shell #model-button{max-width:65vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-    '.lovest-shell .chat-list-toolbar{gap:8px}'
+    '.lovest-shell .dock-ui .composer-tools{display:flex;flex-wrap:wrap;gap:4px;padding:0 0 4px;align-items:center}',
+    '.lovest-shell .dock-ui .composer-tools .tool-button{font-size:12px;min-height:40px;padding:6px 8px;border:0;border-radius:9px;background:transparent}',
+    '.lovest-shell .dock-ui #model-button{max-width:calc(100% - 124px);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;gap:3px}',
+    '.lovest-shell .dock-ui #model-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.lovest-shell .dock-ui .context-usage{min-width:36px;width:36px;padding:8px}',
+    '.lovest-shell .dock-ui .context-usage-ring{width:15px;height:15px}',
+    '.lovest-shell .dock-ui #composer-toggle{width:36px;min-width:36px;min-height:40px;height:40px;padding:8px;border:0;background:transparent}',
+    '.lovest-shell .dock-ui .dock-composer-more{font-size:12px;margin-left:auto}',
+    '.lovest-shell .dock-ui .dock-composer-more>summary{display:flex;align-items:center;justify-content:flex-end;min-height:40px;padding:6px 4px;list-style:none;color:var(--muted)}',
+    '.lovest-shell .dock-ui .dock-composer-more>summary::-webkit-details-marker{display:none}',
+    '.lovest-shell .dock-ui .dock-composer-more[open]{order:10;flex:1 1 100%;margin:0;border-top:1px solid var(--line)}',
+    '.lovest-shell .dock-ui .dock-advanced-controls{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;padding:0 0 8px;max-height:32dvh;overflow-y:auto;overscroll-behavior:contain}',
+    '.lovest-shell .dock-ui .dock-advanced-controls label{grid-column:span 3;order:-1;min-width:0;gap:4px;font-size:11px}',
+    '.lovest-shell .dock-ui .dock-advanced-controls select{width:100%;min-width:0;min-height:40px;padding:6px 8px;font-size:13px;border-radius:9px;background:var(--dock-surface)}',
+    '.lovest-shell .dock-ui .dock-advanced-controls .tool-button{grid-column:span 2;background:var(--dock-surface);text-align:center;white-space:normal}',
+    '.lovest-shell .dock-ui #composer .compose-bottom{padding:4px 0 0;gap:6px;align-items:center}',
+    '.lovest-shell .dock-ui #composer .compose-actions button{min-height:40px;padding:8px 16px;border-radius:11px;font-size:13px}',
+    '.lovest-shell .dock-ui .attach-button{width:40px;height:40px;min-height:40px;padding:9px}',
+    '.lovest-shell .dock-ui .dock-selection{font-size:11px;margin:2px 0 4px}',
+    '.lovest-shell .dock-ui .chat-list-toolbar{gap:0;align-items:stretch}',
+    '.lovest-shell .dock-ui :is(#model-dialog,.ds-model-dialog){position:fixed;inset:auto 0 0;box-sizing:border-box;width:100%;max-width:560px;height:auto;max-height:92dvh;margin:auto auto 0;padding:20px 20px max(16px,env(safe-area-inset-bottom));border:0;border-radius:24px 24px 0 0;background:var(--dock-panel);overflow-y:auto;overscroll-behavior:contain}',
+    '.lovest-shell .dock-ui :is(#model-dialog,.ds-model-dialog)::backdrop{background:#14182766}',
+    '.lovest-shell .dock-ui :is(#model-dialog,.ds-model-dialog) .picker-head{margin-bottom:10px;gap:8px}',
+    '.lovest-shell .dock-ui :is(#model-dialog,.ds-model-dialog) .picker-head h2{font-size:18px}',
+    '.lovest-shell .dock-ui :is(#model-dialog,.ds-model-dialog) .picker-head button{font-size:12px;min-height:44px;border:0;background:transparent;padding:8px}',
+    '.lovest-shell .dock-ui :is(#model-form,.ds-model-form){gap:14px}',
+    '.lovest-shell .dock-ui :is(#model-updated,.ds-model-form>small.muted){font-size:10px;line-height:16px}',
+    '.lovest-shell .dock-ui :is(#model-dialog,.ds-model-dialog) .model-options{grid-auto-rows:minmax(44px,auto);max-height:224px;padding:4px;gap:0;border-radius:12px;background:var(--dock-surface)}',
+    '.lovest-shell .dock-ui :is(#model-dialog,.ds-model-dialog) .model-choice{min-height:44px;padding:8px 12px;font-size:14px;border-radius:9px}',
+    '.lovest-shell .dock-ui :is(#model-dialog,.ds-model-dialog) .model-section-title{font-size:11px;margin-bottom:7px}',
+    '.lovest-shell .dock-ui :is(#model-dialog,.ds-model-dialog) .effort-options{grid-template-columns:repeat(3,minmax(0,1fr));padding:4px;border-radius:12px;background:var(--dock-surface)}',
+    '.lovest-shell .dock-ui :is(#model-dialog,.ds-model-dialog) .effort-choice{min-height:40px;font-size:12px;padding:8px 3px}',
+    '.lovest-shell .dock-ui :is(#model-dialog,.ds-model-dialog) .fast-mode-control{padding:10px 0 0}',
+    '.lovest-shell .dock-ui :is(#model-dialog,.ds-model-dialog) .model-fast-label{min-height:40px;font-size:13px}',
+    '.lovest-shell .dock-ui :is(#model-dialog,.ds-model-dialog) #model-save{min-height:46px;font-size:14px;border-radius:12px}',
+    '@media(max-height:500px){.lovest-shell .dock-ui :is(#model-dialog,.ds-model-dialog){max-height:96dvh;padding:12px 16px}.lovest-shell .dock-ui :is(#model-dialog,.ds-model-dialog) .model-options{max-height:132px}}',
+    '@media(max-height:480px){.lovest-shell .dock-ui .dock-advanced-controls{max-height:22dvh}.lovest-shell .dock-ui #message{min-height:40px;height:40px}}'
   ];
   let last='',scheduled=false,scrollTimer=0,restoreKey='',restoreUntil=0,userMoved=false;
   const bell=document.createElement('button');bell.type='button';bell.className='lovest-bell';
@@ -70,6 +118,9 @@
   heading.append(bell);
   const advanced=document.querySelector('.dock-advanced-controls'),permissions=document.getElementById('permissions-button');
   if(advanced&&permissions)advanced.append(permissions);
+  const more=document.querySelector('.dock-composer-more>summary');
+  function moreLabel(){if(more){const value=label(more.parentElement.open?'收起选项':'选项',more.parentElement.open?'Less':'Options');if(more.textContent!==value)more.textContent=value;}}
+  more?.parentElement.addEventListener('toggle',moreLabel);
   const approval=document.createElement('button');approval.type='button';approval.className='lovest-approval';approval.hidden=true;
   document.getElementById('composer')?.before(approval);
   approval.onclick=()=>document.getElementById('approvals')?.scrollIntoView({block:'start'});
@@ -79,6 +130,7 @@
     const c=context(),value={action:'state',authenticated:auth,detail,modal,threadId:detail?c.id:null,host:c.host};
     const stamp=JSON.stringify(value);if(stamp!==last){last=stamp;native(value);}
     bell.setAttribute('aria-label',label('通知收件箱','Notification inbox'));
+    moreLabel();
     const pending=document.getElementById('approvals');const count=pending?.querySelectorAll('.approval').length||0;
     const hidden=!detail||!count;if(approval.hidden!==hidden)approval.hidden=hidden;const text=label('有待处理的请求 · 查看','Requests need your attention · View');if(approval.textContent!==text)approval.textContent=text;
     const key=scrollKey(c);
