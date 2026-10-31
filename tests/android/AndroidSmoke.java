@@ -47,6 +47,7 @@ target.getSharedPreferences("bridge",0).edit().clear().putBoolean("alerts",true)
   check(Boolean.TRUE.equals(js("prompt('codexbridge-copy:wrong-token','rejected')===null&&prompt('codexbridge-theme:wrong-token','light')===null")),"Forged native bridge tokens are rejected");
   final boolean[] blocked={false};ui(()->{WebView v=(WebView)field("web");blocked[0]=v.getWebViewClient().shouldOverrideUrlLoading(v,new WebResourceRequest(){public Uri getUrl(){return Uri.parse("https://untrusted.invalid/");}public boolean isForMainFrame(){return true;}public boolean isRedirect(){return false;}public boolean hasGesture(){return false;}public String getMethod(){return "GET";}public java.util.Map<String,String> getRequestHeaders(){return java.util.Collections.emptyMap();}});});check(blocked[0],"External navigation without a user gesture is blocked");
   until(()->Boolean.TRUE.equals(js("window.LovestShell?.version===1&&document.documentElement.classList.contains('lovest-shell')")),"Versioned owned adapter acknowledged");
+  if("steer".equals(options.getString("mode"))){steering(target);result.putString("report",new JSONObject().put("status","PASS").put("checks",checks).toString());finish(Activity.RESULT_OK,result);return;}
   if("send".equals(options.getString("mode"))){composerSend(target);result.putString("report",new JSONObject().put("status","PASS").put("checks",checks).toString());finish(Activity.RESULT_OK,result);return;}
   js("localStorage.setItem('android-fixture-draft','retained');true");WebView original=(WebView)field("web");
   ui(()->call("settings"));waitForIdleSync();Dialog settings=(Dialog)field("settingsPage");
@@ -165,6 +166,37 @@ target.getSharedPreferences("bridge",0).edit().clear().putBoolean("alerts",true)
    shot("send-after-"+attempt);
    check(Boolean.TRUE.equals(js("ComposerQA.visible()&&state.status==='active'&&!document.getElementById('stop').hidden")),"Active task keeps input, send and stop visible after keyboard hides and long reply "+attempt+" "+js("ComposerQA.metrics()"));
   }
+ }
+ private void steering(Context target)throws Exception{
+  try(InputStream input=getContext().getAssets().open("steering.js");ByteArrayOutputStream source=new ByteArrayOutputStream()){byte[] buffer=new byte[4096];int count;while((count=input.read(buffer))!=-1)source.write(buffer,0,count);js(source.toString("UTF-8"));}
+  until(()->Boolean.TRUE.equals(js("window.SteeringQA?.ready||!!window.SteeringQA?.error")),"Steering fixture prepared");
+  check(Boolean.TRUE.equals(js("SteeringQA.ready")),"Production HTTP and disposable native IPC owner prepared "+js("SteeringQA.error||''"));
+  check(Boolean.TRUE.equals(js("state.status==='active'&&!document.querySelector('#send-mode [value=steer]').disabled&&document.getElementById('work-mode').disabled")),"Supplement current task is available while running and preserves its work mode");
+  WebView view=(WebView)field("web");
+  for(int attempt=0;attempt<3;attempt++){
+   js("SteeringQA.selectSteer();SteeringQA.edit('补充当前任务专项，第 '+"+attempt+"+' 条');true");
+   ui(()->view.requestFocus());js("document.getElementById('message').focus();true");
+   ui(()->((android.view.inputmethod.InputMethodManager)target.getSystemService(Context.INPUT_METHOD_SERVICE)).showSoftInput(view,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT));Thread.sleep(700);
+   check(Boolean.TRUE.equals(js("SteeringQA.visible()")),"Supplement input and send visible with keyboard "+attempt);
+   tapElement("send");final int expected=attempt+1;
+   until(()->Boolean.TRUE.equals(js("SteeringQA.requests.length==="+expected+"&&!sending&&SteeringQA.requests["+(expected-1)+"].status>0")),"Supplement request returns through production HTTP");
+   check(Boolean.TRUE.equals(js("SteeringQA.requests["+attempt+"].body.mode==='steer'&&SteeringQA.requests["+attempt+"].body.workMode===null&&SteeringQA.requests["+attempt+"].status===200&&SteeringQA.requests["+attempt+"].response.status==='accepted'")),"Actual touch sends steer without changing work mode "+attempt+" "+js("JSON.stringify(SteeringQA.requests["+attempt+"])"));
+   check(Boolean.TRUE.equals(js("document.getElementById('message').value===''&&SteeringQA.visible()")),"Accepted supplement clears submitted text and keeps input available "+attempt);
+   js("SteeringQA.poll();true");
+   until(()->Boolean.TRUE.equals(js("SteeringQA.server.nativeCalls.length==="+expected)),"Native owner receives supplement");
+   check(Boolean.TRUE.equals(js("SteeringQA.server.nativeCalls.every((x,i)=>x.method==='thread-follower-steer-turn'&&x.targetClientId==='owner'&&x.params.conversationId===currentId&&x.params.clientUserMessageId===SteeringQA.requests[i].body.id&&x.params.input[0].text===SteeringQA.requests[i].body.text)&&SteeringQA.server.runtimeStatus==='active'")),"Supplement reaches original task with exact text and submission ID without starting or interrupting a turn "+attempt);
+  }
+  js("SteeringQA.refresh();true");
+  until(()->Boolean.TRUE.equals(js("state.turns?.some(t=>t.id===SteeringQA.server.turnId&&t.messages?.filter(m=>m.kind==='steeringUserMessage'&&m.role==='user').length===3)")),"Native accepted supplements appear in the original turn");
+  check(Boolean.TRUE.equals(js("state.status==='active'&&state.turns.length===1")),"All three accepted supplements remain in one active native turn");
+  ui(()->((android.view.inputmethod.InputMethodManager)target.getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(view.getWindowToken(),0));js("document.getElementById('message').blur();true");Thread.sleep(500);shot("steer-accepted");
+  js("SteeringQA.finish();true");Thread.sleep(300);
+  js("SteeringQA.edit('任务结束后的补充保留草稿');true");tapElement("send");
+  until(()->Boolean.TRUE.equals(js("SteeringQA.requests.length===4&&!sending&&SteeringQA.requests[3].status>0")),"Race with completed task returns");
+  check(Boolean.TRUE.equals(js("SteeringQA.requests[3].status===400&&SteeringQA.requests[3].response.code==='send_not_submitted'&&document.getElementById('message').value==='任务结束后的补充保留草稿'&&!!document.getElementById('send-error').textContent")),"Finished task explicitly rejects supplement and retains draft "+js("JSON.stringify(SteeringQA.requests[3])"));
+  js("SteeringQA.poll();SteeringQA.refresh();true");
+  until(()->Boolean.TRUE.equals(js("state.status==='idle'&&SteeringQA.server.runtimeStatus==='idle'")),"Completed state reaches the composer");
+  check(Boolean.TRUE.equals(js("document.querySelector('#send-mode [value=steer]').disabled&&document.getElementById('send-mode').value==='send'&&SteeringQA.server.nativeCalls.length===3&&Object.keys(SteeringQA.server.submissions).length===3")),"Completed turn disables supplement without recording or starting rejected message");shot("steer-finished-draft");
  }
  private void tapElement(String id)throws Exception{
   JSONArray point=new JSONArray((String)js("JSON.stringify((()=>{const r=document.getElementById('"+id+"').getBoundingClientRect(),v=visualViewport;return [(r.left+r.width/2-v.offsetLeft)/v.width,(r.top+r.height/2-v.offsetTop)/v.height]})())"));

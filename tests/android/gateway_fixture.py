@@ -25,12 +25,18 @@ with tempfile.TemporaryDirectory(prefix='dock-android-fixture-') as temp:
     directory = Path(temp)
     home = directory / 'home'
     home.mkdir()
+    owner = None
+    if '--steer' in sys.argv:
+        sys.path.insert(0, str(ROOT / 'tests/mobile'))
+        from steering_fixture import SteeringOwner
+        owner = SteeringOwner(home)
     config = {'protocol': PROTOCOL, 'publicUrl': 'https://fixture.invalid', 'port': 0,
               'controlPort': 13091, 'controlToken': 'b' * 64, 'instanceId': 'a' * 32,
               'auth': {'mode': 'password', 'username': 'fixture', 'sessionHours': 12,
                        **password_record('isolated-android-fixture')},
               'codexHome': str(home), 'dataDir': str(directory)}
-    bridge = Bridge(home, directory, codex_bin=home / 'missing-native-runtime.exe', ipc_path=str(home / 'missing-ipc'))
+    bridge = Bridge(home, directory, codex_bin=home / 'missing-native-runtime.exe',
+                    ipc_path=owner.path if owner else str(home / 'missing-ipc'))
     work = Workbench(config, bridge, UPSTREAM / 'web')
 
     class Proxy(BaseHTTPRequestHandler):
@@ -46,6 +52,18 @@ with tempfile.TemporaryDirectory(prefix='dock-android-fixture-') as temp:
             self.forward()
 
         def forward(self):
+            if owner and self.path.startswith('/__qa__/'):
+                length = int(self.headers.get('Content-Length', '0'))
+                if self.path == '/__qa__/finish' and self.command == 'POST':
+                    self.rfile.read(length)
+                    owner.set_active(False)
+                value = json.dumps(owner.status(bridge), ensure_ascii=False).encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(value)))
+                self.end_headers()
+                self.wfile.write(value)
+                return
             headers = dict(self.headers)
             headers['Host'] = 'fixture.invalid'
             if 'Origin' in headers:
@@ -83,3 +101,5 @@ with tempfile.TemporaryDirectory(prefix='dock-android-fixture-') as temp:
         proxy.server_close()
         work.close()
         bridge.close()
+        if owner:
+            owner.close()

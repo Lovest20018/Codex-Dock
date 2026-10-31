@@ -6,19 +6,19 @@
 
 项目包含 Windows 应用 **Codex Dock**、由 Windows 托管的 **Web / 手机网关**，以及独立安卓客户端 **Lovest Code**。手机端连接自己的电脑和原生执行环境，聊天能力由所选 Codex Desktop、CLI 或已登记的 WSL / SSH 提供。
 
-[下载与版本](https://github.com/Lovest20018/Codex-Dock/releases) · [反馈问题](https://github.com/Lovest20018/Codex-Dock/issues) · [开发与构建](docs/development.md)
+[Windows 安装器](https://github.com/Lovest20018/Codex-Dock/releases/download/v0.15.1/CodexDock-0.15.1-Setup-win-x64.exe) · [安卓 APK](https://github.com/Lovest20018/Codex-Dock/releases/download/v0.15.1/LovestCode-Android-0.2.2.apk) · [全部版本](https://github.com/Lovest20018/Codex-Dock/releases) · [反馈问题](https://github.com/Lovest20018/Codex-Dock/issues)
 
 ## 当前状态
 
 截至 2026-10-31，本仓库的版本为：
 
-| 组件 | 源码版本 | 当前内容 |
+| 组件 | 稳定版本 | 当前内容 |
 | --- | --- | --- |
 | Windows Codex Dock | **0.15.1** | 配置与账号、可选模型网关、手机网关、两个网关的常驻状态与托盘控制。 |
 | Web / 手机工作台 | 随 Windows 版本提供 | Codex 聊天、审批、文件、Git、终端、通知及本机接入管理。 |
 | Android Lovest Code | **0.2.2** / versionCode 5 | 聊天／电脑／我的导航，恢复上次聊天，保留草稿，独立设置；文字输入区保持展开。 |
 
-**源码版本与公开下载版本分别维护。** 本次核对时，GitHub 最新稳定 Release 为 **v0.11.0**，附件仅包含该版 Windows 安装器、便携包和源码包。较新功能应使用对应版本的构建产物或自行构建；公开附件以 [Release 页面](https://github.com/Lovest20018/Codex-Dock/releases) 为准。
+Windows **0.15.1** 与 Android **0.2.2** 在同一个 [v0.15.1 稳定版](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.15.1) 提供下载。GitHub Actions 从同一提交自动构建双端，完成 Windows 安装验证、安卓签名与源码校验后，上传安装包、源码和 SHA-256 清单；所有附件验证通过后才公开发布。维护方式见 [自动发布说明](docs/github-releases.md)。
 
 Web / 手机工作台复用固定的 Codex Mobile Bridge 2.1.7 快照，并通过显式覆盖和自有适配提供 Codex 范围的功能。上游来源、许可与维护方式见 [UPSTREAM](src/CodexMobile/UPSTREAM.md)。
 
@@ -46,6 +46,8 @@ Windows 支持 **Windows 10 1809 及以上 x64**。完整安装包包含 .NET �
 | `SHA256SUMS-<版本>.txt` / `SHA256SUMS-Android-<版本>.txt` | 核对对应交付文件的 SHA-256。 |
 
 Lovest Code 沿用本项目安卓包名、签名与 Logo，可覆盖升级已交付的旧版。它与旧上游 App 是不同应用，首次迁移需重新添加电脑并登录。电脑上的聊天记录不受影响。
+
+日常使用可直接下载上方 Windows 安装器或安卓 APK；Windows 便携版和校验清单在同一个 Release 页面。安卓需要允许浏览器或文件管理器安装此 APK。
 
 更新 Windows 前先停止手机网关，再从托盘退出旧 Dock；更新后重新启动手机服务并检测 HTTPS 入口。安卓 0.2.2 可直接覆盖安装 0.2.1，保留连接和登录。
 
@@ -75,6 +77,8 @@ Lovest Code 沿用本项目安卓包名、签名与 Logo，可覆盖升级已交
 
 Lovest Code 切换聊天、电脑和我的页面时保留当前 WebView 与草稿，重新打开优先恢复上次聊天。聊天详情收起主导航，模型及高级选项继续可用；0.2.2 移除文字输入区的折叠入口，发送后仍可继续输入。见 [安卓说明](docs/android-dock-shell-plan.md)。
 
+任务运行中，在 **选项 → 发送方式** 选择 **补充当前任务**，可把文字追加到当前任务；**完成后发送** 会排队等待。默认 **发送新消息** 用于开启下一轮。补充时沿用当前工作模式，任务已结束会提示并保留草稿；CLI 接入的补充暂不支持附件。见 [专项验证](docs/review-steering-2026-10-31.md)。
+
 ## 数据、保存与后台进程
 
 - 默认读取 `%USERPROFILE%\.codex`；设置 `CODEX_HOME` 时优先使用该目录，也可在应用中选择配置位置。
@@ -90,7 +94,7 @@ Lovest Code 切换聊天、电脑和我的页面时保留当前 WebView 与草�
 
 仓库包含 .NET 核心与隔离 WPF 检查、手机网关 HTTP / Python 回归、共享 Web 的 Node / 浏览器回归，以及在 Android 14 隔离模拟器上安装实际 APK 的检查。
 
-安卓发送回归使用生产页面和真实触摸，发送传输由测试夹具接收；验证连续发送、键盘弹出与收起、长回复、输入区保持展开和覆盖升级。测试资产仅打入独立测试 APK，不进入正式应用。
+安卓发送回归使用生产页面和真实触摸，验证连续发送、键盘变化、长回复、输入区保持展开和覆盖升级。补充任务专项另外经过生产 HTTP 与 IPC 链路，由隔离原生 owner 夹具接收；验证三次补充仍归属同一任务、重复提交保护和结束后保留草稿。测试资产仅打入独立测试 APK，不进入正式应用。
 
 模拟器与自动化结果不能覆盖所有厂商键盘、相机扫码、系统缩放、省电策略、公网链路或真实 Codex / WSL / SSH 任务。功能随执行端能力显示，阅读历史不会自动启动或接管原会话；结果未知的写入不会自动重放。具体证据见 [本次整体审查](docs/review-project-2026-10-31.md) 和 [Android 0.2.2 审查](docs/review-android-0.2.2.md)。
 

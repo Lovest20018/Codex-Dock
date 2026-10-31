@@ -124,11 +124,17 @@ def build():
         run(tools / ('apksigner' + bat), 'sign', '--ks', key, '--ks-key-alias', 'codex-dock',
             '--ks-pass', 'env:CODEX_DOCK_ANDROID_STORE_PASSWORD', '--key-pass', 'env:CODEX_DOCK_ANDROID_STORE_PASSWORD', '--out', apk, work / 'aligned.apk')
         verification = run(tools / ('apksigner' + bat), 'verify', '--verbose', '--print-certs', apk, capture=True)
+        expected_signer = 'Signer #1 certificate SHA-256 digest: ' + meta['signingCertificateSha256']
+        if (expected_signer not in verification.splitlines()
+                or 'Verified using v2 scheme (APK Signature Scheme v2): true' not in verification
+                or 'Verified using v3 scheme (APK Signature Scheme v3): true' not in verification):
+            raise ValueError('APK must use the existing release certificate and v2/v3 signatures.')
         run(tools / ('zipalign' + exe), '-c', '4', apk)
         badging = run(tools / ('aapt2' + exe), 'dump', 'badging', apk, capture=True)
         if (f"name='{meta['applicationId']}'" not in badging
                 or f"versionName='{meta['versionName']}'" not in badging
-                or f"application-label:'{meta['displayName']}'" not in badging):
+                or f"application-label:'{meta['displayName']}'" not in badging
+                or 'application-debuggable' in badging):
             raise ValueError('APK identity, display name or version mismatch.')
         inputs = [SOURCE / 'AndroidManifest.xml', SOURCE / 'android.json'] + java + [path for path, _ in assets]
         inputs = [p for p in inputs if not p.is_relative_to(work)]

@@ -1,0 +1,186 @@
+name: Windows and Android release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  versions:
+    runs-on: ubuntu-24.04
+    outputs:
+      windows: ${{ steps.versions.outputs.windows }}
+      android: ${{ steps.versions.outputs.android }}
+      tag: ${{ steps.versions.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: versions
+        run: python3 -B scripts/release-ci.py metadata
+
+  windows:
+    needs: versions
+    runs-on: windows-2022
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONUTF8: '1'
+      RELEASE_WINDOWS: ${{ needs.versions.outputs.windows }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Core and gateway checks
+        run: |
+          python -B -m unittest discover -s tests/release -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Release pipeline tests failed.' }
+          dotnet build tests/CodexConfig.Tests/CodexConfig.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Core test build failed.' }
+          & ./tests/CodexConfig.Tests/bin/Release/net8.0-windows/CodexConfig.Tests.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Core tests failed.' }
+          python -B -m unittest discover -s tests/mobile -p 'test_*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Gateway tests failed.' }
+          node --test tests/mobile/dock-drafts.test.cjs tests/mobile/client-status.test.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Web state tests failed.' }
+      - name: Prepare locked build tools
+        run: |
+          python -m venv artifacts/mobile-build-venv
+          & ./artifacts/mobile-build-venv/Scripts/python.exe -m pip install --disable-pip-version-check -r scripts/requirements-mobile-build.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Build tool installation failed.' }
+          if (-not (Test-Path -LiteralPath 'C:/Program Files (x86)/Inno Setup 6/ISCC.exe')) {
+            choco install innosetup --version=6.6.1 --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+          }
+      - name: Build and verify Windows installer
+        run: |
+          ./scripts/package.ps1 -Version $env:RELEASE_WINDOWS
+          ./scripts/verify-package.ps1 -Version $env:RELEASE_WINDOWS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-release
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            artifacts/CodexDock-${{ needs.versions.outputs.windows }}-Setup-win-x64.exe
+            artifacts/CodexDock-${{ needs.versions.outputs.windows }}-win-x64.zip
+            artifacts/CodexDock-${{ needs.versions.outputs.windows }}-source.zip
+            artifacts/SHA256SUMS-${{ needs.versions.outputs.windows }}.txt
+            artifacts/installer-verification-${{ needs.versions.outputs.windows }}.json
+      - name: Preserve failure evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-failure-evidence
+          if-no-files-found: ignore
+          path: |
+            .ui-test-*/failure.txt
+            .ui-test-*/report.json
+            .installer-check-*/install.log
+            .installer-check-*/ui/failure.txt
+
+  android:
+    needs: versions
+    runs-on: windows-2022
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Prepare pinned Android tools
+        run: |
+          & "$env:ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat" 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
+          if ($LASTEXITCODE -ne 0) { throw 'Android SDK installation failed.' }
+          python -B scripts/release-ci.py prepare-android
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Android dependency check failed.' }
+          node --test src/CodexMobile/upstream/mobile/tests/*.test.cjs
+          if ($LASTEXITCODE -ne 0) { throw 'Mobile host tests failed.' }
+      - name: Restore existing signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if (-not $env:ANDROID_KEYSTORE_BASE64 -or -not $env:ANDROID_KEYSTORE_PASSWORD) { throw 'Configure the existing Android release signing secrets.' }
+          $taskSigning = Join-Path $env:RUNNER_TEMP 'codex-dock-signing'
+          New-Item -ItemType Directory -Path $taskSigning -Force | Out-Null
+          [IO.File]::WriteAllBytes((Join-Path $taskSigning 'codex-dock.p12'), [Convert]::FromBase64String($env:ANDROID_KEYSTORE_BASE64))
+          [IO.File]::WriteAllText((Join-Path $taskSigning 'store-password.txt'), $env:ANDROID_KEYSTORE_PASSWORD, [Text.UTF8Encoding]::new($false))
+      - name: Build signed APK and verify source inputs
+        run: |
+          $taskSigning = Join-Path $env:RUNNER_TEMP 'codex-dock-signing'
+          python -B scripts/build-android.py --jdk $env:JAVA_HOME --sdk $env:ANDROID_HOME --signing-home $taskSigning
+          if ($LASTEXITCODE -ne 0) { throw 'Signed Android build failed.' }
+          python -B scripts/release-ci.py package-android
+          if ($LASTEXITCODE -ne 0) { throw 'Android source verification failed.' }
+          $taskVersion = (Get-Content src/CodexAndroid/android.json -Raw | ConvertFrom-Json).versionName
+          ./scripts/verify-release-privacy.ps1 -SourceArchive "artifacts/LovestCode-Android-$taskVersion-source.zip"
+      - name: Remove signing material
+        if: always()
+        run: |
+          $taskRoot = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\') + '\'
+          $taskSigning = [IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP 'codex-dock-signing'))
+          if (-not $taskSigning.StartsWith($taskRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Signing cleanup path escaped runner temp.' }
+          if (Test-Path -LiteralPath $taskSigning) { Remove-Item -LiteralPath $taskSigning -Recurse -Force }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: android-release
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            artifacts/LovestCode-Android-${{ needs.versions.outputs.android }}.apk
+            artifacts/LovestCode-Android-${{ needs.versions.outputs.android }}-source.zip
+            artifacts/LovestCode-Android-${{ needs.versions.outputs.android }}.manifest.json
+            artifacts/SHA256SUMS-Android-${{ needs.versions.outputs.android }}.txt
+
+  publish:
+    needs: [versions, windows, android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: '*-release'
+          path: artifacts/release
+          merge-multiple: true
+      - name: Verify both packages before publishing
+        run: python3 -B scripts/release-ci.py verify --directory artifacts/release
+      - name: Upload, verify remote digests and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -B scripts/release-ci.py publish --directory artifacts/release

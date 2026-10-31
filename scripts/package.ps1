@@ -65,7 +65,7 @@ Copy-Item -LiteralPath $taskUiReport -Destination (Join-Path $taskRelease 'verif
     '保存前自动加密备份，可在备份与恢复页恢复上次配置。'
     '手机连接使用已有 HTTPS 根域名；默认 HTTP 端口 13090，可在手机连接页修改。保留外部 Host（含非默认端口）。'
     '无需填写代理来源 IP；支持本机代理、群晖和路由端口映射。代理目标为电脑可达的 IP:端口，管理端口仅本机。'
-    '手机连接单独保存和启停。保持电脑及所选执行端可用，用上游安卓 App 扫码或使用独立账号密码登录。'
+    '手机连接单独保存和启停。保持电脑及所选执行端可用，用 Lovest Code 扫码或使用独立账号密码登录。'
     'mobile 文件夹包含手机服务与 Python 运行时，必须与主程序一起保留。详见 docs/mobile-connection.md。'
     '完整说明见 README.md。'
 ) | Set-Content -LiteralPath (Join-Path $taskRelease '使用说明.txt') -Encoding utf8

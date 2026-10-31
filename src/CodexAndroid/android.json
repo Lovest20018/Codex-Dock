@@ -3,6 +3,7 @@
   "displayName": "Lovest Code",
   "versionName": "0.2.2",
   "versionCode": 5,
+  "signingCertificateSha256": "0c31e8dc7e29b7e835343db7551df5a505498959e87d4462f1b6bd9b5e72098e",
   "minSdk": 26,
   "targetSdk": 35,
   "upstreamCommit": "0721aa7dafa6177751ba7e568e0ad0efee05655b",

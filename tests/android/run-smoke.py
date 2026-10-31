@@ -15,12 +15,12 @@ parser.add_argument('--jdk', type=Path, required=True)
 parser.add_argument('--sdk', type=Path, required=True)
 parser.add_argument('--apk', type=Path, required=True)
 parser.add_argument('--device', default='emulator-5562')
-parser.add_argument('--mode', choices=('full', 'send'), default='full')
+parser.add_argument('--mode', choices=('full', 'send', 'steer'), default='full')
 parser.add_argument('--signing-home', type=Path, default=Path(os.environ['LOCALAPPDATA']) / 'CodexDock/android-signing')
 args = parser.parse_args()
 if not args.device.startswith('emulator-'):
     parser.error('This automated test is limited to an isolated emulator.')
-out = ROOT / 'artifacts/android-smoke'
+out = ROOT / ('artifacts/android-steering-smoke' if args.mode == 'steer' else 'artifacts/android-smoke')
 out.mkdir(parents=True, exist_ok=True)
 tools = args.sdk / 'build-tools/35.0.0'
 android = args.sdk / 'platforms/android-35/android.jar'
@@ -41,7 +41,7 @@ def adb(*command, capture=False):
 with zipfile.ZipFile(args.apk) as archive:
     names = archive.namelist()
     assert not any('Smoke' in n or n.endswith(('.p12', '.jks')) for n in names)
-    assert not {'assets/composer.js', 'assets/presentation.js'}.intersection(names)
+    assert not {'assets/composer.js', 'assets/presentation.js', 'assets/steering.js'}.intersection(names)
     for name in ('assets/mobile-ui.js', 'assets/mobile-clipboard.js', 'assets/mobile-system-bars.js', 'assets/mobile-session.js'):
         assert name in names
     assert 'assets/codex.png' in names and 'assets/claude.png' not in names and 'assets/deepseek.png' not in names
@@ -61,9 +61,10 @@ with zipfile.ZipFile(out / 'base.apk') as source, zipfile.ZipFile(out / 'unsigne
     dest.write(out / 'dex/classes.dex', 'classes.dex')
     dest.write(ROOT / 'tests/android/presentation.js', 'assets/presentation.js')
     dest.write(ROOT / 'tests/android/composer.js', 'assets/composer.js')
+    dest.write(ROOT / 'tests/android/steering.js', 'assets/steering.js')
 run(tools / 'zipalign.exe', '-f', '4', out / 'unsigned.apk', out / 'aligned.apk')
 run(tools / 'apksigner.bat', 'sign', '--ks', args.signing_home / 'codex-dock.p12', '--ks-key-alias', 'codex-dock', '--ks-pass', 'env:CODEX_DOCK_ANDROID_STORE_PASSWORD', '--out', out / 'test.apk', out / 'aligned.apk')
-fixture = subprocess.Popen([sys.executable, '-B', ROOT / 'tests/android/gateway_fixture.py'], cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=(out / 'fixture-errors.log').open('w'), text=True)
+fixture = subprocess.Popen([sys.executable, '-B', ROOT / 'tests/android/gateway_fixture.py'] + (['--steer'] if args.mode == 'steer' else []), cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=(out / 'fixture-errors.log').open('w'), text=True)
 try:
     # Read only the fixture's machine-readable endpoint, with a bounded startup.
     ready = threading.Event()
