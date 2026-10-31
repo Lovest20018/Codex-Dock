@@ -33,7 +33,7 @@ public final class AndroidSmoke extends Instrumentation {
   Intent intent=new Intent(Intent.ACTION_MAIN).setClassName(target.getPackageName(),"io.github.try2love.codexbridge.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK);
   activity=startActivitySync(intent);waitForIdleSync();
   String[] visible={""};ui(()->visible[0]=text(activity.getWindow().getDecorView()));
-  check(visible[0].contains("Codex Dock")&&visible[0].contains("输入网关地址")&&!visible[0].contains("DSH"),"Dock home and Codex-only connection entry");shot("home-zh");
+  check(visible[0].contains("Lovest Code")&&visible[0].contains("输入网关地址")&&!visible[0].contains("DSH"),"Lovest Code home and Codex-only connection entry");shot("home-zh");
   ui(()->{target.getSharedPreferences("bridge",0).edit().putString("language","en").apply();call("home");visible[0]=text(activity.getWindow().getDecorView());});check(visible[0].contains("Your Codex")&&!visible[0].matches("(?s).*[\\u4e00-\\u9fff].*"),"English home has complete translated Dock copy");shot("home-en");ui(()->{target.getSharedPreferences("bridge",0).edit().putString("language","zh").apply();call("home");});
   ui(()->call("connect",new Class<?>[]{String.class},base+"/"));
   until(()->Boolean.TRUE.equals(js("!!window.DockUI&&!!document.getElementById('login-button')&&!document.getElementById('login').hidden&&document.getElementById('bootstrap-status').hidden")),"Production login initialized");

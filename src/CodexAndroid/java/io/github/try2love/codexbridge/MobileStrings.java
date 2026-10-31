@@ -321,7 +321,7 @@ values.put("请填写完整的 HTTPS 网关地址，或局域网 HTTP 地址，�
   values.put("Dock 发布页","Dock releases");
   values.put("独立安卓客户端","Android companion");
   values.put("连接 Windows Dock，继续使用 Codex 聊天、文件与终端。","Connect to Windows Dock for Codex chats, files and terminal.");
-  values.put("没有可用的浏览器，请在电脑上打开 Codex Dock 发布页。","No browser is available. Open the Codex Dock releases page on your computer.");
+  values.put("没有可用的浏览器，请在电脑上打开 Lovest Code 发布页。","No browser is available. Open the Lovest Code releases page on your computer.");
   values.put("请在 Windows Dock 的手机连接设置中开启通知收件箱。","Enable the notification inbox in Windows Dock phone connection settings.");
   values.put("主题会应用到本机界面及聊天页面。","Theme applies to this app and its chat page.");
  }

@@ -40,6 +40,7 @@ def build():
     attr = '{http://schemas.android.com/apk/res/android}'
     sdk_xml = manifest_xml.find('uses-sdk')
     if (manifest_xml.get('package') != meta['applicationId']
+            or manifest_xml.find('application').get(attr + 'label') != meta['displayName']
             or manifest_xml.get(attr + 'versionName') != meta['versionName']
             or int(manifest_xml.get(attr + 'versionCode')) != meta['versionCode']
             or int(sdk_xml.get(attr + 'minSdkVersion')) != meta['minSdk']
@@ -75,7 +76,7 @@ def build():
 
     out = args.output_dir.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    apk = out / f'CodexDock-Android-{meta["versionName"]}.apk'
+    apk = out / f'LovestCode-Android-{meta["versionName"]}.apk'
     if args.allow_dirty:
         apk = apk.with_stem(apk.stem + '-qa')
     with tempfile.TemporaryDirectory(prefix='android-build-', dir=out) as temporary:
@@ -124,8 +125,10 @@ def build():
         verification = run(tools / ('apksigner' + bat), 'verify', '--verbose', '--print-certs', apk, capture=True)
         run(tools / ('zipalign' + exe), '-c', '4', apk)
         badging = run(tools / ('aapt2' + exe), 'dump', 'badging', apk, capture=True)
-        if f"name='{meta['applicationId']}'" not in badging or f"versionName='{meta['versionName']}'" not in badging:
-            raise ValueError('APK identity or version mismatch.')
+        if (f"name='{meta['applicationId']}'" not in badging
+                or f"versionName='{meta['versionName']}'" not in badging
+                or f"application-label:'{meta['displayName']}'" not in badging):
+            raise ValueError('APK identity, display name or version mismatch.')
         inputs = [SOURCE / 'AndroidManifest.xml', SOURCE / 'android.json'] + java + [path for path, _ in assets]
         inputs = [p for p in inputs if not p.is_relative_to(work)]
         inputs += list((SOURCE / 'res').rglob('*')) + [ROOT / 'scripts/build-android.py']

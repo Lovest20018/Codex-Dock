@@ -1,10 +1,10 @@
-# Codex Dock 独立安卓客户端
+# Lovest Code 安卓客户端
 
-Android 0.1.0 是独立安装的 Codex Dock 原生壳，连接 Windows Dock 0.15.1 的共享 Codex 工作台。聊天、审批、项目、Git、文件、终端、通知及 WSL / SSH 沿用电脑侧能力；电脑配置、账号登记和网关生命周期继续由 Windows Dock 管理。
+Lovest Code 0.1.1 是独立安装的安卓原生壳，连接 Windows Dock 0.15.1 的共享 Codex 工作台。聊天、审批、项目、Git、文件、终端、通知及 WSL / SSH 沿用电脑侧能力；电脑配置、账号登记和网关生命周期继续由 Windows Dock 管理。
 
 ## 安装与连接
 
-安装 `CodexDock-Android-0.1.0.apk`（Android 8 / API 26 及以上）。它的 applicationId 为 `io.github.lovest20018.codexdock`，与旧上游 App 并存。旧 App 的私有电脑列表和 Cookie 不跨应用读取，首次使用需重新扫码或添加网关并登录；电脑上的聊天记录不受影响。
+安装 `LovestCode-Android-0.1.1.apk`（Android 8 / API 26 及以上）。它的 applicationId 为 `io.github.lovest20018.codexdock`，沿用 Codex Dock 安卓 0.1.0 的包名、签名与 Logo，可直接覆盖升级并保留本机连接和登录；与旧上游 App 并存。旧 App 的私有电脑列表和 Cookie 不跨应用读取，首次使用需重新扫码或添加网关并登录；电脑上的聊天记录不受影响。
 
 在 Windows Dock 的“手机连接”中生成配对码，用安卓首页“扫码连接电脑”连接；也可输入完整网关地址并用网关账号密码登录。公网地址必须为 HTTPS，HTTP 仅接受明确的局域网 / 回环 IP。App 不代办域名、证书和穿透配置。
 
@@ -32,17 +32,17 @@ pwsh -NoProfile -File scripts/init-android-signing.ps1 -Jdk C:/path/to/jdk-17
 python -B scripts/build-android.py --jdk C:/path/to/jdk-17 --sdk C:/path/to/Android/Sdk
 ```
 
-输出 APK、SHA-256 清单和包含源提交 / 输入散列 / 签名验证结果的 manifest。临时验证可加 `--allow-dirty`，其输出带 `-qa` 后缀，不作为发布包。Windows 安装器和自更新版本仍为 0.15.1，Android 单独使用 versionName 0.1.0 / versionCode 1；后续 Android 更新须递增 versionCode，并同步 `android.json` 和清单。
+输出 APK、SHA-256 清单和包含源提交 / 输入散列 / 签名验证结果的 manifest。临时验证可加 `--allow-dirty`，其输出带 `-qa` 后缀，不作为发布包。Windows 安装器和自更新版本仍为 0.15.1，Android 单独使用 versionName 0.1.1 / versionCode 2；后续 Android 更新须递增 versionCode，并同步 `android.json` 和清单。
 
 ## 验证与边界
 
 `tests/android/run-smoke.py` 在单独签名的测试 APK 中运行 Instrumentation，目标 APK 不加入测试钩子、不开放调试。使用明确的模拟器 serial、ADB 回环端口转发和临时 Codex 数据；拒绝直接在真机 serial 运行。
 
 ```powershell
-python -B tests/android/run-smoke.py --jdk C:/path/to/jdk-17 --sdk C:/path/to/Android/Sdk --device emulator-5562 --apk artifacts/CodexDock-Android-0.1.0.apk
+python -B tests/android/run-smoke.py --jdk C:/path/to/jdk-17 --sdk C:/path/to/Android/Sdk --device emulator-5562 --apk artifacts/LovestCode-Android-0.1.1.apk
 node --test src/CodexMobile/upstream/mobile/tests/*.test.cjs
 ```
 
 隔离测试的网关运行生产 Python / Web 代码，并在仅回环的测试代理映射 Host、Origin 和 Cookie Secure 属性，让模拟器通过 HTTP 测试页面；不改变生产安全设置。此测试不代表公网 HTTPS 或证书验收。执行端使用不存在的原生程序，不发起模型任务。
 
-验收记录见 [Android 0.1.0 审查](review-android-0.1.0.md)。Android 14 模拟器可以验证界面、WebView、文件与系统通知流程；真实相机扫码、厂商键盘 / 后台策略、公网接入和真实 Codex / SSH / WSL 任务仍需真机与对应环境验证。
+本次改名见 [Android 0.1.1 说明](release-android-0.1.1.md)，原始功能验收记录见 [Android 0.1.0 审查](review-android-0.1.0.md)。Android 14 模拟器可以验证界面、WebView、文件与系统通知流程；真实相机扫码、厂商键盘 / 后台策略、公网接入和真实 Codex / SSH / WSL 任务仍需真机与对应环境验证。

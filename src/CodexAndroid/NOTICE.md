@@ -1,4 +1,4 @@
-# Codex Dock Android
+# Lovest Code Android
 
 Dock-owned Activity, computer list, settings, branding and build integration.
 Reuses Android WebView, file, pairing and notification helpers from Codex Mobile

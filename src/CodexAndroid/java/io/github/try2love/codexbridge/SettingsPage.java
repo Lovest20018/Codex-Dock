@@ -49,8 +49,8 @@ final class SettingsPage extends Dialog implements SharedPreferences.OnSharedPre
   ui.hint(backgroundToggle.row,"后台通知功能说明",()->new AlertDialog.Builder(getContext()).setTitle(ui.L("后台通知功能说明")).setMessage(ui.L("后台通知通过已保存电脑的网关接收任务提醒，可能增加耗电。关闭后保留前台任务通知。")).setPositiveButton(ui.L("关闭"),null).show());
   systemHost=ui.column();systemHost.setPadding(0,ui.dp(16),0,0);notificationHost.addView(systemHost);buildNotifications();
   LinearLayout app=ui.section(body,"应用");themeRow(app);
-  ui.action(app,"当前版本",owner.appVersion(),()->new AlertDialog.Builder(getContext()).setTitle("Codex Dock").setMessage(ui.L("独立安卓客户端")+" · "+owner.appVersion()+"\n"+ui.L("连接 Windows Dock，继续使用 Codex 聊天、文件与终端。")).setPositiveButton(ui.L("关闭"),null).show());
-  ui.action(app,"版本与更新","Dock 发布页",owner::openDockReleases);
+  ui.action(app,"当前版本",owner.appVersion(),()->new AlertDialog.Builder(getContext()).setTitle("Lovest Code").setMessage(ui.L("独立安卓客户端")+" · "+owner.appVersion()+"\n"+ui.L("连接 Windows Dock，继续使用 Codex 聊天、文件与终端。")).setPositiveButton(ui.L("关闭"),null).show());
+  ui.action(app,"版本与更新","Lovest Code",owner::openDockReleases);
   screen=new FrameLayout(getContext());screen.addView(content,new FrameLayout.LayoutParams(-1,-1));setContentView(screen);
   getWindow().setBackgroundDrawableResource(android.R.color.transparent);getWindow().clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);getWindow().setWindowAnimations(0);getWindow().getDecorView().setPadding(0,0,0,0);
   new SystemBars(getWindow(),screen,()->{}).update(ui.surface,ui.page);
