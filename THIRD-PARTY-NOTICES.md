@@ -1,5 +1,27 @@
 # Third-party notices
 
+## Codex Mobile Bridge 2.1.7 (selected Python modules and Android test fixtures)
+
+Copyright (c) 2026 try2love. MIT.
+
+Source: https://github.com/try2love/codex-mobile-bridge/tree/0721aa7dafa6177751ba7e568e0ad0efee05655b
+
+Selected Codex IPC, authentication, pairing and session modules are distributed in the mobile worker. Four unmodified Android host JavaScript files are included as development test fixtures only. The exact selection and local adaptations are documented in `src/CodexMobile/UPSTREAM.md`. The full license is in `third_party/codex-mobile-bridge-LICENSE.txt` and `src/CodexMobile/UPSTREAM-LICENSE`. Upstream desktop/mobile executables and other client adapters are not bundled.
+
+## Project Nayuki QR Code generator 1.8.0
+
+Copyright Project Nayuki. MIT.
+
+Source: https://github.com/nayuki/QR-Code-generator/tree/v1.8.0
+
+The pure-Python encoder is used for local pairing QR generation. Full notice: `third_party/nayuki-qrcodegen-LICENSE.txt`.
+
+## Python 3.12 and PyInstaller 6.22.3
+
+The mobile worker bundles CPython and standard-library modules under the Python Software Foundation license and included third-party notices. PyInstaller packages the worker under GPL with its bootloader exception, which permits distribution of the generated executable under this project's license. Build dependencies are pinned in `scripts/requirements-mobile-build.txt`. Full notices are in `third_party/Python-LICENSE.txt` and `third_party/PyInstaller-COPYING.txt`; copies also accompany the mobile worker.
+
+The browser QA tools (`playwright-core`, `jsqr`, `pngjs`) are development dependencies only and are excluded from binary releases. Their lockfile is included in the source archive.
+
 ## Superba (catalog data, translations and design reference)
 
 Source: https://github.com/krill-lab/superba

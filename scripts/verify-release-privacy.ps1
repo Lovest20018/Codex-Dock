@@ -8,7 +8,7 @@ $taskHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERP
 function Read-PrivateValues($Object) {
     if ($null -eq $Object) { return }
     foreach ($taskProperty in $Object.PSObject.Properties) {
-        if ($taskProperty.Name -match '^(personal_access_token|OPENAI_API_KEY|access_token|refresh_token|id_token|ApiKey|LocalToken)$' -and $taskProperty.Value -is [string] -and $taskProperty.Value.Length -ge 12) { $null = $taskSecrets.Add($taskProperty.Value) }
+        if ($taskProperty.Name -match '^(personal_access_token|OPENAI_API_KEY|access_token|refresh_token|id_token|ApiKey|LocalToken|ControlToken)$' -and $taskProperty.Value -is [string] -and $taskProperty.Value.Length -ge 12) { $null = $taskSecrets.Add($taskProperty.Value) }
         elseif ($taskProperty.Value -is [pscustomobject]) { Read-PrivateValues $taskProperty.Value }
     }
 }
@@ -29,7 +29,7 @@ foreach ($taskName in @('config.toml','auth.json','codex-config-connection.dat',
     }
 }
 function Check-Bytes([string]$Name, [byte[]]$Bytes) {
-    if ($Name.Replace('\','/') -match '(^|/)(auth\.json|config\.toml|codex-config-connection\.dat|codex-dock-details\.dat|codex-config-backups|\.env(?:\..*)?|[^/]+\.backup)(/|$)') { throw "Private configuration path in release input: $Name" }
+    if ($Name.Replace('\','/') -match '(^|/)(auth\.json|config\.toml|codex-config-connection\.dat|codex-dock-details\.dat|mobile-settings\.dat|auth-sessions\.json|operations\.json|worker\.lock|manager\.lock|codex-config-backups|\.env(?:\..*)?|[^/]+\.backup)(/|$)') { throw "Private configuration path in release input: $Name" }
     if ($Bytes.Length -gt 0 -and $taskPrivateHashes.Contains([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($Bytes)))) { throw "Personal configuration bytes found: $Name" }
     $taskUtf8 = [Text.Encoding]::UTF8.GetString($Bytes); $taskUnicode = [Text.Encoding]::Unicode.GetString($Bytes)
     foreach ($taskSecret in $taskSecrets) {

@@ -1,0 +1,99 @@
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Text.Json;
+using CodexConfig.Core;
+
+namespace CodexConfig.Tests;
+
+public static class MobileGatewayTests
+{
+    public static void Register(List<(string Name, Func<Task> Run)> tests, string root)
+    {
+        static void Assert(bool value, string message) { if (!value) throw new InvalidOperationException(message); }
+        static async Task Throws<T>(Func<Task> action) where T : Exception
+        {
+            try { await action(); } catch (T) { return; }
+            throw new InvalidOperationException("Expected " + typeof(T).Name);
+        }
+        static int Port() { using var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start(); return ((IPEndPoint)listener.LocalEndpoint).Port; }
+        string Home() { var home = Path.Combine(root, "mobile-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(home); return home; }
+        tests.Add(("mobile HTTPS root validation excludes credentials, paths and loopback", async () =>
+        {
+            Assert(MobileGatewayManager.NormalizePublicUrl(" https://PHONE.example.com:443/ ") == "https://phone.example.com", "canonical HTTPS root");
+            foreach (var value in new[] { "http://phone.example.com", "https://phone.example.com/proxy", "https://phone.example.com?secret=x", "https://phone.example.com/#pair=x",
+                "https://user:secret@phone.example.com", "https://localhost", "https://a.localhost", "https://127.0.0.1", "https://[::1]", "https://a..com", "file:///C:/test" })
+                await Throws<ArgumentException>(() => Task.FromResult(MobileGatewayManager.NormalizePublicUrl(value)));
+        }));
+        tests.Add(("mobile settings use per-home DPAPI storage and preserve Codex files", async () =>
+        {
+            var home = Home(); var configPath = Path.Combine(home, "config.toml"); var original = "# isolated test\nmodel = \"fake-model\"\n";
+            await File.WriteAllTextAsync(configPath, original);
+            var manager = new MobileGatewayManager(home, Path.Combine(root, "mobile-settings-test"));
+            Assert(manager.Load() is null && !Directory.Exists(manager.StateDirectory), "load must not create data or start processes");
+            await Throws<ArgumentException>(() => manager.SaveAsync("http://example.com", "tester", "isolated-test-password", Port()));
+            Assert(!Directory.Exists(manager.StateDirectory), "invalid URL cannot create settings");
+            var saved = await manager.SaveAsync("https://phone.example.com", "tester", "isolated-test-password", Port());
+            var bytes = await File.ReadAllBytesAsync(manager.SettingsPath);
+            Assert(!Encoding.UTF8.GetString(bytes).Contains("isolated-test-password") && !Encoding.UTF8.GetString(bytes).Contains(saved.ControlToken), "no plaintext password or control bearer on disk");
+            Assert(manager.Load() == saved, "encrypted round trip");
+            var preserved = await manager.SaveAsync(saved.PublicUrl, "tester", "", saved.Port);
+            Assert(preserved.Auth == saved.Auth, "blank password preserves the saved hash");
+            await Throws<ArgumentException>(() => manager.SaveAsync(saved.PublicUrl, "other", "", saved.Port));
+            Assert(await File.ReadAllTextAsync(configPath) == original && !File.Exists(Path.Combine(home, "auth.json")), "mobile never rewrites model settings or official login");
+            Assert(new MobileGatewayManager(Home(), Path.Combine(root, "mobile-settings-test")).StateDirectory != manager.StateDirectory, "home scopes do not overlap");
+            bytes[0] ^= 0x7f; await File.WriteAllBytesAsync(manager.SettingsPath, bytes);
+            await Throws<InvalidDataException>(() => Task.FromResult(manager.Load()));
+        }));
+        tests.Add(("packaged mobile worker survives manager disposal, persists Android login and revokes devices", async () =>
+        {
+            var executable = Path.GetFullPath("artifacts/mobile-worker/CodexDock.Mobile/CodexDock.Mobile.exe");
+            if (!File.Exists(executable)) throw new FileNotFoundException("Build mobile worker before the full test suite.", executable);
+            var home = Home(); var manager = new MobileGatewayManager(home, Path.Combine(root, "mobile-process-test"));
+            var configPath = Path.Combine(home, "config.toml"); await File.WriteAllTextAsync(configPath, "# fake home, no native IPC calls\n");
+            var saved = await manager.SaveAsync("https://phone.example.com", "tester", "isolated-test-password", Port());
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+            try
+            {
+                var starts = await Task.WhenAll(Enumerable.Range(0, 3).Select(_ => manager.StartAsync(timeout.Token, executable)));
+                Assert(starts.All(status => status.InstanceId == saved.InstanceId && status.Protocol == 1), "concurrent starts converge on one worker");
+                var replacement = new MobileGatewayManager(home, Path.Combine(root, "mobile-process-test"));
+                Assert(await replacement.StatusAsync(timeout.Token) is not null, "worker is independent of manager/UI lifetime");
+                using var client = new HttpClient(new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false, UseCookies = false }) { Timeout = TimeSpan.FromSeconds(10) };
+                async Task<(JsonDocument Data, string? Cookie)> Request(string path, object? body = null, string? cookie = null, string? csrf = null)
+                {
+                    using var request = new HttpRequestMessage(body is null ? HttpMethod.Get : HttpMethod.Post, $"http://127.0.0.1:{saved.Port}" + path);
+                    request.Headers.Host = "phone.example.com"; request.Headers.UserAgent.ParseAdd("BridgeMobile/2.1.7-Android");
+                    if (cookie is not null) request.Headers.TryAddWithoutValidation("Cookie", cookie);
+                    if (body is not null)
+                    {
+                        request.Headers.TryAddWithoutValidation("Origin", saved.PublicUrl);
+                        if (csrf is not null) request.Headers.TryAddWithoutValidation("X-CSRF-Token", csrf);
+                        request.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+                    }
+                    using var response = await client.SendAsync(request, timeout.Token); response.EnsureSuccessStatusCode();
+                    var result = JsonDocument.Parse(await response.Content.ReadAsByteArrayAsync(timeout.Token));
+                    return (result, response.Headers.TryGetValues("Set-Cookie", out var cookies) ? cookies.First().Split(';')[0] : null);
+                }
+                var probe = await Request("/api/auth"); using (probe.Data) Assert(!probe.Data.RootElement.GetProperty("authenticated").GetBoolean(), "Android unauthenticated probe");
+                var login = await Request("/api/login", new { username = "tester", password = "isolated-test-password" });
+                string csrf; using (login.Data) csrf = login.Data.RootElement.GetProperty("csrf").GetString()!;
+                var cookie = login.Cookie ?? throw new InvalidOperationException("missing secure session cookie");
+                var authorized = await Request("/api/auth", cookie: cookie);
+                using (authorized.Data) Assert(authorized.Data.RootElement.GetProperty("trustedDevice").GetBoolean(), "Android receives durable device authorization");
+                await replacement.StopAsync(timeout.Token);
+                Assert(await manager.StatusAsync(timeout.Token) is null, "authenticated stop closes worker");
+                await manager.StartAsync(timeout.Token, executable);
+                authorized = await Request("/api/auth", cookie: cookie);
+                using (authorized.Data) Assert(authorized.Data.RootElement.GetProperty("authenticated").GetBoolean(), "native session survives restart");
+                using var devices = await manager.ControlAsync("devices", new { action = "list" }, timeout.Token);
+                var id = devices.RootElement.GetProperty("sessions")[0].GetProperty("id").GetString();
+                using var revoked = await manager.ControlAsync("devices", new { action = "revoke", id }, timeout.Token);
+                authorized = await Request("/api/auth", cookie: cookie);
+                using (authorized.Data) Assert(!authorized.Data.RootElement.GetProperty("authenticated").GetBoolean(), "revocation defeats native cookie restore");
+                Assert(await File.ReadAllTextAsync(configPath) == "# fake home, no native IPC calls\n" && !File.Exists(Path.Combine(home, "auth.json")), "worker does not alter Codex home");
+            }
+            finally { await manager.StopAsync(CancellationToken.None); }
+        }));
+    }
+}

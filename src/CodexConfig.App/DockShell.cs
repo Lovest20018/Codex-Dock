@@ -20,7 +20,7 @@ public partial class MainWindow
             SidebarColumn.Width = new(compact ? 176 : 196);
             PageHeading.Margin = compact ? new(28, 14, 28, 12) : new(28, 22, 28, 20);
         };
-        foreach (var (nav, glyph) in new[] { (OverviewNav, "\uE80F"), (ConnectionNav, "\uE774"), (CatalogNav, "\uE9D9"), (TemplatesNav, "\uE8F1"), (AdvancedNav, "\uE9E9"), (AppNav, "\uE713") })
+        foreach (var (nav, glyph) in new[] { (OverviewNav, "\uE80F"), (ConnectionNav, "\uE774"), (CatalogNav, "\uE9D9"), (MobileNav, "\uE8EA"), (TemplatesNav, "\uE8F1"), (AdvancedNav, "\uE9E9"), (AppNav, "\uE713") })
         {
             var label = ((TextBlock)nav.Content).Text;
             var content = new Grid();

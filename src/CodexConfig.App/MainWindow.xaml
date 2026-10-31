@@ -27,6 +27,9 @@
             <RadioButton x:Name="CatalogNav" Tag="preferences" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged">
               <TextBlock Text="模型与行为" />
             </RadioButton>
+            <RadioButton x:Name="MobileNav" Tag="mobile" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged">
+              <TextBlock Text="手机连接" />
+            </RadioButton>
             <TextBlock Text="配置管理" Style="{StaticResource Helper}" Margin="12,18,0,8" />
             <RadioButton x:Name="TemplatesNav" Tag="templates" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged">
               <TextBlock Text="模板与备份" />
@@ -49,7 +52,7 @@
           <StackPanel x:Name="NavigationFooter" Grid.Row="3">
             <Button Content="配置位置" Click="LocationClicked" Style="{StaticResource QuietButton}" HorizontalContentAlignment="Left" />
             <Button Content="使用说明" Click="HelpClicked" Style="{StaticResource QuietButton}" HorizontalContentAlignment="Left" />
-            <TextBlock Text="v0.12.1" Style="{StaticResource Helper}" Margin="14,6,0,0" FontSize="11" />
+            <TextBlock Text="v0.13.0" Style="{StaticResource Helper}" Margin="14,6,0,0" FontSize="11" />
           </StackPanel>
         </Grid>
       </Border>
@@ -77,6 +80,9 @@
         <Grid Grid.Row="1" Margin="28,0,24,0">
           <ScrollViewer x:Name="OverviewPage" Style="{StaticResource PageScroll}">
             <StackPanel x:Name="OverviewBody" Margin="0,0,8,24" />
+          </ScrollViewer>
+          <ScrollViewer x:Name="MobilePage" Visibility="Collapsed" Style="{StaticResource PageScroll}">
+            <StackPanel x:Name="MobileBody" Margin="0,0,8,24" />
           </ScrollViewer>
           <ScrollViewer x:Name="ConnectionPage" Visibility="Collapsed" Style="{StaticResource PageScroll}" Padding="0,0,8,24">
             <Border Style="{StaticResource SurfacePanel}" HorizontalAlignment="Stretch"><StackPanel x:Name="ConnectionForm">

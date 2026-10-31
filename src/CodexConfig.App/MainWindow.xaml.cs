@@ -63,6 +63,7 @@ public partial class MainWindow : Window
         SourceInitialized += (_, _) => ThemeManager.UpdateTitleBar(this);
         SizeChanged += (_, _) => PreviewDrawer.Width = Math.Min(490, Math.Max(320, RootPanel.ActualWidth - 90));
         InitializeDockLayout();
+        InitializeMobilePage();
         SystemEvents.UserPreferenceChanged += SystemPreferenceChanged;
         InitializeWindowLifecycle();
         InitializeLocalCodexState();
@@ -181,6 +182,8 @@ public partial class MainWindow : Window
         Editor.Visibility = page is "preferences" or "catalog" ? Visibility.Visible : Visibility.Collapsed;
         ModelLayout.Visibility = Editor.Visibility;
         OverviewPage.Visibility = page == "overview" ? Visibility.Visible : Visibility.Collapsed;
+        MobilePage.Visibility = page == "mobile" ? Visibility.Visible : Visibility.Collapsed;
+        if (page == "mobile") _ = RefreshMobilePageAsync();
         ApplicationPage.Visibility = page == "app" ? Visibility.Visible : Visibility.Collapsed;
         LibraryTabs.Visibility = page is "templates" or "backup" ? Visibility.Visible : Visibility.Collapsed;
         TemplateEditor.Margin = new Thickness(0, 52, 8, 0); BackupPage.Margin = new Thickness(0, 52, 0, 0);
@@ -190,19 +193,20 @@ public partial class MainWindow : Window
         LibraryBackupTab.SetResourceReference(ForegroundProperty, page == "backup" ? "Accent" : "Muted");
         BackupPage.Visibility = page == "backup" ? Visibility.Visible : Visibility.Collapsed;
         TemplateEditor.Visibility = page == "templates" ? Visibility.Visible : Visibility.Collapsed;
-        GlobalSaveBar.Visibility = !(page == "templates" && TemplateEditor.IsEditing) ? Visibility.Visible : Visibility.Collapsed;
+        GlobalSaveBar.Visibility = page != "mobile" && !(page == "templates" && TemplateEditor.IsEditing) ? Visibility.Visible : Visibility.Collapsed;
         if (page == "preferences" && previousPage != page) { Editor.Search.Text = ""; Editor.SetMode(true); }
         if (page == "catalog" && previousPage != page && Editor.Scope == "common") Editor.SetMode(false);
         RefreshOverview();
         var (title, subtitle) = page switch
         {
             "overview" => ("概览", "当前已保存的连接与本地运行状态。"),
+            "mobile" => ("手机连接", "通过自己的 HTTPS 域名，在安卓 App 继续电脑上的 Codex 聊天。"),
             "preferences" => ("模型与行为", "模型、速度和常用行为，修改后统一保存。"), "catalog" => ("全部配置", "搜索完整字段、查看说明和未收录配置。"),
             "templates" or "backup" => ("模板与备份", "复用配置，或恢复上次保存前的状态。"),
             "app" => ("应用设置与帮助", "窗口、托盘与软件更新。"), _ => ("PAT 连接", "编辑服务地址、PAT 和默认模型，保存后重新打开 Codex。")
         };
         PageTitle.Text = title; PageSubtitle.Text = subtitle;
-        var nav = page switch { "overview" => OverviewNav, "preferences" => CatalogNav, "catalog" => AdvancedNav, "templates" or "backup" => TemplatesNav, "app" => AppNav, _ => ConnectionNav };
+        var nav = page switch { "overview" => OverviewNav, "mobile" => MobileNav, "preferences" => CatalogNav, "catalog" => AdvancedNav, "templates" or "backup" => TemplatesNav, "app" => AppNav, _ => ConnectionNav };
         if (nav.IsChecked != true) { var before = initializing; initializing = true; nav.IsChecked = true; initializing = before; }
     }
 
@@ -218,7 +222,7 @@ public partial class MainWindow : Window
         UndoTemplateButton.IsEnabled = usable && !closing;
         Editor.IsEnabled = usable && !closing; TemplateEditor.IsEnabled = usable && !closing;
         DraftCountText.Text = snapshot is null ? "配置尚未读取，暂时无法保存" : store.HasPending(home) ? "请先恢复未完成的保存" : Dirty ? $"有 {DraftCount()} 项未保存" : "所有修改已保存";
-        GlobalSaveBar.Visibility = !(currentPage == "templates" && TemplateEditor.IsEditing) ? Visibility.Visible : Visibility.Collapsed;
+        GlobalSaveBar.Visibility = currentPage != "mobile" && !(currentPage == "templates" && TemplateEditor.IsEditing) ? Visibility.Visible : Visibility.Collapsed;
         RefreshOverview();
     }
     private void MarkDirty()
@@ -456,10 +460,15 @@ public partial class MainWindow : Window
     }
     private void ChooseHomeClicked(object sender, RoutedEventArgs e)
     {
-        if (closing) return;
+        if (closing || mobileBusy) return;
         if (!ResolveUnsaved()) return;
         var dialog = new OpenFolderDialog { Title = "选择 Codex 配置目录", InitialDirectory = Directory.Exists(home) ? home : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) };
-        if (dialog.ShowDialog(this) == true) { home = dialog.FolderName; CloseOverlay(); Reload(); }
+        if (dialog.ShowDialog(this) == true)
+        {
+            home = dialog.FolderName; mobileLoadedHome = null; ClearMobileQr(); mobileDevices.Children.Clear();
+            mobilePassword.Clear(); mobileUrl.Clear(); mobileUsername.Text = "codex"; mobilePort.Text = MobileGatewayManager.DefaultPort.ToString();
+            CloseOverlay(); Reload(); if (currentPage == "mobile") _ = RefreshMobilePageAsync();
+        }
     }
     private void ReloadClicked(object sender, RoutedEventArgs e)
     {
@@ -786,6 +795,7 @@ public partial class MainWindow : Window
         await RunConnectionDetailsSmokeAsync(output, checks);
         await RunApplicationSettingsSmokeAsync(output, checks);
         await RunUpdateSmokeAsync(output, checks);
+        await RunMobileSmokeAsync(output, checks);
         await RunLayoutReviewAsync(output, checks);
         Assert(Environment.GetEnvironmentVariable(WindowsUserEnvironment.Variable, EnvironmentVariableTarget.User) == originalEnvironment, "Real environment changed");
         checks.AddRange(["External change conflict protection", "Reload after invalid source repair", "Real user environment unchanged"]);

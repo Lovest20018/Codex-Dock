@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.12.1',
+    [string]$Version = '0.13.0',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
@@ -11,6 +11,8 @@ if (git -C $taskRoot status --porcelain) { throw 'Commit reviewed changes before
 $taskRelease = Join-Path $taskArtifacts "CodexDock-$Version-win-x64"
 if (-not ([IO.Path]::GetFullPath($taskRelease).StartsWith($taskArtifacts + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase))) { throw 'Release path escapes artifacts.' }
 if (-not $SkipPublish) {
+    & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'build-mobile.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'Mobile worker build failed.' }
     if (Test-Path -LiteralPath $taskRelease) { Remove-Item -LiteralPath $taskRelease -Recurse -Force }
     New-Item -ItemType Directory -Path $taskRelease -Force | Out-Null
     $env:DOTNET_CLI_HOME = Join-Path $taskRoot '.dotnet-home'
@@ -24,12 +26,14 @@ if (-not $SkipPublish) {
 }
 $taskExe = Join-Path $taskRelease 'CodexDock.exe'
 if (-not (Test-Path -LiteralPath $taskExe)) { throw 'Missing published executable.' }
+if (-not (Test-Path -LiteralPath (Join-Path $taskRelease 'mobile\CodexDock.Mobile.exe'))) { throw 'Missing self-contained mobile worker.' }
 if (-not (Test-Path -LiteralPath $InnoCompiler)) { throw 'Inno Setup 6 compiler not found.' }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'README.md'),(Join-Path $taskRoot 'LICENSE'),(Join-Path $taskRoot 'THIRD-PARTY-NOTICES.md') -Destination $taskRelease -Force
 foreach ($taskFolder in @('docs','third_party','brand')) { New-Item -ItemType Directory -Path (Join-Path $taskRelease $taskFolder) -Force | Out-Null }
 Copy-Item -LiteralPath (Join-Path $taskRoot "docs\release-$Version.md"),(Join-Path $taskRoot 'docs\schema-maintenance.md'),(Join-Path $taskRoot 'docs\codex-dock-delivery.md'),(Join-Path $taskRoot 'docs\ui-layout-review.md'),(Join-Path $taskRoot 'docs\process-rename-review.md'),(Join-Path $taskRoot 'docs\github-releases.md'),(Join-Path $taskRoot "docs\review-$Version.md") -Destination (Join-Path $taskRelease 'docs') -Force
 Get-ChildItem -LiteralPath (Join-Path $taskRoot 'third_party') -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $taskRelease 'third_party') -Force }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\magpie-codex-comparison.md') -Destination (Join-Path $taskRelease 'docs') -Force
+Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\mobile-connection.md'),(Join-Path $taskRoot 'docs\mobile-gateway-reuse.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\release-0.12.0.md'),(Join-Path $taskRoot 'docs\review-0.12.0.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Get-ChildItem -LiteralPath (Join-Path $taskRoot 'assets\brand') -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $taskRelease 'brand') -Force }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'src\CodexConfig.App\Assets\app.ico') -Destination (Join-Path $taskRelease 'brand') -Force
@@ -55,13 +59,18 @@ Copy-Item -LiteralPath $taskUiReport -Destination (Join-Path $taskRelease 'verif
     '模板支持新增、编辑、复制和删除；应用所选设置后，再保存配置。'
     '设置默认显示一句用途，点击“了解更多”查看说明。'
     '保存前自动加密备份，可在备份与恢复页恢复上次配置。'
+    '手机连接使用已有 HTTPS 根域名；默认反向代理到本机 http://127.0.0.1:13090，保留原 Host。端口可在手机连接页修改。'
+    '手机连接单独保存和启停。保持电脑 Codex App 运行，用上游安卓 App 扫码或使用独立账号密码登录。'
+    'mobile 文件夹包含手机服务与 Python 运行时，必须与主程序一起保留。详见 docs/mobile-connection.md。'
     '完整说明见 README.md。'
 ) | Set-Content -LiteralPath (Join-Path $taskRelease '使用说明.txt') -Encoding utf8
 $taskExeHash = (Get-FileHash -LiteralPath $taskExe -Algorithm SHA256).Hash.ToLowerInvariant()
 @{
     name='CodexDock'; version=$Version; platform='win-x64'; selfContained=$true
     createdAtUtc=[DateTimeOffset]::UtcNow.ToString('o'); sourceCommit=$taskCommit; executableSha256=$taskExeHash; applicationAssemblySha256=$taskAssemblyHash
-    installer='Inno Setup, per-user'; settings='Shared draft and one save action'
+    installer='Inno Setup, per-user'; settings='Codex configuration shares a draft; mobile access saves independently'
+    mobileWorkerSha256=(Get-FileHash -LiteralPath (Join-Path $taskRelease 'mobile\CodexDock.Mobile.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+    mobileUpstreamCommit='0721aa7dafa6177751ba7e568e0ad0efee05655b'
     configSchema=(Get-Content -LiteralPath (Join-Path $taskRoot 'config\config-schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json).schema_version
     configSchemaSha256=(Get-FileHash -LiteralPath (Join-Path $taskRoot 'config\config-schema.json') -Algorithm SHA256).Hash.ToLowerInvariant()
     configHelpSha256=(Get-FileHash -LiteralPath (Join-Path $taskRoot 'config\config-help.json') -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -76,7 +85,7 @@ Add-Type -AssemblyName System.IO.Compression
 $taskSourceZip = Join-Path $taskArtifacts "CodexDock-$Version-source.zip"
 $taskSourceFiles = @()
 foreach ($taskFolder in @('src','config','tests','scripts','docs','third_party','assets')) {
-    $taskSourceFiles += Get-ChildItem -LiteralPath (Join-Path $taskRoot $taskFolder) -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/](bin|obj)[\\/]' }
+    $taskSourceFiles += Get-ChildItem -LiteralPath (Join-Path $taskRoot $taskFolder) -Recurse -File | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|__pycache__|node_modules)[\\/]' -and $_.Extension -notin @('.pyc','.pyo') }
 }
 foreach ($taskName in @('README.md','LICENSE','THIRD-PARTY-NOTICES.md','Directory.Build.props','.gitignore')) { $taskSourceFiles += Get-Item -LiteralPath (Join-Path $taskRoot $taskName) }
 $taskStream = [IO.File]::Open($taskSourceZip, [IO.FileMode]::Create)

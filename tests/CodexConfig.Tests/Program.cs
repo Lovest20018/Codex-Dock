@@ -547,6 +547,7 @@ NativeBridgeTests.Register(tests, runRoot);
 CodexDiscoveryTests.Register(tests, runRoot);
 DetailsAndStartupTests.Register(tests, runRoot);
 UpdateTests.Register(tests, runRoot);
+CodexConfig.Tests.MobileGatewayTests.Register(tests, runRoot);
 LocalStateTests.Register(tests, runRoot);
 var failures = 0;
 foreach (var test in tests)

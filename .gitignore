@@ -17,3 +17,11 @@ artifacts/
 **/*.backup
 **/.env
 **/.env.*
+**/__pycache__/
+*.py[cod]
+**/node_modules/
+**/mobile-settings.dat
+**/auth-sessions.json
+**/operations.json
+**/worker.lock
+**/manager.lock

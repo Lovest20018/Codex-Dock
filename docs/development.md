@@ -1,18 +1,27 @@
 # 开发与构建
 
-Codex Dock 使用 C#、.NET 8、WPF 和 Tomlyn。面向使用者的安装与连接方式见 [README](../README.md)。
+Codex Dock 使用 C#、.NET 8、WPF 和 Tomlyn；独立手机 worker 使用 Python 3.12 标准库。面向使用者的安装与连接方式见 [README](../README.md)。
 
 ## 本地构建
 
-需要 .NET 8 SDK；生成安装器另需 Inno Setup 6。
+需要 .NET 8 SDK；生成安装器另需 Inno Setup 6。构建手机 worker 需要 Windows x64 Python 3.12，首次创建隔离构建环境并安装锁定工具：
+
+```powershell
+pwsh -NoProfile -File scripts/build-mobile.ps1 -Python 'C:\path\to\Python312\python.exe' -InstallBuildTools
+```
+
+之后 `scripts/build-mobile.ps1` 复用 `artifacts/mobile-build-venv`。先构建 worker，再构建和测试 WPF；手机 worker 会复制到应用的 `mobile` 子目录。终端使用 PowerShell 7。
 
 ```powershell
 dotnet build src/CodexConfig.App/CodexConfig.App.csproj -c Release
-dotnet run --project tests/CodexConfig.Tests/CodexConfig.Tests.csproj -c Release
+dotnet build tests/CodexConfig.Tests/CodexConfig.Tests.csproj -c Release
+& .\tests\CodexConfig.Tests\bin\Release\net8.0-windows\CodexConfig.Tests.exe
 dotnet run --project src/CodexConfig.App/CodexConfig.App.csproj -c Release -- --smoke-test .ui-test-local
 ```
 
 核心和 UI 检查使用虚构凭据、隔离配置目录及测试环境变量。UI 检查覆盖布局、草稿、模板、备份恢复、托盘、开机启动和更新入口；缩放使用布局变换模拟。
+
+手机 Python 回归：`py -3.12 -B -m unittest discover -s tests/mobile -p 'test_*.py' -v`。浏览器 QA：先在 `tests/mobile` 执行 `npm ci`，再从仓库根执行 `node tests/mobile/browser-smoke.cjs`；需要本机 Chrome，可用 `CODEX_DOCK_TEST_PYTHON` 指定 Python 绝对路径。测试创建独立浏览器资料并在内存中拦截所有请求。回环套接字和测试子进程需要在环境许可下运行；不要禁用这些必要检查来生成发布包。
 
 设置 `CODEX_CONFIG_TEST_CLI` 为原生 `codex.exe` 的绝对路径，可加入两项 app-server 兼容检查，分别验证内置 `openai` 与旧 provider。它们只使用本机模拟上游与虚构官方登录，不消耗真实模型额度。网关进程用例使用测试程序自身的专用入口，界面用例使用实际 CodexDock 程序。
 
@@ -33,8 +42,8 @@ dotnet run --project src/CodexConfig.App/CodexConfig.App.csproj -c Release -- --
 先完成测试、审查并提交修改，再从干净工作区运行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-package.ps1
+pwsh -NoProfile -File scripts/package.ps1
+pwsh -NoProfile -File scripts/verify-package.ps1
 ```
 
 打包包含 .NET 运行时，记录源提交与文件散列，并对实际发布程序运行隔离 UI 检查。安装验证使用独立目录，核对发布文件、旧入口清理、卸载保留用户文件以及真实用户环境未改变。发布流程和更新附件约定见 [GitHub 发布与更新](github-releases.md)。
