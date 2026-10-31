@@ -52,11 +52,11 @@ public static class MobileGatewayTests
             bytes[0] ^= 0x7f; await File.WriteAllBytesAsync(manager.SettingsPath, bytes);
             await Throws<InvalidDataException>(() => Task.FromResult(manager.Load()));
         }));
-        tests.Add(("mobile LAN access requires one explicit private proxy and preserves login when changing transport", async () =>
+        tests.Add(("mobile network access requires one explicit proxy and preserves login when changing transport", async () =>
         {
-            foreach (var value in new[] { "192.168.8.2", "10.2.3.4", "172.16.1.2", "172.31.255.254" })
+            foreach (var value in new[] { "192.168.8.2", "10.2.3.4", "172.16.1.2", "172.31.255.254", "198.51.100.2" })
                 Assert(MobileGatewayManager.NormalizeProxyAddress(value) == value, "private canonical proxy");
-            foreach (var value in new[] { "0.0.0.0", "127.0.0.1", "8.8.8.8", "172.32.1.2", "192.168.8.0/24", "*", "localhost", "::1", "192.168.008.2" })
+            foreach (var value in new[] { "0.0.0.0", "0.2.3.4", "127.0.0.1", "224.0.0.1", "255.255.255.255", "169.254.1.2", "192.168.8.0/24", "*", "localhost", "::1", "192.168.008.2" })
                 await Throws<ArgumentException>(() => Task.FromResult(MobileGatewayManager.NormalizeProxyAddress(value)));
             var manager = new MobileGatewayManager(Home(), Path.Combine(root, "mobile-lan-settings-test"));
             await Throws<ArgumentException>(() => manager.SaveAsync("https://phone.example.com", "tester", "isolated-test-password", Port(), proxyAddress: "*"));
@@ -134,6 +134,7 @@ public static class MobileGatewayTests
                     using var denied = await peerClient.SendAsync(fakeProxy, timeout.Token);
                     Assert(denied.StatusCode == HttpStatusCode.Forbidden, "actual worker rejects an unlisted socket peer despite forged forwarding header");
                 }
+                Assert((await manager.StatusAsync(timeout.Token))!.LastRejectedPeer == "127.0.0.2", "private status reports the actual rejected source for NAT diagnosis");
                 using (var privateProbe = new TcpClient())
                     await Throws<SocketException>(() => privateProbe.ConnectAsync("127.0.0.2", saved.ControlPort).WaitAsync(TimeSpan.FromSeconds(3)));
                 var forbidden = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{saved.Port}/api/auth");

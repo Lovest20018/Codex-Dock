@@ -14,7 +14,7 @@ Upstream copyright and license: `UPSTREAM-LICENSE`.
 
 `main.py`, `gateway.py`, `service.py` and `web/` are Dock's narrow integration.
 They expose existing local Desktop sessions only, with a fixed HTTPS reverse-proxy
-entry, an optional exact RFC1918 IPv4 proxy peer, a separate loopback control listener, and no generic RPC, CLI launcher,
+entry, an optional exact IPv4 proxy peer (including a public NAT egress), a separate loopback control listener, and no generic RPC, CLI launcher,
 SSH, tunnels, terminal, account management or filesystem endpoints.
 An explicit Desktop snapshot must match the saved session ID, cwd and provider.
 Mutations use the original owner. Unknown operations are recorded before dispatch

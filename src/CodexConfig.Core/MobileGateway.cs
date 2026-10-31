@@ -12,7 +12,7 @@ namespace CodexConfig.Core;
 public sealed record MobileAuth(string Mode, string Username, string Salt, string Hash, int Iterations = 600000, int SessionHours = 12);
 public sealed record MobileGatewayConfig(int Protocol, string PublicUrl, int Port, int ControlPort, string ControlToken, string InstanceId,
     MobileAuth Auth, string CodexHome, string DataDir, string ProxyAddress = "");
-public sealed record MobileGatewayStatus(string Service, int Protocol, string InstanceId, string PublicUrl, int Port, bool Checked, string ProxyAddress = "");
+public sealed record MobileGatewayStatus(string Service, int Protocol, string InstanceId, string PublicUrl, int Port, bool Checked, string ProxyAddress = "", string LastRejectedPeer = "");
 
 // Mobile access is independent of model routing and never writes Codex settings.
 public sealed partial class MobileGatewayManager
@@ -53,9 +53,9 @@ public sealed partial class MobileGatewayManager
         if (IPAddress.TryParse(value, out var address) && address.AddressFamily == AddressFamily.InterNetwork && address.ToString() == value)
         {
             var bytes = address.GetAddressBytes();
-            if (bytes[0] == 10 || bytes[0] == 172 && bytes[1] is >= 16 and <= 31 || bytes[0] == 192 && bytes[1] == 168) return value;
+            if (bytes[0] is > 0 and < 224 && bytes[0] != 127 && !(bytes[0] == 169 && bytes[1] == 254)) return value;
         }
-        throw new ArgumentException("请输入反向代理设备的局域网 IPv4 地址；本机代理留空。不支持域名、网段或任意来源。");
+        throw new ArgumentException("请输入一个明确的反向代理来源 IPv4 地址；本机代理留空。不支持域名、网段或任意来源。");
     }
 
     public MobileGatewayConfig? Load()

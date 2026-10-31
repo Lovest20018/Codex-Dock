@@ -135,6 +135,7 @@ class HTTPTests(unittest.TestCase):
         with patch.object(PublicHandler, 'setup', setup):
             for path in ('/', '/app.js', '/api/auth'):
                 self.assertEqual(self.request(path, headers={'X-Forwarded-For': '192.168.8.2'})[0], 403)
+            self.assertEqual(self.request('/health', private=True)[1]['lastRejectedPeer'], peer)
             peer = '192.168.8.2'
             self.assertEqual(self.request('/api/auth')[0], 200)
             # The proxy appends the real client to a potentially forged left end.
@@ -152,6 +153,19 @@ class HTTPTests(unittest.TestCase):
         self.state.auth.persist()
         restarted = State(self.config, self.bridge, self.state.web_dir)
         self.assertEqual(restarted.auth.policy['trustedProxies'], [])
+
+    def test_public_nat_proxy_peer_is_allowed_without_trusting_the_original_lan_ip(self):
+        self.state.proxy_address = '198.51.100.2'
+        self.state.auth.policy['trustedProxies'] = ['198.51.100.2']
+        original_setup = PublicHandler.setup
+        peer = '198.51.100.2'
+        def setup(handler):
+            original_setup(handler)
+            handler.client_address = (peer, handler.client_address[1])
+        with patch.object(PublicHandler, 'setup', setup):
+            self.assertEqual(self.request('/api/auth')[0], 200)
+            peer = '192.168.8.2'
+            self.assertEqual(self.request('/api/auth', headers={'X-Forwarded-For': '198.51.100.2'})[0], 403)
 
     def test_local_diagnostic_page_uses_https_without_allowing_http_login(self):
         local_host = f'127.0.0.1:{self.public.server_port}'
@@ -235,11 +249,11 @@ class HTTPTests(unittest.TestCase):
 
 
 class ConfigTests(unittest.TestCase):
-    def test_proxy_requires_one_canonical_rfc1918_ipv4(self):
+    def test_proxy_requires_one_canonical_unicast_ipv4(self):
         self.assertEqual(proxy_address(''), '')
-        for value in ('192.168.8.2', '10.2.3.4', '172.16.1.2', '172.31.255.254'):
+        for value in ('192.168.8.2', '10.2.3.4', '172.16.1.2', '172.31.255.254', '198.51.100.2'):
             self.assertEqual(proxy_address(value), value)
-        for value in ('0.0.0.0', '127.0.0.1', '8.8.8.8', '172.32.1.2', '192.168.8.0/24', '*', 'localhost', '::1', '192.168.008.2', None, 123):
+        for value in ('0.0.0.0', '0.2.3.4', '127.0.0.1', '224.0.0.1', '255.255.255.255', '169.254.1.2', '192.168.8.0/24', '*', 'localhost', '::1', '192.168.008.2', None, 123):
             with self.assertRaises(ValueError, msg=value): proxy_address(value)
 
     def test_only_https_root_domains_and_explicit_boot_inputs(self):

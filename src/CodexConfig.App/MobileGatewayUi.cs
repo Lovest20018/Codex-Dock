@@ -51,8 +51,8 @@ public partial class MainWindow
         Field(setup, "HTTPS 域名", mobileUrl);
         setup.Children.Add(OverviewText("例如 https://codex.example.com。使用已有 HTTPS 反向代理，保留 Host 并转发客户端 IP；填写域名不会建立网络通道。", "Muted", 12));
         Field(setup, "本机监听端口", mobilePort); mobilePort.MaxWidth = 160; mobilePort.HorizontalAlignment = HorizontalAlignment.Left;
-        Field(setup, "局域网反向代理 IP（可选）", mobileProxy);
-        setup.Children.Add(OverviewText("代理在群晖等其他设备时，填写该设备的局域网 IPv4 地址。将监听局域网，但只接受该代理和本机连接；本机代理 / FRP 留空。", "Muted", 12));
+        Field(setup, "反向代理来源 IP（可选）", mobileProxy);
+        setup.Children.Add(OverviewText("代理从其他设备连接时，填写电脑实际看到的来源 IPv4。局域网直连填代理 IP，经过公网/NAT 则填其出口公网 IP；仅允许该来源和本机。本机代理 / FRP 留空。", "Muted", 12));
         Field(setup, "手机登录账号", mobileUsername);
         Field(setup, "手机访问密码", mobilePassword); mobilePasswordHint.Margin = new(0, 7, 0, 0); setup.Children.Add(mobilePasswordHint);
         var save = new WrapPanel { Margin = new(0, 20, 0, 0) };
@@ -142,10 +142,11 @@ public partial class MainWindow
             var status = await manager.StatusAsync(lifetime.Token);
             if (requestedHome != home || closing) return;
             mobileEndpoint.Text = config?.ProxyAddress.Length > 0 ?
-                $"反向代理目标：http://这台电脑的局域网IP:{config.Port} · 仅允许 {config.ProxyAddress} 和本机；管理端口仅本机" :
+                $"代理目标：http://电脑可达的IP:{config.Port} · 仅允许来源 {config.ProxyAddress} 和本机；管理端口仅本机" :
                 $"反向代理目标：http://127.0.0.1:{config?.Port ?? MobileGatewayManager.DefaultPort} · 仅监听本机";
             mobileStatus.Text = status is null ? config is null ? "尚未设置手机连接。" : "服务已停止。点击启动后，检测 HTTPS 入口。" :
                 status.Checked ? "服务运行中 · HTTPS 入口已检测通过" : "服务运行中 · 尚未检测 HTTPS 入口";
+            if (status?.LastRejectedPeer.Length > 0) mobileStatus.Text += $" · 最近被拒绝的来源：{status.LastRejectedPeer}，请核对代理出口 IP";
             mobileDevices.Children.Clear();
             if (status is null) { mobileDevices.Children.Add(OverviewText("启动服务后可查看和撤销设备。", "Muted", 13)); return; }
             using var result = await manager.ControlAsync("devices", new { action = "list" }, lifetime.Token);
