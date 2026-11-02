@@ -9,7 +9,7 @@ using CodexConfig.Core;
 
 namespace CodexConfig.App;
 
-public sealed class SettingsEditor : UserControl
+public sealed partial class SettingsEditor : UserControl
 {
     private readonly ConfigSchema catalog = ConfigSchema.Instance;
     private readonly Grid toolbar = new();
@@ -20,6 +20,7 @@ public sealed class SettingsEditor : UserControl
     private readonly StackPanel paging = new();
     private readonly DispatcherTimer searchTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
     private readonly TextBlock count = new();
+    private readonly TextBlock validationSummary = new() { TextWrapping = TextWrapping.Wrap, Margin = new(0, 0, 0, 12), Visibility = Visibility.Collapsed };
     private const int PageSize = 30;
     private int pageIndex;
     private CatalogEntry[] filteredEntries = [];
@@ -38,6 +39,11 @@ public sealed class SettingsEditor : UserControl
     private readonly Dictionary<string, string> dynamicPaths = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FrameworkElement> inputs = new(StringComparer.Ordinal);
     private Tomlyn.Model.TomlTable originalModel = new();
+    private byte[]? originalBytes;
+    private string? configHome, selectedModel;
+    private ModelCapabilities? capabilities;
+    private byte[]? capabilityBaseline;
+    internal bool OrdinaryProfile { get; set; }
     private Dictionary<string, string?> changes = new(StringComparer.Ordinal);
     private bool loading = true;
     private bool preferences = true;
@@ -69,7 +75,7 @@ public sealed class SettingsEditor : UserControl
         category.SelectedValue = "all"; Grid.SetColumn(category, 1);
         toolbar.Children.Add(searchShell); toolbar.Children.Add(category);
         var scopes = new WrapPanel { Margin = new(0, 10, 0, 8) };
-        foreach (var (id, title) in new[] { ("common", "常用"), ("all", "全部"), ("changed", "已修改") })
+        foreach (var (id, title) in new[] { ("common", "常用"), ("configured", "已配置"), ("all", "全部"), ("changed", "已修改") })
         {
             var button = new Button { Content = title, Margin = new(0, 0, 8, 0), Padding = new(12, 6, 12, 6), MinHeight = 34 };
             button.SetResourceReference(StyleProperty, "QuietButton"); button.Click += (_, _) => SetScope(id);
@@ -86,6 +92,9 @@ public sealed class SettingsEditor : UserControl
         options.Click += (_, _) => { menu.PlacementTarget = options; menu.IsOpen = true; };
         var add = new Expander { Header = "添加设置", Margin = new(0, 0, 0, 12), Visibility = Visibility.Collapsed };
         var addItem = new MenuItem { Header = "添加设置" }; menu.Items.Add(addItem);
+        var instanceItem = new MenuItem { Header = "添加 MCP / 供应商 / 权限方案" }; menu.Items.Insert(0, instanceItem);
+        instanceItem.Click += (_, _) => { if (!OrdinaryProfile) AddInstance(); };
+        menu.Opened += (_, _) => instanceItem.IsEnabled = !OrdinaryProfile;
         addItem.Click += (_, _) => { add.Visibility = Visibility.Visible; add.IsExpanded = true; NewPath.Focus(); };
         add.Collapsed += (_, _) => add.Visibility = Visibility.Collapsed;
         var addBody = new StackPanel();
@@ -103,8 +112,9 @@ public sealed class SettingsEditor : UserControl
             {
                 var path = TomlDocument.FormatPath(TomlDocument.ParsePath(newPath.Text.Trim()));
                 var repr = newValue.Text.Trim();
-                catalog.Validate(path, repr, allowPreferences: true);
+                Validate(path, repr);
                 changes[path] = repr; Errors.Remove(path); addError.Text = "";
+                Revalidate();
                 Filter(path); Changed?.Invoke();
             }
             catch (Exception error) { addError.Text = SafeError(newPath.Text, error); }
@@ -113,6 +123,7 @@ public sealed class SettingsEditor : UserControl
         Grid.SetRow(add, 2); Grid.SetColumnSpan(add, 2); toolbar.Children.Add(add);
         count.SetResourceReference(StyleProperty, "Helper"); count.Margin = new(0, 0, 0, 5); Grid.SetRow(count, 3); Grid.SetColumnSpan(count, 2); count.Visibility = Visibility.Collapsed; toolbar.Children.Add(count);
         scrollBody.Children.Add(toolbar);
+        validationSummary.SetResourceReference(TextBlock.ForegroundProperty, "Error"); scrollBody.Children.Add(validationSummary);
         scroll.SetResourceReference(StyleProperty, "PageScroll"); scroll.Padding = new(0, 0, 10, 24);
         var body = new StackPanel(); body.Children.Add(rows); body.Children.Add(empty);
         var surface = new Border { Child = body, Padding = new(20, 0, 20, 4) };
@@ -136,7 +147,7 @@ public sealed class SettingsEditor : UserControl
     internal void Configure(byte[]? config, Dictionary<string, string?> edits)
     {
         var offset = scroll.VerticalOffset; var page = pageIndex;
-        loading = true; originalModel = new TomlDocument(config).Model; changes = edits;
+        loading = true; originalBytes = config; originalModel = new TomlDocument(config).Model; changes = edits;
         dynamicPaths.Clear();
         loading = false; Revalidate(); Refresh(); pageIndex = page; RenderPage(); scroll.ScrollToVerticalOffset(offset);
     }
@@ -146,12 +157,33 @@ public sealed class SettingsEditor : UserControl
         SetScope(common ? "common" : "all");
     }
 
+    internal void SetContext(string home, string model, byte[]? inherited = null)
+    {
+        configHome = home; selectedModel = model; capabilityBaseline = inherited;
+        if (!loading) Refresh();
+    }
+    private void Validate(string path, string? repr)
+    {
+        if (OrdinaryProfile) ProfileStore.ValidateOrdinary(path, repr);
+        else catalog.Validate(path, repr, allowPreferences: true);
+    }
+
+    private TomlDocument Projected()
+    {
+        var document = new TomlDocument(originalBytes);
+        foreach (var (path, value) in changes)
+            try { if (value is null) document.Remove(path); else document.SetRaw(path, value); }
+            catch (Exception error) when (error is ArgumentException or InvalidDataException) { }
+        return document;
+    }
+
     private void SetScope(string selected)
     {
         loading = true; scope = selected; preferences = selected == "common"; category.SelectedValue = "all";
         loading = false; searchTimer.Stop(); Refresh(); scroll.ScrollToTop();
     }
     internal void ShowChanged() { Search.Text = ""; SetScope("changed"); }
+    internal void ShowConfigured() { Search.Text = ""; SetScope("configured"); }
     internal string Scope => scope;
     internal int CurrentPage => pageIndex;
 
@@ -162,28 +194,40 @@ public sealed class SettingsEditor : UserControl
     internal void Revalidate()
     {
         Errors.Clear();
+        var projected = Projected();
+        ReadCapabilities(projected);
         foreach (var (path, repr) in changes)
-            try { catalog.Validate(path, repr, allowPreferences: true); }
+            try { Validate(path, repr); }
             catch (Exception error) { Errors[path] = SafeError(path, error); }
+        if (Errors.Count == 0)
+            foreach (var issue in ConfigConstraints.InspectChanges(new TomlDocument(originalBytes), projected, capabilities).Where(issue => issue.IsError))
+                Errors[issue.Path] = issue.Message;
+        validationSummary.Text = string.Join("\n", Errors.Select(error => error.Key + "：" + error.Value));
+        validationSummary.Visibility = Errors.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void Refresh()
     {
         if (loading) return;
-        IEnumerable<CatalogEntry> entries = catalog.Entries.Concat(catalog.UnlistedEntries(originalModel, changes.Keys)).Where(e => e.SupportedPlatform);
+        var projected = Projected();
+        ReadCapabilities(projected);
+        IEnumerable<CatalogEntry> entries = scope is "configured" or "changed"
+            ? catalog.ConfiguredEntries(originalModel, changes.Keys)
+            : catalog.ExpandedEntries(projected.Model).Concat(catalog.UnlistedEntries(originalModel, changes.Keys));
+        entries = entries.Where(e => e.SupportedPlatform);
         if (preferences) entries = CommonPaths.Select(path => entries.FirstOrDefault(e => e.Path == path)).OfType<CatalogEntry>().ToArray();
         else
         {
             var filter = scope == "changed" ? "changed" : category.SelectedValue as string ?? "all";
-            if (advanced.IsChecked != true && filter != "changed" && Search.Text.Trim().Length == 0) entries = entries.Where(e => e.Stage is not ("removed" or "deprecated" or "under_development") && !e.Deprecated && e.Kind is not ("table" or "map" or "recursive"));
-            if (filter == "changed") entries = entries.Where(e => changes.ContainsKey(e.Path) || changes.Keys.Any(path => FindDraftEntry(path)?.Path == e.Path));
+            if (advanced.IsChecked != true && scope != "configured" && filter != "changed" && Search.Text.Trim().Length == 0) entries = entries.Where(e => e.Stage is not ("removed" or "deprecated" or "under_development") && !e.Deprecated && e.Kind is not ("table" or "map" or "recursive"));
+            if (filter == "changed") entries = entries.Where(e => changes.ContainsKey(e.Path));
             else if (filter != "all") entries = entries.Where(e => e.Category == filter);
         }
         var text = Search.Text.Trim();
         if (text.Length > 0)
             entries = entries.Any(e => e.Path.Equals(text, StringComparison.OrdinalIgnoreCase))
                 ? entries.Where(e => e.Path.Equals(text, StringComparison.OrdinalIgnoreCase))
-                : entries.Where(e => (e.Name + " " + e.Path + " " + e.Chinese + " " + e.Description + " " + ConfigHelp.Find(e.Path)?.SearchText).Contains(text, StringComparison.OrdinalIgnoreCase));
+                : entries.Where(e => (e.Name + " " + e.Path + " " + e.HelpPath + " " + e.Chinese + " " + e.Description + " " + ConfigHelp.Find(e.HelpPath)?.SearchText).Contains(text, StringComparison.OrdinalIgnoreCase));
         foreach (var (id, button) in scopeButtons)
         {
             button.SetResourceReference(BackgroundProperty, id == scope ? "AccentSoft" : "Canvas");
@@ -194,10 +238,17 @@ public sealed class SettingsEditor : UserControl
         Grid.SetColumnSpan(searchShell, preferences ? 2 : 1);
         searchShell.Margin = preferences ? new(0) : new(0, 0, 12, 0);
         filteredEntries = entries.ToArray();
-        VisibleCount = filteredEntries.Length; count.Text = $"{VisibleCount} 项 · 本地配置目录";
+        VisibleCount = filteredEntries.Length; count.Text = $"{VisibleCount} 项 · {catalog.SchemaVersion} · 核查内核 {catalog.VerifiedRuntime}";
+        count.Visibility = Visibility.Visible;
         scopeButtons["changed"].Content = $"已修改 {changes.Count}";
         empty.Visibility = VisibleCount == 0 ? Visibility.Visible : Visibility.Collapsed;
         pageIndex = 0; RenderPage();
+    }
+    private void ReadCapabilities(TomlDocument projected)
+    {
+        var capabilityModel = OrdinaryProfile ? projected.String("model") ?? selectedModel : selectedModel;
+        capabilities = configHome is null ? null : ModelCapabilities.Read(configHome, projected, capabilityModel)
+            ?? (capabilityBaseline is null ? null : ModelCapabilities.Read(configHome, new TomlDocument(capabilityBaseline), capabilityModel));
     }
 
     private CatalogEntry? FindDraftEntry(string path)
@@ -234,7 +285,8 @@ public sealed class SettingsEditor : UserControl
         var line = new Grid(); line.ColumnDefinitions.Add(new()); line.ColumnDefinitions.Add(new() { Width = new(260) });
         line.RowDefinitions.Add(new() { Height = GridLength.Auto }); line.RowDefinitions.Add(new() { Height = GridLength.Auto });
         var label = new StackPanel { Margin = new(0, 3, 18, 0) };
-        var displayName = ConfigHelp.Name(entry.Path);
+        var displayName = ConfigHelp.Name(entry.HelpPath);
+        if (entry.DefinitionPath is not null && !entry.Dynamic) displayName += " · " + entry.Path;
         var title = new TextBlock { Text = displayName, FontSize = 14, FontWeight = FontWeights.Medium };
         label.Children.Add(title);
         label.Children.Add(Helper(ConfigHelp.Summary(entry), new(0, 5, 0, 0)));
@@ -248,7 +300,17 @@ public sealed class SettingsEditor : UserControl
             right.Margin = compact ? new(0, 12, 0, 0) : new(0);
             label.Margin = compact ? new(0) : new(0, 3, 24, 0);
         };
-        var editable = entry.CanEdit || ConfigSchema.PreferencePaths.Contains(entry.Path) && entry.Stage != "removed";
+        var editable = (entry.CanEdit || ConfigSchema.PreferencePaths.Contains(entry.Path) && entry.Stage != "removed" || OrdinaryProfile && entry.Path == "model")
+            && (!OrdinaryProfile || ProfileStore.CanEditPath(entry.Path));
+        if (!entry.Dynamic && entry.HelpPath.StartsWith("model_providers.<name>.", StringComparison.Ordinal))
+        {
+            var parts = TomlDocument.ParsePath(entry.Path);
+            if (parts[1] is "openai" or "ollama" or "lmstudio" or "amazon-bedrock" && OriginalValue(TomlDocument.FormatPath(parts.Take(2))) is null)
+            {
+                editable = false;
+                right.Children.Add(Helper("当前是内置供应商，能力由执行端提供；添加自定义供应商后可编辑。", new(0, 6, 0, 0)));
+            }
+        }
         var path = dynamicPaths.GetValueOrDefault(entry.Path) ?? entry.Path;
         var details = new Expander { Header = "了解更多", Margin = new(0, 10, 0, 0) };
         var detailBody = new StackPanel { Margin = new(0, 10, 0, 0) }; details.Content = detailBody;
@@ -271,7 +333,11 @@ public sealed class SettingsEditor : UserControl
             nameButton.SetResourceReference(StyleProperty, "QuietButton"); right.Children.Add(nameButton);
             nameButton.Click += (_, _) => { details.Visibility = Visibility.Visible; details.IsExpanded = true; pathBox.Focus(); pathBox.SelectAll(); };
         }
-        detailBody.Children.Add(HelpContent.Details(entry.Path, entry));
+        detailBody.Children.Add(HelpContent.Details(entry.HelpPath, entry));
+        if (!entry.Dynamic) detailBody.Children.Add(Helper("修改目标：" + entry.Path + "\n" + ConfigScope.Describe(entry.Path), new(0, 8, 0, 0)));
+        if (entry.Path is "model_reasoning_effort" or "service_tier")
+            detailBody.Children.Add(Helper(capabilities is null ? "当前模型目录未提供可核实的能力；档位由服务支持情况决定。" :
+                $"模型能力：{capabilities.Model} · {capabilities.SourcePath}\n更新时间：{capabilities.UpdatedAt.LocalDateTime:g}" + (capabilities.ContextWindow is { } window ? $" · 目录上下文 {window:N0} Token" : ""), new(0, 8, 0, 0)));
         var current = Helper("", new(0, 11, 0, 0)); detailBody.Children.Add(current);
         var errorText = Helper("", new(0, 7, 0, 0)); errorText.SetResourceReference(TextBlock.ForegroundProperty, "Error"); body.Children.Add(errorText);
         bool rowLoading = true;
@@ -280,8 +346,8 @@ public sealed class SettingsEditor : UserControl
         {
             var key = Path(); var value = OriginalValue(key);
             title.Text = displayName + (changes.ContainsKey(key) ? " · 未保存" : "");
-            current.Text = "文件当前值：" + (value is null ? "未设置" : Sensitive(key) ? "••••••••（已隐藏）" : entry.Kind is "table" or "map" or "recursive" ? "已设置（查看子项）" : ConfigSchema.Literal(value));
-            if (changes.TryGetValue(key, out var repr)) current.Text += repr is null ? "\n未保存：跟随默认（移除覆盖值）" : "\n未保存：" + (Sensitive(key) ? "••••••••" : repr);
+            current.Text = "本文件：" + (value is null ? "未设置 · 继承值待检测" : Sensitive(key) ? "••••••••（已隐藏）" : entry.Kind is "table" or "map" or "recursive" ? "已设置（查看子项）" : ConfigSchema.Literal(value));
+            if (changes.TryGetValue(key, out var repr)) current.Text += repr is null ? "\n未保存：取消本文件覆盖" : "\n未保存：" + (Sensitive(key) ? "••••••••" : repr);
             errorText.Text = Errors.GetValueOrDefault(key) ?? ""; errorText.Visibility = errorText.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
         void Change(string? repr)
@@ -290,14 +356,14 @@ public sealed class SettingsEditor : UserControl
             var key = Path();
             try
             {
-                catalog.Validate(key, repr, allowPreferences: true);
+                Validate(key, repr);
                 var old = OriginalValue(key);
                 var same = repr is null ? old is null : old is not null && ConfigSchema.Literal(TomlDocument.ParseModel("value = " + repr)["value"]) == ConfigSchema.Literal(old);
                 if (same) changes.Remove(key); else changes[key] = repr;
                 Errors.Remove(key);
             }
             catch (Exception error) { changes[key] = repr; Errors[key] = SafeError(key, error); }
-            State(); scopeButtons["changed"].Content = $"已修改 {changes.Count}"; Changed?.Invoke();
+            Revalidate(); State(); scopeButtons["changed"].Content = $"已修改 {changes.Count}"; Changed?.Invoke();
         }
         Action loadInput;
         if (!editable)
@@ -310,29 +376,68 @@ public sealed class SettingsEditor : UserControl
             }
             loadInput = () => text.Text = OriginalValue(Path()) is { } value ? Sensitive(Path()) ? "已设置（已隐藏）" : entry.Kind is "table" or "map" or "recursive" ? "已设置（查看子项）" : ConfigSchema.Literal(value) : "未设置";
         }
-        else if (entry.Kind is "boolean" or "enum" or "bool_or_table" || entry.Path == "model_reasoning_effort")
+        else if (entry.Kind is "boolean" or "enum" or "bool_or_table" || entry.Path is "model_reasoning_effort" or "service_tier")
         {
             var choices = new List<ValueChoice> { new("跟随默认", null) };
             if (entry.Kind is "boolean" or "bool_or_table") { choices.Add(new("开启", "true")); choices.Add(new("关闭", "false")); }
             else
             {
-                var options = entry.Path == "model_reasoning_effort" && entry.EnumValues.Length == 0 ? new[] { "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra" } : entry.EnumValues;
+                var options = entry.Path switch
+                {
+                    "model_reasoning_effort" when capabilities is { ReasoningLevels.Length: > 0 } => capabilities.ReasoningLevels,
+                    "model_reasoning_effort" when entry.EnumValues.Length == 0 => new[] { "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra" },
+                    "service_tier" => new[] { "default" }.Concat(capabilities?.ServiceTiers ?? []).Distinct().ToArray(),
+                    _ => entry.EnumValues
+                };
                 foreach (var option in options) choices.Add(new(Friendly(option), TomlDocument.Quote(option)));
             }
             var box = new ComboBox { DisplayMemberPath = "Label", ItemsSource = choices };
             AutomationProperties.SetName(box, entry.Name); right.Children.Add(box); inputs[entry.Path] = box;
             TextBox? custom = null;
-            if (entry.Kind == "bool_or_table")
+            var granularFields = new Dictionary<string, ComboBox>();
+            StackPanel? granularPanel = null;
+            string GranularValue() => "{ granular = { " + string.Join(", ", granularFields.Where(field => field.Value.SelectedItem is ValueChoice { Repr: not null })
+                .Select(field => field.Key + " = " + ((ValueChoice)field.Value.SelectedItem).Repr)) + " } }";
+            if (entry.Path == "approval_policy")
+            {
+                choices.Add(new("细分规则", "$granular"));
+                granularPanel = new StackPanel { Visibility = Visibility.Collapsed, Margin = new(0, 10, 0, 0) };
+                granularPanel.Children.Add(Helper("分别选择是否允许弹出审批提示；标为必填的项需明确选择。空白可选项使用执行端默认。", new(0, 0, 0, 8)));
+                var required = catalog.Find("approval_policy.granular")!.RequiredProperties;
+                foreach (var field in catalog.Entries.Where(item => item.Path.StartsWith("approval_policy.granular.", StringComparison.Ordinal) && item.Kind == "boolean"))
+                {
+                    var key = field.Path.Split('.')[^1];
+                    var input = new ComboBox { ItemsSource = new ValueChoice[] { new(required.Contains(key) ? "请选择（必填）" : "跟随默认", null), new("允许提示", "true"), new("拒绝提示", "false") }, DisplayMemberPath = "Label" };
+                    granularPanel.Children.Add(Helper(field.Name + (required.Contains(key) ? "（必填）" : ""), new(0, 8, 0, 5))); granularPanel.Children.Add(input);
+                    AutomationProperties.SetName(input, field.Path); inputs[field.Path] = input; granularFields[key] = input;
+                    input.SelectionChanged += (_, _) => { if (!rowLoading && box.SelectedItem is ValueChoice { Repr: "$granular" }) Change(GranularValue()); };
+                }
+                detailBody.Children.Insert(pathBox is null ? 1 : 2, granularPanel);
+            }
+            else if (entry.Kind == "bool_or_table")
             {
                 choices.Add(new("自定义 TOML", "$custom"));
                 custom = new TextBox { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 80, MaxHeight = 200, VerticalContentAlignment = VerticalAlignment.Top, Margin = new(0, 10, 0, 0), VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
                 AutomationProperties.SetName(custom, entry.Name + "的自定义 TOML"); detailBody.Children.Insert(pathBox is null ? 1 : 2, custom);
                 custom.TextChanged += (_, _) => { if (!rowLoading) Change(string.IsNullOrWhiteSpace(custom.Text) ? null : custom.Text.Trim()); };
             }
+            box.Items.Refresh();
             loadInput = () =>
             {
                 var repr = Value(Path()); var choice = choices.FirstOrDefault(c => c.Repr == repr);
-                if (custom is not null)
+                if (granularPanel is not null)
+                {
+                    Tomlyn.Model.TomlTable? granular = null;
+                    try { if (repr is not null && TomlDocument.ParseModel("value = " + repr)["value"] is Tomlyn.Model.TomlTable policy && policy.TryGetValue("granular", out var rules)) granular = rules as Tomlyn.Model.TomlTable; }
+                    catch (InvalidDataException) { }
+                    foreach (var (key, input) in granularFields)
+                    {
+                        var value = granular?.TryGetValue(key, out var flag) == true ? ConfigSchema.Literal(flag) : null;
+                        input.SelectedItem = input.Items.Cast<ValueChoice>().FirstOrDefault(item => item.Repr == value) ?? input.Items[0];
+                    }
+                    if (granular is not null) choice = choices.First(item => item.Repr == "$granular");
+                }
+                else if (custom is not null)
                 {
                     custom.Text = repr is not (null or "true" or "false") ? repr : "";
                     if (choice is null) choice = choices.First(c => c.Repr == "$custom");
@@ -343,7 +448,9 @@ public sealed class SettingsEditor : UserControl
             box.SelectionChanged += (_, _) =>
             {
                 if (box.SelectedItem is not ValueChoice choice) return;
+                if (granularPanel is not null) granularPanel.Visibility = choice.Repr == "$granular" ? Visibility.Visible : Visibility.Collapsed;
                 if (choice.Repr == "$custom") { if (!rowLoading) { details.Visibility = Visibility.Visible; details.IsExpanded = true; custom?.Focus(); } }
+                else if (choice.Repr == "$granular") { if (!rowLoading) { details.Visibility = Visibility.Visible; details.IsExpanded = true; Change(GranularValue()); } }
                 else Change(choice.Repr);
             };
         }
@@ -390,7 +497,7 @@ public sealed class SettingsEditor : UserControl
         if (editable)
         {
             var actions = new WrapPanel { Margin = new(0, 10, 0, 0) };
-            var reset = new Button { Content = "恢复默认", Margin = new(0, 0, 8, 0) };
+            var reset = new Button { Content = "取消本文件覆盖", Margin = new(0, 0, 8, 0) };
             var undo = new Button { Content = "撤销此项修改" };
             reset.SetResourceReference(StyleProperty, "QuietButton"); undo.SetResourceReference(StyleProperty, "QuietButton");
             actions.Children.Add(reset); actions.Children.Add(undo); detailBody.Children.Add(actions);

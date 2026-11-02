@@ -4,7 +4,7 @@ using Tomlyn.Model;
 
 namespace CodexConfig.Core;
 
-public sealed class CatalogEntry
+public sealed record CatalogEntry
 {
     public string Path { get; init; } = "";
     public string Name { get; init; } = "";
@@ -18,6 +18,11 @@ public sealed class CatalogEntry
     public string[] Platforms { get; init; } = [];
     public string[] Types { get; init; } = [];
     public string[] EnumValues { get; init; } = [];
+    public string[] ItemTypes { get; init; } = [];
+    public string[] ItemEnumValues { get; init; } = [];
+    public string[] RequiredProperties { get; init; } = [];
+    public string? DefinitionPath { get; init; }
+    public string HelpPath => DefinitionPath ?? Path;
     public JsonElement Default { get; init; }
     public double? Minimum { get; init; }
     public double? Maximum { get; init; }
@@ -38,6 +43,10 @@ public sealed class ConfigSchema
     public IReadOnlyList<CatalogEntry> Entries { get; }
     public static ConfigSchema Instance { get; } = new();
     public string SchemaVersion { get; }
+    public string VerifiedRuntime { get; }
+    public string SourceUrl { get; }
+    public string SourceHash { get; }
+    public string RetrievedAt { get; }
     public IReadOnlyList<CatalogCategory> Categories { get; }
     public static readonly HashSet<string> ConnectionPaths = new(StringComparer.Ordinal)
     { "model", "model_provider", "openai_base_url", "chatgpt_base_url", "web_search", "features.fast_mode", "features.context_management" };
@@ -50,6 +59,9 @@ public sealed class ConfigSchema
         using var doc = JsonDocument.Parse(stream);
         var root = doc.RootElement;
         SchemaVersion = root.TryGetProperty("schema_version", out var schema) ? schema.GetString() ?? "local" : "local";
+        var provenance = root.TryGetProperty("provenance", out var source) ? source : default;
+        string Meta(string name) => provenance.ValueKind == JsonValueKind.Object && provenance.TryGetProperty(name, out var value) ? value.GetString() ?? "" : "";
+        VerifiedRuntime = Meta("verified_runtime"); SourceUrl = Meta("source"); SourceHash = Meta("sha256"); RetrievedAt = Meta("retrieved_at");
         Categories = root.GetProperty("categories").EnumerateArray().Select(c => new CatalogCategory(c.GetProperty("id").GetString()!, c.GetProperty("name").GetString()!)).ToArray();
         Entries = root.GetProperty("entries").EnumerateArray().Select(ReadEntry).ToArray();
     }
@@ -66,6 +78,9 @@ public sealed class ConfigSchema
             Platforms = entry.GetProperty("platforms").EnumerateArray().Select(x => x.GetString()!).ToArray(),
             Types = entry.TryGetProperty("types", out var types) ? types.EnumerateArray().Select(x => x.GetString()!).ToArray() : [],
             EnumValues = entry.TryGetProperty("enum_values", out var values) ? values.EnumerateArray().Select(x => x.GetProperty("value").GetString()!).ToArray() : [],
+            ItemTypes = entry.TryGetProperty("item_types", out var itemTypes) ? itemTypes.EnumerateArray().Select(x => x.GetString()!).ToArray() : [],
+            ItemEnumValues = entry.TryGetProperty("item_enum_values", out var itemValues) ? itemValues.EnumerateArray().Select(x => x.GetString()!).ToArray() : [],
+            RequiredProperties = entry.TryGetProperty("required_properties", out var required) ? required.EnumerateArray().Select(x => x.GetString()!).ToArray() : [],
             Default = entry.TryGetProperty("default", out var fallback) ? fallback.Clone() : default,
             Minimum = N("minimum"), Maximum = N("maximum"), MinLength = (int?)N("min_length"), MaxLength = (int?)N("max_length")
         };
@@ -88,6 +103,43 @@ public sealed class ConfigSchema
             .Select(path => new CatalogEntry { Path = path, Name = path, Kind = TomlDocument.ValueAt(model, path) is TomlTableArray ? "recursive" : "raw", Category = "unlisted",
                 Chinese = "本地目录未收录的配置。使用 TOML 值编辑，例如字符串需加引号；只校验语法，实际支持情况由 Codex 决定。" });
 
+    public IEnumerable<CatalogEntry> ConfiguredEntries(TomlTable model, IEnumerable<string> drafts) =>
+        TomlDocument.ValuePaths(model).Concat(drafts.Where(ValidPath)).Distinct(StringComparer.Ordinal).Select(path =>
+            Find(path) is { } entry ? entry with { Path = path, DefinitionPath = entry.Path } : new CatalogEntry
+            {
+                Path = path, Name = path, Kind = TomlDocument.ValueAt(model, path) is TomlTableArray ? "recursive" : "raw",
+                Category = "unlisted", Chinese = "未收录的设置；仅检查 TOML 语法，实际支持由当前客户端决定。"
+            });
+
+    public IEnumerable<CatalogEntry> ExpandedEntries(TomlTable model)
+    {
+        foreach (var entry in Entries)
+        {
+            if (!entry.Dynamic) { yield return entry; continue; }
+            foreach (var parts in Expand(entry.Path.Split('.'), 0, model, []))
+            {
+                var path = string.Join('.', parts.Select(part => part == "<name>" ? part : TomlDocument.FormatPath([part])));
+                yield return entry with { Path = path, DefinitionPath = entry.Path };
+            }
+        }
+
+        IEnumerable<string[]> Expand(string[] template, int index, object? value, string[] prefix)
+        {
+            if (index == template.Length) { yield return prefix; yield break; }
+            var part = template[index];
+            if (part != "<name>")
+            {
+                foreach (var path in Expand(template, index + 1, (value as TomlTable)?.GetValueOrDefault(part), [.. prefix, part])) yield return path;
+                yield break;
+            }
+            var names = (value as TomlTable)?.Keys.ToList() ?? [];
+            if (prefix.SequenceEqual(new[] { "model_providers" }) && model.GetValueOrDefault("model_provider") is string active && !names.Contains(active)) names.Add(active);
+            if (names.Count == 0) { yield return [.. prefix, .. template.Skip(index)]; yield break; }
+            foreach (var name in names)
+                foreach (var path in Expand(template, index + 1, (value as TomlTable)?.GetValueOrDefault(name), [.. prefix, name])) yield return path;
+        }
+    }
+
     private static bool ValidPath(string path)
     {
         try { _ = TomlDocument.ParsePath(path); return true; }
@@ -98,6 +150,7 @@ public sealed class ConfigSchema
     {
         _ = TomlDocument.ParsePath(path);
         var entry = Find(path);
+        if (repr is null && entry is { SupportedPlatform: true, ManagedConnection: false } && entry.Kind is not ("table" or "map" or "recursive")) return;
         if (entry is not null && !entry.CanEdit && !(allowPreferences && PreferencePaths.Contains(entry.Path) && entry.SupportedPlatform && entry.Stage != "removed"))
             throw new ArgumentException($"{path} 由连接页管理、属于其他平台、已移除或是父表，请编辑对应子项。");
         if (repr is null) return;
@@ -108,7 +161,7 @@ public sealed class ConfigSchema
         {
             "boolean" => value is bool,
             "string" => value is string,
-            "enum" => value is string choice && entry.EnumValues.Contains(choice, StringComparer.Ordinal),
+            "enum" => value is string choice && entry.EnumValues.Contains(choice, StringComparer.Ordinal) || entry.Path == "approval_policy" && value is TomlTable,
             "integer" => value is long,
             "number" => value is long or double,
             "array" => value is TomlArray or TomlTableArray,
@@ -117,6 +170,18 @@ public sealed class ConfigSchema
             _ => false
         };
         if (!valid) throw new ArgumentException($"{path} 需要 {entry.Kind} 类型" + (entry.EnumValues.Length > 0 ? "，可选值：" + string.Join(", ", entry.EnumValues) : "。"));
+        if (value is TomlArray array)
+        {
+            foreach (var item in array)
+            {
+                if (entry.ItemTypes.Length > 0 && !entry.ItemTypes.Any(type => MatchesType(item, type)))
+                    throw new ArgumentException($"{path} 的列表元素类型必须为 {string.Join(" / ", entry.ItemTypes)}。");
+                if (entry.ItemEnumValues.Length > 0 && (item is not string textItem || !entry.ItemEnumValues.Contains(textItem, StringComparer.Ordinal)))
+                    throw new ArgumentException($"{path} 的列表元素不在允许值中。");
+            }
+        }
+        if (value is TomlTable table)
+            ValidateTable(path, table);
         if (value is string text && (text.Length < (entry.MinLength ?? 0) || text.Length > (entry.MaxLength ?? int.MaxValue)))
             throw new ArgumentException($"{path} 的文本长度不符合配置目录要求。");
         if (value is long or double)
@@ -126,6 +191,32 @@ public sealed class ConfigSchema
                 throw new ArgumentException($"{path} 超出允许范围：{entry.Minimum?.ToString(CultureInfo.InvariantCulture) ?? "不限"} 至 {entry.Maximum?.ToString(CultureInfo.InvariantCulture) ?? "不限"}。");
         }
     }
+
+    private void ValidateTable(string path, TomlTable table)
+    {
+        if (Find(path) is { } parent)
+            foreach (var required in parent.RequiredProperties)
+                if (!table.ContainsKey(required)) throw new ArgumentException(path + " 缺少必填项 " + required + "。");
+        foreach (var (key, value) in table)
+        {
+            var parts = TomlDocument.ParsePath(path).Append(key).ToArray();
+            var full = TomlDocument.FormatPath(parts);
+            if (Find(full) is { } child && child.Path != path)
+            {
+                if (child.Kind is "table" or "map" && value is TomlTable nested) ValidateTable(full, nested);
+                else Validate(full, Literal(value), allowPreferences: true);
+            }
+            else if (Find(path) is not null)
+                throw new ArgumentException("结构化值包含当前目录未支持的子项，请分别添加已核实的配置路径。");
+        }
+    }
+
+    private static bool MatchesType(object? value, string type) => type switch
+    {
+        "string" => value is string, "boolean" => value is bool, "integer" => value is long,
+        "number" => value is long or double, "object" => value is TomlTable,
+        "array" => value is TomlArray or TomlTableArray, "null" => value is null, _ => false
+    };
 
     public static string Literal(object? value) => value switch
     {

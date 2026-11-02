@@ -282,7 +282,7 @@
                 <Button Content="最小化到任务栏" Click="MinimizeClicked" Margin="0,0,8,8" />
                 <Button Content="退出程序" Click="ExitClicked" Style="{StaticResource QuietButton}" Margin="0,0,0,8" />
               </WrapPanel>
-              <TextBlock Text="保存后可完全退出本工具，Codex 会直接读取本机配置，无需后台转发服务。" Style="{StaticResource Helper}" />
+              <TextBlock x:Name="BackgroundModeHint" Style="{StaticResource Helper}" />
             </StackPanel></Border>
           </ScrollViewer>
           <StackPanel x:Name="LibraryTabs" Visibility="Collapsed" Orientation="Horizontal" VerticalAlignment="Top">

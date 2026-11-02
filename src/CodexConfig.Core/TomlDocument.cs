@@ -244,7 +244,8 @@ public sealed class TomlDocument
     public string Masked()
     {
         var syntax = Toml.Parse(source);
-        var secretEntries = Assignments(syntax).Where(x => SensitiveParts(x.Path)).ToList();
+        var model = Model;
+        var secretEntries = Assignments(syntax).Where(x => SensitiveParts(x.Path) || ContainsSensitive(x.Path, ValueAt(model, FormatPath(x.Path)))).ToList();
         var spans = secretEntries.Select(x => x.Syntax.Value!.Span).OrderBy(x => x.Start.Offset).ToList();
         var nonOverlapping = new List<SourceSpan>();
         foreach (var span in spans)
@@ -254,6 +255,14 @@ public sealed class TomlDocument
             masked = masked.Remove(span.Start.Offset, span.Length).Insert(span.Start.Offset, "\"••••••••\"");
         return masked;
     }
+
+    private static bool ContainsSensitive(string[] path, object? value) => value switch
+    {
+        TomlTable table => table.Any(pair => SensitiveParts(path.Append(pair.Key)) || ContainsSensitive([.. path, pair.Key], pair.Value)),
+        TomlArray array => array.Any(item => ContainsSensitive(path, item)),
+        TomlTableArray array => array.Any(item => ContainsSensitive(path, item)),
+        _ => false
+    };
 
     public static bool IsSensitivePath(string path)
     {

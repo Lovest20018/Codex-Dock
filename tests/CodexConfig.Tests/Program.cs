@@ -245,7 +245,7 @@ Test("Krill official lines and legacy origins produce current PAT endpoints", ()
 Test("detailed catalog loads local schema, Chinese and lifecycle", () =>
 {
     var catalog = ConfigSchema.Instance;
-    Assert(catalog.Entries.Count == 983 && catalog.SchemaVersion.StartsWith("local-"));
+    Assert(catalog.Entries.Count == 1003 && catalog.SchemaVersion == "local-2026-11-02");
     Assert(catalog.Find("model_reasoning_effort")!.Chinese.Contains("推理"));
     Assert(catalog.Find("features.fast_mode")!.ManagedConnection);
     Assert(catalog.Entries.Where(e => e.Stage == "removed").All(e => !e.CanEdit));
@@ -501,7 +501,7 @@ Test("template library saves, edits, deletes and restores built-ins without conn
     Assert(library.Load().Any(template => template.Id == saved.Id && template.Name == "我的常用设置"));
     var edited = library.Save(saved with { Name = "新的名称", Settings = [new("analytics.enabled", "false", false)] });
     Assert(new TemplateRepository(directory).Load().Single(template => template.Id == saved.Id) is { Name: "新的名称", Settings.Count: 1 } persisted && !persisted.Settings[0].SelectByDefault);
-    Assert(library.Load().Count == 2);
+    Assert(library.Load().Count == BuiltInTemplates.All.Count + 1);
     Throws<ArgumentException>(() => library.Save(TemplateRepository.New("密钥模板", [new("oauth.tokens.access_token", "\"secret\"")]), create: true));
     library.Delete(saved.Id); Assert(library.Load().All(template => template.Id != saved.Id));
     library.Delete(BuiltInTemplates.KrillCommunity.Id); Assert(library.Load().All(template => template.Id != BuiltInTemplates.KrillCommunity.Id));
@@ -549,6 +549,7 @@ DetailsAndStartupTests.Register(tests, runRoot);
 UpdateTests.Register(tests, runRoot);
 CodexConfig.Tests.MobileGatewayTests.Register(tests, runRoot);
 LocalStateTests.Register(tests, runRoot);
+ConfigurationOptimizationTests.Register(tests, runRoot);
 var failures = 0;
 foreach (var test in tests)
 {

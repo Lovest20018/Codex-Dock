@@ -27,6 +27,9 @@ public partial class MainWindow
     {
         if (OfficialPanel is null || GatewayPanel is null) return;
         var mixed = ConnectionModeBox.SelectedIndex == (int)ConnectionMode.OfficialWithApi;
+        BackgroundModeHint.Text = mixed
+            ? "混合连接需要本地模型网关运行；退出 Dock 后网关继续服务。手机访问另需手机网关，可在“手机使用”中启停。"
+            : "直连保存后由 Codex 读取配置。手机访问另需手机网关，可在“手机使用”中启停；退出 Dock 后已启动的手机网关继续运行。";
         OfficialPanel.Visibility = GatewayPanel.Visibility = mixed ? Visibility.Visible : Visibility.Collapsed;
         LoginButton.IsEnabled = !loginInProgress && !closing;
         CancelLoginButton.Visibility = loginInProgress ? Visibility.Visible : Visibility.Collapsed;
@@ -121,6 +124,7 @@ public partial class MainWindow
                   (status.LastUpstreamStatus is { } code ? $" · 最近上游 HTTP {code}" : "") +
                   (status.LastRequestId is { } requestId ? $"\n请求 ID：{requestId}" : "") +
                   (status.LastUpstreamCode is { } upstreamCode ? $" · {upstreamCode}" : "") +
+                  BridgeMetricsText(status) +
                   (status.LastError is { } error ? "\n" + error : "");
         }
         catch (OperationCanceledException) when (closing) { }
@@ -129,6 +133,22 @@ public partial class MainWindow
             if (!closing && home == expectedHome) { gatewayStatus = null; GatewayStatusText.Text = "网关未能运行，请检查端口占用，或点击启动重试。"; }
         }
         finally { gatewayPolling = false; if (!closing) { RefreshMixedUi(); await RefreshGatewaySummaryAsync(); } }
+    }
+    private string BridgeMetricsText(BridgeStatus status)
+    {
+        var document = new TomlDocument(snapshot?.Config);
+        var provider = document.String("model_provider") ?? "openai";
+        var protocol = document.Get(TomlDocument.FormatPath(["model_providers", provider, "capabilities", "remote_compaction"])) as string;
+        var configured = protocol switch { "v2" => "文件允许 v2，服务支持需核对", "unsupported" => "文件选择普通摘要压缩", _ => "跟随执行端默认，能力未单独核实" };
+        if (status.Metrics is not { } m) return "\n压缩配置：" + configured + "\n此网关版本未返回压缩指标。";
+        string Ms(double? value) => value is { } ms ? $"{ms:N0} ms" : "未测得";
+        return $"\n压缩配置：{configured}\n客户端压缩请求：旧端点 {m.LegacyCompactionRequests} 次 · v2 {m.V2Requests} 次（trigger {m.V2Triggers} 个）" +
+            $"\n服务返回压缩条目 {m.CompactionItems} 个 · 确认完成 {m.SuccessfulCompactions} 次" +
+            (m.LastCompactionAt is { } time ? $" · 最近 {time.LocalDateTime:g}（{m.LastCompactionProtocol} / {m.LastCompactionTransport}）" : " · 尚无成功完成记录") +
+            (m.InspectionLimited > 0 ? $"\n{m.InspectionLimited} 段数据无法完整检查，计数可能不全。" : "") +
+            $"\n连接：排队 {m.Waiting} · 活跃 {m.Active}\n最近一次：队列 {Ms(m.LastQueueMs)} · 上游响应头 {Ms(m.LastHeadersMs)} · 首数据 {Ms(m.LastFirstDataMs)} · 总计 {Ms(m.LastDurationMs)}" +
+            (m.LastStreamEnd is { } end ? " · 结束：" + (end switch { "completed" => "完整转发", "upstream_error" => "上游错误", "client_disconnected" => "客户端断开", "timeout" => "等待超时", "peer_closed" => "连接关闭", "handshake_failed" => "握手失败", _ => "传输异常" }) : "") +
+            "\n仅统计经本地模型网关转发的本次进程流量；不保存聊天或压缩正文。";
     }
     private async void StartGatewayClicked(object sender, RoutedEventArgs e)
     {

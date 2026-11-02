@@ -80,6 +80,10 @@
     const transfer=dialog.querySelector('input[id*="threshold"]')?.closest('section');if(transfer)panels.connections.append(transfer);
     const actions=clientNavigation.settingsActions;panels.connections.append(actions);
     const notifications=node('p','当前网关所有聊天 · 更改后即时保存，重新读取后核对结果。','muted');notifications.setAttribute('role','status');panels.notifications.prepend(notifications);
+    const notificationGuide=node('details');notificationGuide.id='dock-notification-guide';notificationGuide.append(node('summary','任务完成提醒如何设置'));
+    notificationGuide.append(node('p','先在本页选择完成提醒；单条聊天可通过“提醒”单独覆盖。此设置保存到当前网关，不会自动开启手机系统权限。','muted'));
+    notificationGuide.append(node('p','安卓 App：在 App 设置中按需开启任务通知并允许系统通知；离开 App 后也需提醒时，再开启后台通知。后台常驻会增加耗电。可先测试本机通知；测试不代表远程通知已接通。','muted'));
+    notificationGuide.append(node('p','浏览器通知还取决于系统权限与浏览器后台能力；浏览器、安卓和网关分别保存设置。','muted'));panels.notifications.prepend(notificationGuide);
     for(const id of ['notification-requests','notification-completions']){const input=panels.notifications.querySelector('#'+id);input.addEventListener('change',()=>{notifications.textContent='当前网关所有聊天 · 正在保存…';});new MutationObserver(()=>{if(!input.disabled)notifications.textContent=get('notification-settings-error').textContent?'通知策略保存未确认，请重新读取核对。':'当前网关所有聊天 · 已读取最新通知策略';}).observe(input,{attributes:true,attributeFilter:['disabled']});}
     for(const field of panels.connections.querySelectorAll('fieldset'))if(field.querySelector('legend')?.dataset.i18n?.includes('文件传输'))field.append(node('p','当前网关的文件下载策略 · 点击保存后生效','muted'));
     const scope=node('p',null,'muted');scope.id='dock-settings-scope';scope.setAttribute('role','status');

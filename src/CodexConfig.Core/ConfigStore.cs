@@ -90,6 +90,14 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
 
     public ConfigPlan Plan(ConfigSnapshot before, ConnectionSettings settings, IReadOnlyDictionary<string, string?>? edits = null, bool updateConnection = true, bool updateModel = false, bool updateDetails = false, byte[]? officialAuth = null)
     {
+        var plan = PlanCore(before, settings, edits, updateConnection, updateModel, updateDetails, officialAuth);
+        var after = new TomlDocument(plan.Config);
+        var warnings = ConfigConstraints.ValidateChanges(new TomlDocument(before.Config), after, ModelCapabilities.Read(before.Home, after));
+        return plan with { Notes = plan.Notes.Concat(warnings).ToArray() };
+    }
+
+    private ConfigPlan PlanCore(ConfigSnapshot before, ConnectionSettings settings, IReadOnlyDictionary<string, string?>? edits, bool updateConnection, bool updateModel, bool updateDetails, byte[]? officialAuth)
+    {
         var doc = new TomlDocument(before.Config);
         if (before.Auth is not null) using (ParseAuth(before.Auth)) { }
         var notes = new List<string>();

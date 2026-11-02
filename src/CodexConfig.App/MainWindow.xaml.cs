@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     private readonly string? smokeOutput;
     private readonly IUserEnvironment environment;
     private readonly ModelCatalogClient probe = new();
+    private readonly ConfigurationTools configurationTools;
     private readonly CancellationTokenSource lifetime = new();
     private readonly DispatcherTimer previewTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
     private readonly Dictionary<string, string?> detailedChanges = new(StringComparer.Ordinal);
@@ -45,6 +46,8 @@ public partial class MainWindow : Window
         this.store = store; this.home = home; this.smokeOutput = smokeOutput; this.environment = environment;
         this.startup = startup ?? (smokeOutput is null ? new WindowsStartupRegistration() : new MemoryStartupRegistration());
         InitializeComponent();
+        configurationTools = new(lifetime.Token) { RefreshCapabilities = () => Editor.SetContext(home, ModelBox.Text) };
+        Editor.SetHeader(configurationTools);
         LinePresetBox.ItemsSource = KrillLines.All.Select(line => line with { Name = line.Name[(line.Name.IndexOf('·') + 1)..].Trim() }).ToArray();
         ModelBox.AddHandler(TextBox.TextChangedEvent, new TextChangedEventHandler(FieldChanged));
         Editor.Changed += MarkDirty;
@@ -136,6 +139,8 @@ public partial class MainWindow : Window
             detailedChanges.Clear();
             lastTemplate = null;
             Editor.Configure(snapshot.Config, detailedChanges);
+            Editor.SetContext(home, ModelBox.Text);
+            configurationTools.Configure(home, snapshot.Config, ModelBox.Text);
             TemplateEditor.Configure(snapshot.Config, detailedChanges);
             baselineFields = Fields();
             var pending = store.HasPending(home);
@@ -280,9 +285,10 @@ public partial class MainWindow : Window
     private void FieldChanged(object sender, TextChangedEventArgs e)
     {
         if (!initializing && ReferenceEquals(sender, BaseUrlBox)) SynchronizeLinePreset();
+        if (!initializing && ReferenceEquals(sender, ModelBox)) Editor.SetContext(home, ModelBox.Text);
         MarkDirty();
     }
-    private void ModelChanged(object sender, SelectionChangedEventArgs e) => MarkDirty();
+    private void ModelChanged(object sender, SelectionChangedEventArgs e) { if (!initializing) Editor.SetContext(home, ModelBox.Text); MarkDirty(); }
     private void ConnectionSelectionChanged(object sender, SelectionChangedEventArgs e) { if (!initializing) UpdateCredentialHint(); MarkDirty(); }
     private void LinePresetChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -341,7 +347,7 @@ public partial class MainWindow : Window
     {
         if (snapshot is null) { PreviewBox.Text = "请先读取有效的配置目录。"; return; }
         try { preview = store.Plan(snapshot, Settings(placeholder: true), detailedChanges, updateConnection: ConnectionChanged, updateModel: ModelBox.Text != loadedSettings.Model, updateDetails: DetailsChanged, officialAuth: stagedOfficialAuth); RenderPreview(); }
-        catch (Exception) { preview = null; PreviewBox.Text = "配置预览暂不可用，请检查字段格式与未保存的设置。"; }
+        catch (Exception error) { preview = null; PreviewBox.Text = error is ArgumentException ? error.Message : "配置预览暂不可用，请检查字段格式与未保存的设置。"; }
     }
     private void RenderPreview()
     {
@@ -365,7 +371,7 @@ public partial class MainWindow : Window
         if (snapshot is null || preview is null) return "请先读取有效配置。";
         var before = new TomlDocument(snapshot.Config).Model; var after = new TomlDocument(preview.Config).Model;
         var lines = new List<string>();
-        string Display(string path, object? value) => value is null ? "未设置 / 跟随默认" : SettingsEditor.Sensitive(path) ? "••••••••（已隐藏）" : ConfigSchema.Literal(value);
+        string Display(string path, object? value) => value is null ? "未设置 / 继承其他层" : ConfigReadClient.SafeValue(path, JsonSerializer.SerializeToElement(value));
         foreach (var path in TomlDocument.ValuePaths(before).Concat(TomlDocument.ValuePaths(after)).Distinct(StringComparer.Ordinal).OrderBy(path => path, StringComparer.Ordinal))
         {
             var previous = TomlDocument.ValueAt(before, path); var next = TomlDocument.ValueAt(after, path);
@@ -376,7 +382,7 @@ public partial class MainWindow : Window
         if (!(snapshot.Bridge ?? []).SequenceEqual(preview.Bridge ?? [])) lines.Add("模型连接\n  " + (preview.Bridge is null ? "将移除本地连接配置" : "将保存加密模型连接") + "（凭据已隐藏）");
         if (!(snapshot.Details ?? []).SequenceEqual(preview.Details ?? [])) lines.Add("连接名称与备注\n  将更新本工具的连接信息（内容已隐藏）");
         if (snapshot.AuthApiBaseUrl != preview.AuthApiBaseUrl) lines.Add("用户环境变量 CODEX_AUTHAPI_BASE_URL\n  " + (snapshot.AuthApiBaseUrl ?? "未设置") + "\n→ " + (preview.AuthApiBaseUrl ?? "移除"));
-        return lines.Count == 0 ? "没有需要保存的更改。" : string.Join("\n\n", lines) + "\n\n保存后，重新打开 Codex 读取配置。";
+        return lines.Count == 0 ? "没有需要保存的更改。" : string.Join("\n\n", lines) + "\n\n" + string.Join("\n", preview.Notes) + "\n\n保存后，重新打开 Codex 读取配置。";
     }
     private void PreviewTabClicked(object sender, RoutedEventArgs e) { currentTab = (string)((Button)sender).Tag; UpdatePreview(); }
     private void PreviewClicked(object sender, RoutedEventArgs e) { currentTab = "changes"; UpdatePreview(); OpenOverlay(PreviewOverlay, ClosePreviewButton); }
@@ -771,9 +777,8 @@ public partial class MainWindow : Window
         Assert(ConfigHelp.Find("features.fast_mode")?.Effect.Contains("不等于") == true && ConfigHelp.Find("features.token_budget.enabled")?.Verified == false, "Accurate help metadata");
         var helpButton = FindVisual<Button>(Editor).Where(button => button.Content as string == "了解更多").ElementAt(2);
         helpButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Settle(); Capture(output, "setting-help.png");
-        ((TextBox)Editor.Input("service_tier")).Text = "fast";
-        ((TextBox)Editor.Input("service_tier")).Text = "";
-        Assert(!detailedChanges.ContainsKey("service_tier"), "Blank service tier removes override instead of writing empty string");
+        SelectValue("service_tier", "\"default\""); SelectValue("service_tier", null);
+        Assert(!detailedChanges.ContainsKey("service_tier"), "Default service tier removes override instead of writing empty string");
         checks.AddRange(["Navigation preserves editor view", "Curated help and historical verification labels"]);
         current = store.Load(home);
         File.WriteAllText(Path.Combine(home, "config.toml"), "broken = [\n");
@@ -807,6 +812,7 @@ public partial class MainWindow : Window
         await RunApplicationSettingsSmokeAsync(output, checks);
         await RunUpdateSmokeAsync(output, checks);
         await RunMobileSmokeAsync(output, checks);
+        await RunConfigurationOptimizationSmokeAsync(output, checks);
         await RunLayoutReviewAsync(output, checks);
         Assert(Environment.GetEnvironmentVariable(WindowsUserEnvironment.Variable, EnvironmentVariableTarget.User) == originalEnvironment, "Real environment changed");
         checks.AddRange(["External change conflict protection", "Reload after invalid source repair", "Real user environment unchanged"]);

@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.15.1',
+    [string]$Version = '0.16.0',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
@@ -31,6 +31,7 @@ if (-not (Test-Path -LiteralPath $InnoCompiler)) { throw 'Inno Setup 6 compiler 
 Copy-Item -LiteralPath (Join-Path $taskRoot 'README.md'),(Join-Path $taskRoot 'LICENSE'),(Join-Path $taskRoot 'THIRD-PARTY-NOTICES.md') -Destination $taskRelease -Force
 foreach ($taskFolder in @('docs','third_party','brand')) { New-Item -ItemType Directory -Path (Join-Path $taskRelease $taskFolder) -Force | Out-Null }
 Copy-Item -LiteralPath (Join-Path $taskRoot "docs\release-$Version.md"),(Join-Path $taskRoot 'docs\schema-maintenance.md'),(Join-Path $taskRoot 'docs\codex-dock-delivery.md'),(Join-Path $taskRoot 'docs\ui-layout-review.md'),(Join-Path $taskRoot 'docs\process-rename-review.md'),(Join-Path $taskRoot 'docs\github-releases.md'),(Join-Path $taskRoot "docs\review-$Version.md") -Destination (Join-Path $taskRelease 'docs') -Force
+Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\configuration-implementation-2026-11-02.md'),(Join-Path $taskRoot 'docs\configuration-audit-2026-11-02.md'),(Join-Path $taskRoot 'docs\configuration-options-2026-11-02.md'),(Join-Path $taskRoot 'docs\runtime-settings-inventory-2026-11-02.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Get-ChildItem -LiteralPath (Join-Path $taskRoot 'third_party') -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $taskRelease 'third_party') -Force }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\magpie-codex-comparison.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\mobile-connection.md'),(Join-Path $taskRoot 'docs\mobile-gateway-reuse.md') -Destination (Join-Path $taskRelease 'docs') -Force

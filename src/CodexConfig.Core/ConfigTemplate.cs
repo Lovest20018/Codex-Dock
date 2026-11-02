@@ -88,5 +88,9 @@ public static class BuiltInTemplates
             new TemplateSetting("features.token_budget.use_history_notes_extension", "true", false),
             new TemplateSetting("suppress_unstable_features_warning", "true", false)
         }));
-    public static IReadOnlyList<ConfigTemplate> All { get; } = Array.AsReadOnly(new[] { KrillCommunity });
+    public static ConfigTemplate Daily { get; } = new("daily-high", "日常任务 · high", "Codex Dock", "",
+        "只将推理强度设为 high；保留模型、服务档位、权限与实验设置。先预览，再选择应用。", [new("model_reasoning_effort", "\"high\"")]);
+    public static ConfigTemplate Deep { get; } = new("deep-xhigh", "复杂任务 · xhigh", "Codex Dock", "",
+        "只将推理强度设为 xhigh；需要当前模型支持，不代表自动使用 Fast 档位。", [new("model_reasoning_effort", "\"xhigh\"")]);
+    public static IReadOnlyList<ConfigTemplate> All { get; } = Array.AsReadOnly(new[] { Daily, Deep, KrillCommunity });
 }

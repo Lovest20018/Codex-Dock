@@ -37,11 +37,12 @@ internal static class HelpContent
             if (entry is not null)
             {
                 Add(technical, "字段状态", entry.Lifecycle + " · " + entry.Kind);
-                Add(technical, "旧版默认值", entry.Default.ValueKind is System.Text.Json.JsonValueKind.Undefined or System.Text.Json.JsonValueKind.Null ? "未知或由模型决定" : entry.Default.GetRawText());
+                Add(technical, "目录参考默认值", entry.Default.ValueKind is System.Text.Json.JsonValueKind.Undefined or System.Text.Json.JsonValueKind.Null ? "未知或由模型决定" : entry.Default.GetRawText());
                 if (!string.IsNullOrWhiteSpace(entry.Description)) technical.Children.Add(new Expander { Header = "英文原文", Content = Note(entry.Description), Margin = new(0, 8, 0, 0) });
             }
         }
-        Add(technical, "跟随默认", "删除本文件中的设置，让 Codex 使用默认值。项目配置、会话或组织策略可能覆盖此处设置，实际运行值未检测。");
+        Add(technical, "目录核查版本", ConfigSchema.Instance.VerifiedRuntime + " · " + ConfigSchema.Instance.SchemaVersion + "；参考默认值不等于当前聊天生效值。");
+        Add(technical, "取消本文件覆盖", "删除本文件中的设置；之后可能继承其他配置层。可在“来源与 profile”中读取所选本机执行端的配置快照。");
         body.Children.Add(new Expander { Header = "字段与来源", Content = technical, Margin = new(0, 10, 0, 0) });
         return body;
 

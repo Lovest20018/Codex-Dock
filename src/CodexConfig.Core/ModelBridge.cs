@@ -12,12 +12,13 @@ using Microsoft.Extensions.Configuration;
 namespace CodexConfig.Core;
 
 public sealed record BridgeStatus(long Requests, long FastRequests, long AutoReviewRequests, int ProtocolVersion = 0,
-    string? LastError = null, int? LastUpstreamStatus = null, string? LastRequestId = null, string? LastRequestKind = null, string? LastUpstreamCode = null);
+    string? LastError = null, int? LastUpstreamStatus = null, string? LastRequestId = null, string? LastRequestKind = null, string? LastUpstreamCode = null,
+    BridgeMetrics? Metrics = null);
 
 // A narrow inference bridge. Account, plugin and login endpoints are intentionally absent.
 public sealed class ModelBridge : IAsyncDisposable
 {
-    public const int ProtocolVersion = 3;
+    public const int ProtocolVersion = 4;
     private readonly Func<MixedConnection> readConnection;
     private readonly Func<byte[]?> readAuth;
     private readonly HttpClient client;
@@ -28,6 +29,7 @@ public sealed class ModelBridge : IAsyncDisposable
     private long requests, fastRequests, autoReviewRequests;
     private int stopRequested;
     private BridgeStatus diagnostics = new(0, 0, 0);
+    private readonly BridgeTelemetry telemetry = new();
     public bool StopRequested => Volatile.Read(ref stopRequested) != 0;
     private const int MaxBody = 64 * 1024 * 1024;
     private static readonly string[] RequestHeaders = ["Accept", "User-Agent", "originator", "version", "session-id", "thread-id", "session_id", "conversation_id", "OpenAI-Beta", "x-codex-beta-features", "X-Client-Request-Id", "x-openai-subagent", "x-codex-turn-metadata"];
@@ -66,6 +68,7 @@ public sealed class ModelBridge : IAsyncDisposable
 
     private async Task HandleAsync(HttpContext context)
     {
+        BridgeTelemetry.Transfer? transfer = null;
         try
         {
             var settings = readConnection();
@@ -78,7 +81,7 @@ public sealed class ModelBridge : IAsyncDisposable
             {
                 if (!SameToken(token, settings.LocalToken)) { context.Response.StatusCode = 403; return; }
                 context.Response.ContentType = "application/json";
-                await JsonSerializer.SerializeAsync(context.Response.Body, diagnostics with { Requests = Interlocked.Read(ref requests), FastRequests = Interlocked.Read(ref fastRequests), AutoReviewRequests = Interlocked.Read(ref autoReviewRequests), ProtocolVersion = ProtocolVersion }, cancellationToken: context.RequestAborted);
+                await JsonSerializer.SerializeAsync(context.Response.Body, diagnostics with { Requests = Interlocked.Read(ref requests), FastRequests = Interlocked.Read(ref fastRequests), AutoReviewRequests = Interlocked.Read(ref autoReviewRequests), ProtocolVersion = ProtocolVersion, Metrics = telemetry.Snapshot() }, cancellationToken: context.RequestAborted);
                 return;
             }
             if (context.Request.Path == "/codex-config/stop" && HttpMethods.IsPost(context.Request.Method))
@@ -94,31 +97,38 @@ public sealed class ModelBridge : IAsyncDisposable
                 path is "/responses" or "/responses/compact" && HttpMethods.IsPost(context.Request.Method) ||
                 path == "/responses" && context.WebSockets.IsWebSocketRequest;
             if (!allowed) { context.Response.StatusCode = 404; return; }
+            transfer = telemetry.Begin();
             await slots.WaitAsync(context.RequestAborted);
+            transfer.Enter();
             try
             {
                 diagnostics = diagnostics with { LastRequestKind = path == "/responses/compact" ? "compact" : SafeValue(context.Request.Headers["x-openai-subagent"].ToString(), settings) ?? (path == "/models" ? "models" : "turn") };
                 var target = settings.BaseUrl.TrimEnd('/') + path + context.Request.QueryString;
-                if (context.WebSockets.IsWebSocketRequest) await ForwardWebSocketAsync(context, target, settings);
-                else await ForwardHttpAsync(context, target, settings);
+                if (context.WebSockets.IsWebSocketRequest) await ForwardWebSocketAsync(context, target, settings, transfer);
+                else await ForwardHttpAsync(context, target, settings, transfer);
+                transfer.End("completed");
             }
             finally { slots.Release(); }
         }
         catch (OperationCanceledException)
         {
+            transfer?.End(context.RequestAborted.IsCancellationRequested ? "client_disconnected" : "timeout");
             if (context.RequestAborted.IsCancellationRequested || context.Response.HasStarted) context.Abort();
             else await WriteErrorAsync(context, 504, "model_connection_timeout", "模型入口连接或等待数据超时，请检查网络。", null, null);
         }
         catch (Exception)
         {
+            transfer?.End("transport_error");
             // Neither upstream exception messages nor response bodies enter diagnostics.
             if (context.Response.HasStarted) context.Abort();
             else await WriteErrorAsync(context, 502, "model_connection_unavailable", "无法连接模型入口，请检查地址、证书或代理。", null, null);
         }
+        finally { transfer?.Dispose(); }
     }
 
-    private async Task ForwardHttpAsync(HttpContext context, string target, MixedConnection settings)
+    private async Task ForwardHttpAsync(HttpContext context, string target, MixedConnection settings, BridgeTelemetry.Transfer transfer)
     {
+        using var observer = telemetry.Observe(context.Request.Path.Value?.EndsWith("/responses/compact", StringComparison.Ordinal) == true, "http");
         using var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), target);
         CopyRequestHeaders(context, (key, value) => request.Headers.TryAddWithoutValidation(key, value));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiKey);
@@ -134,6 +144,7 @@ public sealed class ModelBridge : IAsyncDisposable
             }
             var bytes = body.ToArray();
             CountRequest(bytes);
+            observer.Request(bytes);
             request.Content = new ByteArrayContent(bytes);
             request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
             if (context.Request.Headers.TryGetValue("Content-Encoding", out var encoding))
@@ -141,10 +152,14 @@ public sealed class ModelBridge : IAsyncDisposable
         }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         timeout.CancelAfter(TimeSpan.FromSeconds(60));
+        transfer.Upstream();
         using var response = await (settings.UseSystemProxy ? proxyClient : client).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        transfer.Headers();
+        observer.SetSse(string.Equals(response.Content.Headers.ContentType?.MediaType, "text/event-stream", StringComparison.OrdinalIgnoreCase));
         var requestId = response.Headers.TryGetValues("x-request-id", out var ids) ? SafeValue(ids.FirstOrDefault(), settings) : null;
         if (!response.IsSuccessStatusCode)
         {
+            transfer.End("upstream_error");
             var status = (int)response.StatusCode;
             var authFailure = status is 401 or 403;
             string? upstreamCode = null;
@@ -188,14 +203,17 @@ public sealed class ModelBridge : IAsyncDisposable
         int count;
         while ((count = await stream.ReadAsync(chunk, timeout.Token)) > 0)
         {
+            transfer.Data(); observer.Feed(chunk.AsSpan(0, count));
             timeout.CancelAfter(TimeSpan.FromMinutes(5));
             await context.Response.Body.WriteAsync(chunk.AsMemory(0, count), timeout.Token);
             await context.Response.Body.FlushAsync(timeout.Token);
         }
+        observer.Finish();
     }
 
-    private async Task ForwardWebSocketAsync(HttpContext context, string target, MixedConnection settings)
+    private async Task ForwardWebSocketAsync(HttpContext context, string target, MixedConnection settings, BridgeTelemetry.Transfer transfer)
     {
+        using var observer = telemetry.Observe(false, "websocket");
         var uri = new UriBuilder(target) { Scheme = new Uri(target).Scheme == "https" ? "wss" : "ws" };
         using var upstream = new ClientWebSocket();
         upstream.Options.Proxy = settings.UseSystemProxy ? proxy : null;
@@ -204,25 +222,30 @@ public sealed class ModelBridge : IAsyncDisposable
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         lifetime.CancelAfter(TimeSpan.FromSeconds(30));
         upstream.Options.CollectHttpResponseDetails = true;
+        transfer.Upstream();
         try { await upstream.ConnectAsync(uri.Uri, lifetime.Token); }
         catch (WebSocketException)
         {
+            transfer.End("handshake_failed");
             var status = (int)upstream.HttpStatusCode;
             // Preserve unsupported-handshake responses so the native client can choose HTTP before any output.
             await WriteErrorAsync(context, status is 404 or 405 or 426 or 501 ? status : 502,
                 status is 401 or 403 ? "model_authentication_failed" : "model_websocket_unavailable", "模型入口拒绝 WebSocket 连接，请检查入口支持和凭据。", status == 0 ? null : status, null);
             return;
         }
+        transfer.Headers();
         lifetime.CancelAfter(TimeSpan.FromMinutes(5));
         using var downstream = await context.WebSockets.AcceptWebSocketAsync();
-        var send = PumpAsync(downstream, upstream, lifetime, inspect: true);
-        var receive = PumpAsync(upstream, downstream, lifetime, inspect: false);
-        await Task.WhenAny(send, receive);
+        var send = PumpAsync(downstream, upstream, lifetime, true, observer, transfer);
+        var receive = PumpAsync(upstream, downstream, lifetime, false, observer, transfer);
+        var ended = await Task.WhenAny(send, receive);
+        var endReason = context.RequestAborted.IsCancellationRequested ? "client_disconnected" : lifetime.IsCancellationRequested ? "timeout" : ended.IsFaulted ? "transport_error" : "peer_closed";
         lifetime.Cancel(); downstream.Abort(); upstream.Abort();
         try { await Task.WhenAll(send, receive); } catch (Exception error) when (error is OperationCanceledException or WebSocketException) { }
+        transfer.End(endReason);
     }
 
-    private async Task PumpAsync(WebSocket source, WebSocket destination, CancellationTokenSource lifetime, bool inspect)
+    private async Task PumpAsync(WebSocket source, WebSocket destination, CancellationTokenSource lifetime, bool inspect, BridgeTelemetry.Observer observer, BridgeTelemetry.Transfer transfer)
     {
         var cancellation = lifetime.Token;
         var buffer = new byte[16384];
@@ -236,7 +259,12 @@ public sealed class ModelBridge : IAsyncDisposable
             {
                 if (message.Length + result.Count > MaxBody) throw new InvalidDataException("Model message too large.");
                 message.Write(buffer, 0, result.Count);
-                if (result.EndOfMessage) { CountRequest(message.ToArray()); message.SetLength(0); }
+                if (result.EndOfMessage) { var bytes = message.ToArray(); CountRequest(bytes); observer.Request(bytes); message.SetLength(0); }
+            }
+            else if (result.MessageType == WebSocketMessageType.Text)
+            {
+                transfer.Data(); observer.Feed(buffer.AsSpan(0, result.Count));
+                if (result.EndOfMessage) observer.Finish();
             }
             await destination.SendAsync(buffer.AsMemory(0, result.Count), result.MessageType, result.EndOfMessage, cancellation);
         }

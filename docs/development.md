@@ -23,7 +23,7 @@ dotnet run --project src/CodexConfig.App/CodexConfig.App.csproj -c Release -- --
 
 手机 Python 回归：`py -3.12 -B -m unittest discover -s tests/mobile -p 'test_*.py' -v`。浏览器 QA：先在 `tests/mobile` 执行 `npm ci`，再从仓库根执行 `node tests/mobile/browser-smoke.cjs`；需要本机 Chrome，可用 `CODEX_DOCK_TEST_PYTHON` 指定 Python 绝对路径。测试创建独立浏览器资料和临时 Codex 数据目录；HTTPS 请求仅转到隔离 worker。上游浏览器用例通过 `tests/mobile/playwright.config.cjs` 复用，Windows 夹具使用生产服务相同的 HTTP/1.1。上游 Node / Python 原始用例保存在 `src/CodexMobile/upstream/tests`。回环套接字和测试子进程需要在环境许可下运行；不要禁用这些必要检查来生成发布包。
 
-设置 `CODEX_CONFIG_TEST_CLI` 为原生 `codex.exe` 的绝对路径，可加入两项 app-server 兼容检查，分别验证内置 `openai` 与旧 provider。它们只使用本机模拟上游与虚构官方登录，不消耗真实模型额度。网关进程用例使用测试程序自身的专用入口，界面用例使用实际 CodexDock 程序。
+设置 `CODEX_CONFIG_TEST_CLI` 为原生 `codex.exe` 的绝对路径，可加入三项原生兼容检查：内置 `openai`、旧 provider，以及 `config/read` 项目来源层和 profile 支持边界。前两项只使用本机模拟上游与虚构官方登录；来源读取不创建模型任务，不消耗真实模型额度。网关进程用例使用测试程序自身的专用入口，界面用例使用实际 CodexDock 程序。Windows 用户加密、注册表和回环子进程检查需在正常用户上下文运行。
 
 ## 目录与字段维护
 
@@ -54,7 +54,9 @@ GitHub 的 `release.yml` 在发布标签或手动触发时自动并行打包 Win
 
 ## 实现与兼容性
 
-配置保存保留未编辑字段、注释、UTF-8 BOM 和原换行，采用外部修改检查、写锁、临时文件替换、加密备份与失败回滚。未设置的偏好不会自动写为默认值。复杂表数组保留原文，嵌套结构只作有限类型检查。
+配置保存保留未编辑字段、注释、UTF-8 BOM 和原换行，采用外部修改检查、写锁、临时文件替换、加密备份与失败回滚。未设置的偏好不会自动写为默认值。已知嵌套表和数组元素按目录约束校验，跨字段校验只检查此次变更涉及的组；复杂表数组保留原文，未知结构不宣称完整验证。
+
+2026-11-02 配置优化的目录来源、独立 profile 保存、原生配置层读取、模型能力和网关诊断边界见 [实施记录](configuration-implementation-2026-11-02.md)。`ConfigurationOptimizationTests.cs` 和 `ConfigurationOptimizationSmoke.cs` 覆盖对应回归。诊断只保留进程内计数和耗时；单个响应事件的检查缓存上限为 2 MiB，超限会显示检查不全并继续转发。
 
 进程与主程序集使用 CodexDock；内部命名空间、用户数据目录和原有加密参数保留兼容。0.12.0 恢复可选混合连接，默认 PAT 编辑流程保持。网关使用 ASP.NET Core 共享运行时并随自包含发布一起打包；每个配置目录一个独立 worker，管理端点与模型路由分别鉴权。实现与真实线路边界见 [0.12.0 审查](review-0.12.0.md)。
 

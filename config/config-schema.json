@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "schema_version": "local-2026-10-27",
+  "schema_version": "local-2026-11-02",
   "categories": [
     {
       "id": "model",
@@ -72,6 +72,60 @@
       "category": "agents",
       "common": false,
       "platforms": []
+    },
+    {
+      "path": "agents.<name>",
+      "kind": "table",
+      "types": [
+        "object"
+      ],
+      "name": "自定义代理角色",
+      "chinese": "一个自定义子代理角色，表名为角色名，主代理派生子代理时可以选用。内置角色有 `default`、`explorer` 和 `worker`。",
+      "category": "agents",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "agents.<name>.config_file",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "description": "Path to a role-specific config layer. Relative paths are resolved relative to the `config.toml` that defines them.",
+      "name": "角色配置文件",
+      "chinese": "该角色专用的配置层文件路径，相对路径以定义它的 `config.toml` 所在目录为基准。角色配置可以定制或收紧子代理的设置，但不能扩大父会话的权限。",
+      "category": "agents",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "agents.<name>.description",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "description": "Human-facing role documentation used in spawn tool guidance. Required unless supplied by the referenced agent role file.",
+      "name": "角色说明",
+      "chinese": "面向人的角色说明，会写进派生子代理工具的说明中，帮助模型选择角色。除非引用的角色文件中已提供，否则必须填写。",
+      "category": "agents",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "agents.<name>.nickname_candidates",
+      "kind": "array",
+      "types": [
+        "array"
+      ],
+      "description": "Candidate nicknames for agents spawned with this role.",
+      "name": "昵称候选",
+      "chinese": "使用该角色派生的子代理可选用的昵称列表，用于在界面中区分各个子代理。",
+      "category": "agents",
+      "common": false,
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "agents.default_subagent_model",
@@ -149,57 +203,6 @@
       "description": "Maximum nesting depth for V1 agent threads. Ignored by V2.",
       "name": "子代理嵌套深度",
       "chinese": "V1 多代理中子代理可以逐层派生的最大层数，默认 `1`，即子代理不能再派生子代理；V2 忽略此项。",
-      "category": "agents",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "agents.<name>",
-      "kind": "table",
-      "types": [
-        "object"
-      ],
-      "name": "自定义代理角色",
-      "chinese": "一个自定义子代理角色，表名为角色名，主代理派生子代理时可以选用。内置角色有 `default`、`explorer` 和 `worker`。",
-      "category": "agents",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "agents.<name>.config_file",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "description": "Path to a role-specific config layer. Relative paths are resolved relative to the `config.toml` that defines them.",
-      "name": "角色配置文件",
-      "chinese": "该角色专用的配置层文件路径，相对路径以定义它的 `config.toml` 所在目录为基准。角色配置可以定制或收紧子代理的设置，但不能扩大父会话的权限。",
-      "category": "agents",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "agents.<name>.description",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "description": "Human-facing role documentation used in spawn tool guidance. Required unless supplied by the referenced agent role file.",
-      "name": "角色说明",
-      "chinese": "面向人的角色说明，会写进派生子代理工具的说明中，帮助模型选择角色。除非引用的角色文件中已提供，否则必须填写。",
-      "category": "agents",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "agents.<name>.nickname_candidates",
-      "kind": "array",
-      "types": [
-        "array"
-      ],
-      "description": "Candidate nicknames for agents spawned with this role.",
-      "name": "昵称候选",
-      "chinese": "使用该角色派生的子代理可选用的昵称列表，用于在界面中区分各个子代理。",
       "category": "agents",
       "common": false,
       "platforms": []
@@ -290,7 +293,12 @@
       "chinese": "按类别控制审批提示的写法（`approval_policy = { granular = { ... } }`）。某项为 `true` 时该类请求照常交给用户审批，为 `false` 时直接自动拒绝、不打扰用户；其中 `sandbox_approval`、`rules`、`mcp_elicitations` 三项必须填写。",
       "category": "approvals",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "required_properties": [
+        "mcp_elicitations",
+        "rules",
+        "sandbox_approval"
+      ]
     },
     {
       "path": "approval_policy.granular.mcp_elicitations",
@@ -392,110 +400,6 @@
       "description": "Settings for app-specific controls.",
       "name": "应用连接器设置",
       "chinese": "ChatGPT 应用连接器（Apps，如 Google Drive、GitHub）在 Codex 中的启用、工具筛选和审批设置。`[apps._default]` 设置默认值，`[apps.<应用 ID>]` 单独设置某个应用。",
-      "category": "apps",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "apps._default",
-      "kind": "table",
-      "types": [
-        "object"
-      ],
-      "description": "Default settings for all apps.",
-      "name": "应用默认设置",
-      "chinese": "对所有应用生效的默认设置，可被单个应用的设置覆盖。",
-      "category": "apps",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "apps._default.approvals_reviewer",
-      "kind": "enum",
-      "types": [
-        "string"
-      ],
-      "enum_values": [
-        {
-          "value": "user"
-        },
-        {
-          "value": "auto_review"
-        },
-        {
-          "value": "guardian_subagent"
-        }
-      ],
-      "description": "Reviewer for approval prompts unless overridden by per-app settings.",
-      "name": "默认审批审核者",
-      "chinese": "应用审批请求默认交给谁审核（`user` 或 `auto_review`），可被单个应用的设置覆盖。",
-      "category": "apps",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "apps._default.default_tools_approval_mode",
-      "kind": "enum",
-      "types": [
-        "string"
-      ],
-      "enum_values": [
-        {
-          "value": "auto"
-        },
-        {
-          "value": "prompt"
-        },
-        {
-          "value": "writes"
-        },
-        {
-          "value": "approve"
-        }
-      ],
-      "description": "Approval mode for tools unless overridden by per-app or per-tool settings.",
-      "name": "默认工具审批模式",
-      "chinese": "所有应用工具的默认审批模式（`auto`、`prompt`、`writes` 或 `approve`），可被单个应用或工具的设置覆盖；未设置时为 `auto`。",
-      "category": "apps",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "apps._default.destructive_enabled",
-      "kind": "boolean",
-      "types": [
-        "boolean"
-      ],
-      "description": "Whether tools with `destructive_hint = true` are allowed by default.",
-      "name": "默认允许破坏性工具",
-      "chinese": "是否默认允许可能有破坏性的应用工具（`destructive_hint = true` 或未标注），默认 `true`。",
-      "category": "apps",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "apps._default.enabled",
-      "kind": "boolean",
-      "types": [
-        "boolean"
-      ],
-      "default": true,
-      "description": "When `false`, apps are disabled unless overridden by per-app settings.",
-      "name": "默认启用应用",
-      "chinese": "设为 `false` 时所有应用默认禁用，只有单独设置了 `enabled = true` 的应用可用；默认 `true`。",
-      "category": "apps",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "apps._default.open_world_enabled",
-      "kind": "boolean",
-      "types": [
-        "boolean"
-      ],
-      "description": "Whether tools with `open_world_hint = true` are allowed by default.",
-      "name": "默认允许开放世界工具",
-      "chinese": "是否默认允许会与外部世界交互的应用工具（`open_world_hint = true` 或未标注），默认 `true`。",
       "category": "apps",
       "common": false,
       "platforms": []
@@ -771,6 +675,110 @@
       "platforms": []
     },
     {
+      "path": "apps._default",
+      "kind": "table",
+      "types": [
+        "object"
+      ],
+      "description": "Default settings for all apps.",
+      "name": "应用默认设置",
+      "chinese": "对所有应用生效的默认设置，可被单个应用的设置覆盖。",
+      "category": "apps",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "apps._default.approvals_reviewer",
+      "kind": "enum",
+      "types": [
+        "string"
+      ],
+      "enum_values": [
+        {
+          "value": "user"
+        },
+        {
+          "value": "auto_review"
+        },
+        {
+          "value": "guardian_subagent"
+        }
+      ],
+      "description": "Reviewer for approval prompts unless overridden by per-app settings.",
+      "name": "默认审批审核者",
+      "chinese": "应用审批请求默认交给谁审核（`user` 或 `auto_review`），可被单个应用的设置覆盖。",
+      "category": "apps",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "apps._default.default_tools_approval_mode",
+      "kind": "enum",
+      "types": [
+        "string"
+      ],
+      "enum_values": [
+        {
+          "value": "auto"
+        },
+        {
+          "value": "prompt"
+        },
+        {
+          "value": "writes"
+        },
+        {
+          "value": "approve"
+        }
+      ],
+      "description": "Approval mode for tools unless overridden by per-app or per-tool settings.",
+      "name": "默认工具审批模式",
+      "chinese": "所有应用工具的默认审批模式（`auto`、`prompt`、`writes` 或 `approve`），可被单个应用或工具的设置覆盖；未设置时为 `auto`。",
+      "category": "apps",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "apps._default.destructive_enabled",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "description": "Whether tools with `destructive_hint = true` are allowed by default.",
+      "name": "默认允许破坏性工具",
+      "chinese": "是否默认允许可能有破坏性的应用工具（`destructive_hint = true` 或未标注），默认 `true`。",
+      "category": "apps",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "apps._default.enabled",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "default": true,
+      "description": "When `false`, apps are disabled unless overridden by per-app settings.",
+      "name": "默认启用应用",
+      "chinese": "设为 `false` 时所有应用默认禁用，只有单独设置了 `enabled = true` 的应用可用；默认 `true`。",
+      "category": "apps",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "apps._default.open_world_enabled",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "description": "Whether tools with `open_world_hint = true` are allowed by default.",
+      "name": "默认允许开放世界工具",
+      "chinese": "是否默认允许会与外部世界交互的应用工具（`open_world_hint = true` 或未标注），默认 `true`。",
+      "category": "apps",
+      "common": false,
+      "platforms": []
+    },
+    {
       "path": "apps_mcp_product_sku",
       "kind": "string",
       "types": [
@@ -820,7 +828,11 @@
       "chinese": "要混合采集的麦克风声道编号，从 1 开始，可写单个数字或数组（如 `[1, 2]`）；不设置时混合全部输入声道。",
       "category": "realtime",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "minimum": 1,
+      "item_types": [
+        "integer"
+      ]
     },
     {
       "path": "audio.speaker",
@@ -935,6 +947,19 @@
       "category": "approvals",
       "common": false,
       "platforms": []
+    },
+    {
+      "path": "auto_review.timeout_ms",
+      "kind": "integer",
+      "types": [
+        "integer"
+      ],
+      "name": "自动审查超时",
+      "chinese": "自动审查允许等待的毫秒数；具体支持以当前 Codex 版本为准。",
+      "category": "approvals",
+      "common": false,
+      "platforms": [],
+      "minimum": 0.0
     },
     {
       "path": "background_terminal_max_timeout",
@@ -1422,6 +1447,9 @@
       "common": false,
       "platforms": [
         "windows"
+      ],
+      "item_types": [
+        "object"
       ]
     },
     {
@@ -2020,7 +2048,10 @@
       "chinese": "只作为模型直接工具提供的工具命名空间（需完全匹配）。这些工具不延迟加载，在仅代码模式的会话中也保留在顶层，并且不出现在代码模式的嵌套工具中。",
       "category": "features",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "features.code_mode.enabled",
@@ -2049,7 +2080,10 @@
       "chinese": "不在代码模式嵌套工具中提供的工具命名空间（需完全匹配）。",
       "category": "features",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "features.code_mode.experimental_show_cell_overhead",
@@ -2216,10 +2250,10 @@
       "types": [
         "boolean"
       ],
-      "stage": "under_development",
+      "stage": "removed",
       "default": false,
       "name": "工具描述优先",
-      "chinese": "代码模式中呈现工具定义时，把每个工具自身的描述放在其命名空间描述之前；工具搜索结果的呈现也随之改变。开发中，默认关闭。",
+      "chinese": "旧版开发开关，当前核查的 0.166.0-alpha.5.1 已移除；仅保留历史说明，不再新增写入。",
       "category": "features",
       "common": false,
       "platforms": []
@@ -2415,6 +2449,20 @@
       "category": "features",
       "common": false,
       "platforms": []
+    },
+    {
+      "path": "features.critical_path_timing",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "关键路径计时",
+      "chinese": "开发中的关键路径计时诊断；通常跟随默认。",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "stage": "under_development",
+      "default": false
     },
     {
       "path": "features.current_time_reminder",
@@ -2874,6 +2922,20 @@
       "platforms": []
     },
     {
+      "path": "features.guardian_native_multi_agent_history",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "自动审查原生多代理历史",
+      "chinese": "开发中的自动审查历史来源设置，不作为普通任务性能选项。",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "stage": "under_development",
+      "default": false
+    },
+    {
       "path": "features.guardian_node_repl_transcript_images",
       "kind": "boolean",
       "types": [
@@ -2886,6 +2948,20 @@
       "category": "features",
       "common": false,
       "platforms": []
+    },
+    {
+      "path": "features.guardian_recorded_items",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "自动审查记录条目",
+      "chinese": "开发中的自动审查上下文能力，按版本验证后使用。",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "stage": "under_development",
+      "default": false
     },
     {
       "path": "features.guardian_reuse_parent_compaction",
@@ -3330,7 +3406,15 @@
       "chinese": "除用户和助手消息外还要放入对话记录的内容：`tool_calls`（工具调用）、`tool_outputs`（工具输出）、`reasoning`（推理内容）。默认是前两项。",
       "category": "features",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ],
+      "item_enum_values": [
+        "tool_calls",
+        "tool_outputs",
+        "reasoning"
+      ]
     },
     {
       "path": "features.guardianv2.transcript_mode",
@@ -3370,6 +3454,34 @@
       "category": "features",
       "common": false,
       "platforms": []
+    },
+    {
+      "path": "features.guardianv3",
+      "kind": "bool_or_table",
+      "types": [
+        "boolean",
+        "object"
+      ],
+      "name": "第三版自动审查实验",
+      "chinese": "开发中的自动审查实现，可用布尔或表形式；默认不启用。",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "stage": "under_development",
+      "default": false
+    },
+    {
+      "path": "features.guardianv3.enabled",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "启用第三版自动审查实验",
+      "chinese": "表形式中的实验开关，默认不启用。",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "stage": "under_development"
     },
     {
       "path": "features.hooks",
@@ -3648,6 +3760,20 @@
       "category": "features",
       "common": false,
       "platforms": []
+    },
+    {
+      "path": "features.mcp_connection_sharing",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "共享 MCP 连接",
+      "chinese": "开发中的 MCP 连接共享能力；不等同于减少工具权限或模型用量。",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "stage": "under_development",
+      "default": false
     },
     {
       "path": "features.mcp_oauth_refresh_coordination",
@@ -4257,7 +4383,16 @@
       "chinese": "凭据注入的方式，可多选：`bearer`（`Authorization: Bearer`）、`token`（`Authorization: token`）、`basic`（`Authorization: Basic`）、`header`（写入 `header` 指定的请求头）。未填写时为 `bearer`。",
       "category": "features",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ],
+      "item_enum_values": [
+        "bearer",
+        "token",
+        "basic",
+        "header"
+      ]
     },
     {
       "path": "features.network_proxy.credentials.<name>.env",
@@ -4271,7 +4406,10 @@
       "chinese": "保存真实凭据的环境变量名列表，沙箱内看到的是替换后的占位值；不能与内置凭据来源重名。",
       "category": "features",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "features.network_proxy.credentials.<name>.header",
@@ -4299,7 +4437,10 @@
       "chinese": "描述凭据格式的正则表达式列表，用于识别凭据并生成同格式的占位值；至少一项。",
       "category": "features",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "features.network_proxy.credentials.<name>.prefix",
@@ -4343,7 +4484,10 @@
       "chinese": "允许注入真实凭据的 URL 前缀列表。只写主机名时，回环地址按 HTTP 处理，其他主机按 HTTPS 处理。",
       "category": "features",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "features.network_proxy.dangerously_allow_all_unix_sockets",
@@ -4579,7 +4723,10 @@
       "chinese": "只对这些 MCP 服务器的工具省略旧的 `mcp__` 前缀，其他服务器保持原样。",
       "category": "features",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "features.nonfatal_clock_read_errors",
@@ -4610,6 +4757,20 @@
       "platforms": []
     },
     {
+      "path": "features.omit_skill_descriptions",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "省略技能描述实验",
+      "chinese": "开发中的上下文展示实验，通常保持默认，避免影响技能发现。",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "stage": "under_development",
+      "default": false
+    },
+    {
       "path": "features.output_token_replay",
       "kind": "boolean",
       "types": [
@@ -4636,6 +4797,20 @@
       "category": "features",
       "common": false,
       "platforms": []
+    },
+    {
+      "path": "features.plugin_discovery_prefetch",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "预取插件发现信息",
+      "chinese": "预取插件发现信息；核查内核中为稳定功能，默认开启。",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "stage": "stable",
+      "default": true
     },
     {
       "path": "features.plugin_hooks",
@@ -4692,6 +4867,20 @@
       "category": "features",
       "common": false,
       "platforms": []
+    },
+    {
+      "path": "features.prediction_preserve_parent_tools",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "保留父任务工具上下文",
+      "chinese": "保留预测路径所需的父任务工具信息；核查内核中默认开启。",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "stage": "stable",
+      "default": true
     },
     {
       "path": "features.prefer_mxc",
@@ -4755,8 +4944,8 @@
       "types": [
         "boolean"
       ],
-      "stage": "under_development",
-      "default": false,
+      "stage": "stable",
+      "default": true,
       "name": "推理强度变更提示",
       "chinese": "会话中途切换推理强度时，在请求输入中追加一条可信的配置更新条目，把新的推理强度告知模型。只对内置 OpenAI 模型供应商且模型支持推理强度更新时生效。0.166 起为稳定功能并默认开启。",
       "category": "features",
@@ -4987,6 +5176,19 @@
       "platforms": []
     },
     {
+      "path": "features.rollout_budget.enforce_limit",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "执行预算强制限制",
+      "chinese": "开发中的执行预算限制；与预算启用和上限配置一起使用。",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "stage": "under_development"
+    },
+    {
       "path": "features.rollout_budget.limit_tokens",
       "kind": "integer",
       "types": [
@@ -5029,7 +5231,10 @@
       "chinese": "剩余加权 token 降到这些值时各提醒模型一次；每个值都必须为正且小于 `limit_tokens`，开启该功能时必填。",
       "category": "features",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "integer"
+      ]
     },
     {
       "path": "features.rollout_budget.sampling_token_weight",
@@ -5134,9 +5339,9 @@
         "boolean"
       ],
       "stage": "stable",
-      "default": false,
+      "default": true,
       "name": "加密保存登录凭据",
-      "chinese": "登录凭据选择保存到系统钥匙串（keyring）时，改为把凭据加密保存在本地密钥文件中，只把该文件的密钥放进系统钥匙串。对以文件（`auth.json`）保存的凭据没有影响。Windows 上默认开启，其他平台默认关闭。",
+      "chinese": "使用原生客户端的敏感认证存储能力；当前核查的 0.166.0-alpha.5.1 默认开启。具体凭据介质仍由 cli_auth_credentials_store 等设置决定。",
       "category": "features",
       "common": false,
       "platforms": []
@@ -5224,6 +5429,34 @@
       "category": "features",
       "common": false,
       "platforms": []
+    },
+    {
+      "path": "features.simplified_selection_hints",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "简化选择提示实验",
+      "chinese": "开发中的选择提示样式，通常保持默认。",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "stage": "under_development",
+      "default": false
+    },
+    {
+      "path": "features.skill_catalog_deltas",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "技能目录增量更新",
+      "chinese": "技能目录增量更新能力；核查内核中为稳定功能，默认开启。",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "stage": "under_development",
+      "default": false
     },
     {
       "path": "features.skill_env_var_dependency_prompt",
@@ -5734,6 +5967,20 @@
       "platforms": []
     },
     {
+      "path": "features.tui_multi_backend",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "终端多后端实验",
+      "chinese": "开发中的终端后端切换能力，仅适用于支持它的终端客户端。",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "stage": "under_development",
+      "default": false
+    },
+    {
       "path": "features.ultrafast_mode",
       "kind": "boolean",
       "types": [
@@ -5844,6 +6091,20 @@
       "category": "features",
       "common": false,
       "platforms": []
+    },
+    {
+      "path": "features.untrusted_as_tool_output",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "不可信内容工具输出实验",
+      "chinese": "开发中的不可信上下文表达方式，通常保持默认。",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "stage": "under_development",
+      "default": false
     },
     {
       "path": "features.use_agent_identity",
@@ -6114,7 +6375,10 @@
       "chinese": "设置后只允许登录指定的 ChatGPT 工作区，可写单个 ID 或 ID 数组（不支持逗号分隔的字符串）。当前 ChatGPT 类凭据（含个人访问令牌 PAT）属于其他工作区时 Codex 会自动登出；单独设置此项时 API key 登录不受影响。",
       "category": "provider",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "forced_login_method",
@@ -6312,7 +6576,10 @@
       "chinese": "用户中断正在进行的轮次时运行的钩子，不支持 `matcher`。超时默认 1 秒、最多 3 秒，只用于通知或记录，不能改变中断结果。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "hooks.PermissionRequest",
@@ -6325,7 +6592,10 @@
       "chinese": "Codex 即将向用户请求审批时运行的钩子，`matcher` 按工具名匹配。钩子可以直接返回允许或拒绝，代替弹出审批提示。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "hooks.PostCompact",
@@ -6338,7 +6608,10 @@
       "chinese": "上下文压缩完成后运行的钩子，`matcher` 匹配触发方式 `manual`（手动压缩）或 `auto`（自动压缩）。钩子要求停止时，当前轮次会被中止。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "hooks.PostModelRequest",
@@ -6351,7 +6624,10 @@
       "chinese": "每次模型请求结束后运行的钩子，不支持 `matcher`；输入包含结果状态（`completed`、`failed` 或 `cancelled`）、错误信息和 token 用量。只用于观察，输出仅记入日志，不能改变后续流程。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "hooks.PostToolUse",
@@ -6364,7 +6640,10 @@
       "chinese": "工具执行完成后运行的钩子，`matcher` 按工具名做正则匹配（如 `apply_patch|Edit`）。钩子可以向模型追加上下文，或返回阻止结果把反馈交给模型。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "hooks.PreCompact",
@@ -6377,7 +6656,10 @@
       "chinese": "即将压缩上下文时运行的钩子，`matcher` 匹配 `manual` 或 `auto`。钩子要求停止时不进行本次压缩，并中止当前轮次。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "hooks.PreModelRequest",
@@ -6390,7 +6672,10 @@
       "chinese": "每次向模型发送请求前运行的钩子，不支持 `matcher`。只用于观察，输出仅记入日志，不能阻止或修改请求。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "hooks.PreToolUse",
@@ -6403,7 +6688,10 @@
       "chinese": "工具执行前运行的钩子，`matcher` 按工具名做正则匹配。钩子可以阻止本次调用并给出原因、改写工具输入，或向模型追加上下文。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "hooks.SessionEnd",
@@ -6416,7 +6704,10 @@
       "chinese": "会话结束时运行的钩子，适合做清理或记录。超时默认 1 秒、最多 3 秒。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "hooks.SessionStart",
@@ -6429,7 +6720,10 @@
       "chinese": "会话开始时运行的钩子，`matcher` 匹配来源：`startup`、`resume`、`clear`、`compact` 或 `fork`。钩子可以向模型追加初始上下文，或要求停止。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "hooks.Stop",
@@ -6442,7 +6736,10 @@
       "chinese": "主代理即将结束一个轮次时运行的钩子，不支持 `matcher`。钩子可以阻止结束并给出继续工作的提示，让代理接着完成任务。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "hooks.SubagentStart",
@@ -6455,7 +6752,10 @@
       "chinese": "子代理启动时运行的钩子，`matcher` 匹配子代理类型（角色名，如 `explorer`）。钩子可以向子代理追加上下文。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "hooks.SubagentStop",
@@ -6468,7 +6768,10 @@
       "chinese": "子代理即将结束一个轮次时运行的钩子，`matcher` 匹配子代理类型。与 `Stop` 类似，钩子可以阻止其结束并要求继续。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "hooks.UserPromptSubmit",
@@ -6481,7 +6784,10 @@
       "chinese": "用户提交提示词后、模型处理前运行的钩子，不支持 `matcher`。钩子可以拦截这条提示词，或向模型追加上下文。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "hooks.state",
@@ -6744,7 +7050,10 @@
       "chinese": "`source_type` 为 `git` 时只检出的仓库子路径列表（稀疏检出）。",
       "category": "apps",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "mcp_enterprise_managed_auth",
@@ -6935,7 +7244,10 @@
       "chinese": "启动 stdio MCP 服务器时传给 `command` 的参数列表；仅 stdio 服务器可用。",
       "category": "mcp",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "mcp_servers.<name>.auth",
@@ -7035,7 +7347,10 @@
       "chinese": "不向模型提供的工具名列表（黑名单），在 `enabled_tools` 筛选之后再移除。",
       "category": "mcp",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "mcp_servers.<name>.enabled",
@@ -7059,7 +7374,10 @@
       "chinese": "只向模型提供这些工具（白名单）；未设置时提供该服务器的全部工具。",
       "category": "mcp",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "mcp_servers.<name>.env",
@@ -7327,7 +7645,10 @@
       "chinese": "MCP 登录或企业令牌交换时请求的 OAuth scope 列表。",
       "category": "mcp",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "mcp_servers.<name>.startup_readiness",
@@ -7514,6 +7835,18 @@
       "description": "Model used for memory consolidation.",
       "name": "记忆整合模型",
       "chinese": "第二阶段把零散记忆整合为全局记忆时使用的模型。未设置时使用当前模型供应商推荐的模型。",
+      "category": "context",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "memories.consolidation_service_tier",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "记忆整理服务档位",
+      "chinese": "记忆整理请求的服务档位，需要模型和服务支持；不自动启用记忆。",
       "category": "context",
       "common": false,
       "platforms": []
@@ -7867,7 +8200,10 @@
       "chinese": "传给令牌命令的参数列表（字符串数组），直接传给程序，不经过 shell 解析。",
       "category": "provider",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "model_providers.<name>.auth.command",
@@ -7963,7 +8299,10 @@
       "chinese": "传给 `aws` 的参数列表，例如 `[\"sso\", \"login\"]`。",
       "category": "provider",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "model_providers.<name>.aws.auth_refresh.command",
@@ -8018,7 +8357,10 @@
       "chinese": "传给凭据导出命令的参数列表，直接传给程序，不经过 shell。",
       "category": "provider",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "model_providers.<name>.aws.credential_export.command",
@@ -8132,6 +8474,18 @@
       "description": "Remote context-compaction protocol; omission preserves provider defaults.",
       "name": "远程压缩协议",
       "chinese": "自动压缩上下文时使用的远程压缩协议。不写时保持默认：OpenAI 和 Azure Responses 供应商为 `v2`，其他自定义模型供应商为 `unsupported`（本地压缩）。",
+      "category": "provider",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "model_providers.<name>.credential_file",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "供应商凭据文件",
+      "chinese": "供应商使用的凭据文件路径；不读取文件内容，具体认证支持取决于供应商。",
       "category": "provider",
       "common": false,
       "platforms": []
@@ -8330,7 +8684,10 @@
       "chinese": "申请的 OAuth scope 列表，发送时以空格连接。",
       "category": "provider",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "model_providers.<name>.gateway_oauth.token_url",
@@ -8370,6 +8727,18 @@
       "platforms": []
     },
     {
+      "path": "model_providers.<name>.location",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "供应商区域",
+      "chinese": "云模型供应商所需的区域位置，按供应商要求填写。",
+      "category": "provider",
+      "common": false,
+      "platforms": []
+    },
+    {
       "path": "model_providers.<name>.model_catalog_url",
       "kind": "string",
       "types": [
@@ -8392,6 +8761,18 @@
       "description": "Friendly display name.",
       "name": "显示名称",
       "chinese": "该模型供应商在界面中显示的友好名称。注意：名称恰好是 `OpenAI` 时，Codex 会把它当作 OpenAI 供应商对待（依据源码）。",
+      "category": "provider",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "model_providers.<name>.project_id",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "供应商项目 ID",
+      "chinese": "云模型供应商所需的项目标识，按供应商要求填写。",
       "category": "provider",
       "common": false,
       "platforms": []
@@ -8832,7 +9213,10 @@
       "chinese": "每个轮次完成（代理处理完一次用户提交）后要执行的外部命令，以字符串数组写出命令及其参数；Codex 执行时会在末尾再追加一个描述该事件的 JSON 字符串参数（事件类型如 `agent-turn-complete`）。未设置则不启用；它与 TUI 的桌面通知 `tui.notifications` 是两套独立机制。",
       "category": "interface",
       "common": true,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "openai_base_url",
@@ -8972,6 +9356,102 @@
       "platforms": []
     },
     {
+      "path": "otel.exporter.otlp-grpc",
+      "kind": "table",
+      "types": [
+        "object"
+      ],
+      "name": "日志 OTLP gRPC 导出",
+      "chinese": "通过 OTLP/gRPC 把日志事件发送到自己的收集器。必填 `endpoint`，可选 `headers` 和 `tls`。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.exporter.otlp-grpc.endpoint",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "日志 gRPC 端点",
+      "chinese": "接收日志的 OTLP gRPC 收集器地址，例如 `https://otel.example.com:4317`。必填。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.exporter.otlp-grpc.headers",
+      "kind": "map",
+      "types": [
+        "object"
+      ],
+      "name": "日志 gRPC 请求头",
+      "chinese": "导出日志时附带的额外请求头（gRPC 元数据），常用于向收集器认证。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.exporter.otlp-grpc.headers.<name>",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "日志 gRPC 请求头项",
+      "chinese": "一条请求头：键为名称，值为发送的内容。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.exporter.otlp-grpc.tls",
+      "kind": "table",
+      "types": [
+        "object"
+      ],
+      "name": "日志 gRPC TLS",
+      "chinese": "连接日志收集器时的 TLS 设置：可以指定自定义 CA 证书，或同时提供客户端证书和私钥启用双向 TLS（mTLS）。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.exporter.otlp-grpc.tls.ca-certificate",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "日志 gRPC CA 证书",
+      "chinese": "用于校验日志收集器服务端证书的 CA 证书文件路径（PEM 格式）。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.exporter.otlp-grpc.tls.client-certificate",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "日志 gRPC 客户端证书",
+      "chinese": "双向 TLS 使用的客户端证书文件路径（PEM 格式），必须与 `client-private-key` 一起设置。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.exporter.otlp-grpc.tls.client-private-key",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "日志 gRPC 客户端私钥",
+      "chinese": "双向 TLS 使用的客户端私钥文件路径（PEM 格式），必须与 `client-certificate` 一起设置。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
       "path": "otel.exporter.otlp-http",
       "kind": "table",
       "types": [
@@ -9090,102 +9570,6 @@
       "platforms": []
     },
     {
-      "path": "otel.exporter.otlp-grpc",
-      "kind": "table",
-      "types": [
-        "object"
-      ],
-      "name": "日志 OTLP gRPC 导出",
-      "chinese": "通过 OTLP/gRPC 把日志事件发送到自己的收集器。必填 `endpoint`，可选 `headers` 和 `tls`。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.exporter.otlp-grpc.endpoint",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "name": "日志 gRPC 端点",
-      "chinese": "接收日志的 OTLP gRPC 收集器地址，例如 `https://otel.example.com:4317`。必填。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.exporter.otlp-grpc.headers",
-      "kind": "map",
-      "types": [
-        "object"
-      ],
-      "name": "日志 gRPC 请求头",
-      "chinese": "导出日志时附带的额外请求头（gRPC 元数据），常用于向收集器认证。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.exporter.otlp-grpc.headers.<name>",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "name": "日志 gRPC 请求头项",
-      "chinese": "一条请求头：键为名称，值为发送的内容。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.exporter.otlp-grpc.tls",
-      "kind": "table",
-      "types": [
-        "object"
-      ],
-      "name": "日志 gRPC TLS",
-      "chinese": "连接日志收集器时的 TLS 设置：可以指定自定义 CA 证书，或同时提供客户端证书和私钥启用双向 TLS（mTLS）。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.exporter.otlp-grpc.tls.ca-certificate",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "name": "日志 gRPC CA 证书",
-      "chinese": "用于校验日志收集器服务端证书的 CA 证书文件路径（PEM 格式）。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.exporter.otlp-grpc.tls.client-certificate",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "name": "日志 gRPC 客户端证书",
-      "chinese": "双向 TLS 使用的客户端证书文件路径（PEM 格式），必须与 `client-private-key` 一起设置。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.exporter.otlp-grpc.tls.client-private-key",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "name": "日志 gRPC 客户端私钥",
-      "chinese": "双向 TLS 使用的客户端私钥文件路径（PEM 格式），必须与 `client-certificate` 一起设置。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
       "path": "otel.log_agent_responses",
       "kind": "boolean",
       "types": [
@@ -9242,6 +9626,102 @@
       "description": "Metrics exporter. Defaults to `statsig`, which follows `analytics.enabled`. Custom OTLP exporters are independent of `analytics.enabled`; `none` disables metrics export.",
       "name": "指标导出器",
       "chinese": "指标的导出方式。默认 `statsig`，即 OpenAI 内置通道，是否发送跟随 `analytics.enabled`；自定义的 `otlp-http`、`otlp-grpc` 导出器不受 `analytics.enabled` 影响；设为 `none` 关闭指标导出。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.metrics_exporter.otlp-grpc",
+      "kind": "table",
+      "types": [
+        "object"
+      ],
+      "name": "指标 OTLP gRPC 导出",
+      "chinese": "通过 OTLP/gRPC 把指标发送到自己的收集器，不受 `analytics.enabled` 影响。必填 `endpoint`，可选 `headers` 和 `tls`。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.metrics_exporter.otlp-grpc.endpoint",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "指标 gRPC 端点",
+      "chinese": "接收指标的 OTLP gRPC 收集器地址，例如 `https://otel.example.com:4317`。必填。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.metrics_exporter.otlp-grpc.headers",
+      "kind": "map",
+      "types": [
+        "object"
+      ],
+      "name": "指标 gRPC 请求头",
+      "chinese": "导出指标时附带的额外请求头（gRPC 元数据），常用于向收集器认证。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.metrics_exporter.otlp-grpc.headers.<name>",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "指标 gRPC 请求头项",
+      "chinese": "一条请求头：键为名称，值为发送的内容。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.metrics_exporter.otlp-grpc.tls",
+      "kind": "table",
+      "types": [
+        "object"
+      ],
+      "name": "指标 gRPC TLS",
+      "chinese": "连接指标收集器时的 TLS 设置：可以指定自定义 CA 证书，或同时提供客户端证书和私钥启用双向 TLS（mTLS）。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.metrics_exporter.otlp-grpc.tls.ca-certificate",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "指标 gRPC CA 证书",
+      "chinese": "用于校验指标收集器服务端证书的 CA 证书文件路径（PEM 格式）。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.metrics_exporter.otlp-grpc.tls.client-certificate",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "指标 gRPC 客户端证书",
+      "chinese": "双向 TLS 使用的客户端证书文件路径（PEM 格式），必须与 `client-private-key` 一起设置。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.metrics_exporter.otlp-grpc.tls.client-private-key",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "指标 gRPC 客户端私钥",
+      "chinese": "双向 TLS 使用的客户端私钥文件路径（PEM 格式），必须与 `client-certificate` 一起设置。",
       "category": "telemetry",
       "common": false,
       "platforms": []
@@ -9365,102 +9845,6 @@
       "platforms": []
     },
     {
-      "path": "otel.metrics_exporter.otlp-grpc",
-      "kind": "table",
-      "types": [
-        "object"
-      ],
-      "name": "指标 OTLP gRPC 导出",
-      "chinese": "通过 OTLP/gRPC 把指标发送到自己的收集器，不受 `analytics.enabled` 影响。必填 `endpoint`，可选 `headers` 和 `tls`。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.metrics_exporter.otlp-grpc.endpoint",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "name": "指标 gRPC 端点",
-      "chinese": "接收指标的 OTLP gRPC 收集器地址，例如 `https://otel.example.com:4317`。必填。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.metrics_exporter.otlp-grpc.headers",
-      "kind": "map",
-      "types": [
-        "object"
-      ],
-      "name": "指标 gRPC 请求头",
-      "chinese": "导出指标时附带的额外请求头（gRPC 元数据），常用于向收集器认证。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.metrics_exporter.otlp-grpc.headers.<name>",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "name": "指标 gRPC 请求头项",
-      "chinese": "一条请求头：键为名称，值为发送的内容。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.metrics_exporter.otlp-grpc.tls",
-      "kind": "table",
-      "types": [
-        "object"
-      ],
-      "name": "指标 gRPC TLS",
-      "chinese": "连接指标收集器时的 TLS 设置：可以指定自定义 CA 证书，或同时提供客户端证书和私钥启用双向 TLS（mTLS）。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.metrics_exporter.otlp-grpc.tls.ca-certificate",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "name": "指标 gRPC CA 证书",
-      "chinese": "用于校验指标收集器服务端证书的 CA 证书文件路径（PEM 格式）。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.metrics_exporter.otlp-grpc.tls.client-certificate",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "name": "指标 gRPC 客户端证书",
-      "chinese": "双向 TLS 使用的客户端证书文件路径（PEM 格式），必须与 `client-private-key` 一起设置。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.metrics_exporter.otlp-grpc.tls.client-private-key",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "name": "指标 gRPC 客户端私钥",
-      "chinese": "双向 TLS 使用的客户端私钥文件路径（PEM 格式），必须与 `client-certificate` 一起设置。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
       "path": "otel.span_attributes",
       "kind": "map",
       "types": [
@@ -9534,6 +9918,102 @@
       "description": "Optional trace exporter",
       "name": "追踪导出器",
       "chinese": "追踪（trace span）的导出方式：`none`（默认，不导出）、`statsig`（发往 OpenAI 内置的收集端点），或 `otlp-http`、`otlp-grpc` 自己的收集器。它与日志导出器相互独立，开启日志导出不会顺带导出追踪。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.trace_exporter.otlp-grpc",
+      "kind": "table",
+      "types": [
+        "object"
+      ],
+      "name": "追踪 OTLP gRPC 导出",
+      "chinese": "通过 OTLP/gRPC 把追踪 span 发送到自己的收集器。必填 `endpoint`，可选 `headers` 和 `tls`。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.trace_exporter.otlp-grpc.endpoint",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "追踪 gRPC 端点",
+      "chinese": "接收追踪的 OTLP gRPC 收集器地址，例如 `https://otel.example.com:4317`。必填。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.trace_exporter.otlp-grpc.headers",
+      "kind": "map",
+      "types": [
+        "object"
+      ],
+      "name": "追踪 gRPC 请求头",
+      "chinese": "导出追踪时附带的额外请求头（gRPC 元数据），常用于向收集器认证。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.trace_exporter.otlp-grpc.headers.<name>",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "追踪 gRPC 请求头项",
+      "chinese": "一条请求头：键为名称，值为发送的内容。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.trace_exporter.otlp-grpc.tls",
+      "kind": "table",
+      "types": [
+        "object"
+      ],
+      "name": "追踪 gRPC TLS",
+      "chinese": "连接追踪收集器时的 TLS 设置：可以指定自定义 CA 证书，或同时提供客户端证书和私钥启用双向 TLS（mTLS）。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.trace_exporter.otlp-grpc.tls.ca-certificate",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "追踪 gRPC CA 证书",
+      "chinese": "用于校验追踪收集器服务端证书的 CA 证书文件路径（PEM 格式）。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.trace_exporter.otlp-grpc.tls.client-certificate",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "追踪 gRPC 客户端证书",
+      "chinese": "双向 TLS 使用的客户端证书文件路径（PEM 格式），必须与 `client-private-key` 一起设置。",
+      "category": "telemetry",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "otel.trace_exporter.otlp-grpc.tls.client-private-key",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "追踪 gRPC 客户端私钥",
+      "chinese": "双向 TLS 使用的客户端私钥文件路径（PEM 格式），必须与 `client-certificate` 一起设置。",
       "category": "telemetry",
       "common": false,
       "platforms": []
@@ -9657,102 +10137,6 @@
       "platforms": []
     },
     {
-      "path": "otel.trace_exporter.otlp-grpc",
-      "kind": "table",
-      "types": [
-        "object"
-      ],
-      "name": "追踪 OTLP gRPC 导出",
-      "chinese": "通过 OTLP/gRPC 把追踪 span 发送到自己的收集器。必填 `endpoint`，可选 `headers` 和 `tls`。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.trace_exporter.otlp-grpc.endpoint",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "name": "追踪 gRPC 端点",
-      "chinese": "接收追踪的 OTLP gRPC 收集器地址，例如 `https://otel.example.com:4317`。必填。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.trace_exporter.otlp-grpc.headers",
-      "kind": "map",
-      "types": [
-        "object"
-      ],
-      "name": "追踪 gRPC 请求头",
-      "chinese": "导出追踪时附带的额外请求头（gRPC 元数据），常用于向收集器认证。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.trace_exporter.otlp-grpc.headers.<name>",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "name": "追踪 gRPC 请求头项",
-      "chinese": "一条请求头：键为名称，值为发送的内容。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.trace_exporter.otlp-grpc.tls",
-      "kind": "table",
-      "types": [
-        "object"
-      ],
-      "name": "追踪 gRPC TLS",
-      "chinese": "连接追踪收集器时的 TLS 设置：可以指定自定义 CA 证书，或同时提供客户端证书和私钥启用双向 TLS（mTLS）。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.trace_exporter.otlp-grpc.tls.ca-certificate",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "name": "追踪 gRPC CA 证书",
-      "chinese": "用于校验追踪收集器服务端证书的 CA 证书文件路径（PEM 格式）。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.trace_exporter.otlp-grpc.tls.client-certificate",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "name": "追踪 gRPC 客户端证书",
-      "chinese": "双向 TLS 使用的客户端证书文件路径（PEM 格式），必须与 `client-private-key` 一起设置。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "otel.trace_exporter.otlp-grpc.tls.client-private-key",
-      "kind": "string",
-      "types": [
-        "string"
-      ],
-      "name": "追踪 gRPC 客户端私钥",
-      "chinese": "双向 TLS 使用的客户端私钥文件路径（PEM 格式），必须与 `client-certificate` 一起设置。",
-      "category": "telemetry",
-      "common": false,
-      "platforms": []
-    },
-    {
       "path": "otel.tracestate",
       "kind": "map",
       "types": [
@@ -9849,32 +10233,6 @@
       "description": "Default and per-plugin settings keyed by exact `<plugin>@<marketplace>` IDs.",
       "name": "插件设置",
       "chinese": "插件的启用设置和插件自带 MCP 服务器的策略，以 `<插件>@<市场>` 形式的完整插件 ID 为键；`[plugins._default]` 设置已安装插件的默认启用状态。",
-      "category": "apps",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "plugins._default",
-      "kind": "table",
-      "types": [
-        "object"
-      ],
-      "description": "Defaults for installed plugin activation. Omission preserves source enablement. Explicit plugin enablement settings override this default, but cannot enable an installation disabled by its source.",
-      "name": "插件默认启用状态",
-      "chinese": "已安装插件的默认启用设置（Codex 0.163 起）。未设置时保持插件来源和账号原有的启用状态；单个插件的 `enabled` 优先，但不能启用被安装来源停用的插件。",
-      "category": "apps",
-      "common": false,
-      "platforms": []
-    },
-    {
-      "path": "plugins._default.enabled",
-      "kind": "boolean",
-      "types": [
-        "boolean"
-      ],
-      "default": true,
-      "name": "默认启用插件",
-      "chinese": "已安装插件是否默认启用，默认 `true`；设为 `false` 时只有单独设置了 `enabled = true` 的插件才会生效。",
       "category": "apps",
       "common": false,
       "platforms": []
@@ -9980,7 +10338,10 @@
       "chinese": "不向模型提供的工具名列表（黑名单），在 `enabled_tools` 筛选之后再移除。",
       "category": "apps",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "plugins.<name>.mcp_servers.<name>.enabled",
@@ -10007,7 +10368,10 @@
       "chinese": "只向模型提供这些工具（白名单）；未设置时提供该服务器的全部工具。",
       "category": "apps",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "plugins.<name>.mcp_servers.<name>.tools",
@@ -10102,6 +10466,32 @@
       "platforms": []
     },
     {
+      "path": "plugins._default",
+      "kind": "table",
+      "types": [
+        "object"
+      ],
+      "description": "Defaults for installed plugin activation. Omission preserves source enablement. Explicit plugin enablement settings override this default, but cannot enable an installation disabled by its source.",
+      "name": "插件默认启用状态",
+      "chinese": "已安装插件的默认启用设置（Codex 0.163 起）。未设置时保持插件来源和账号原有的启用状态；单个插件的 `enabled` 优先，但不能启用被安装来源停用的插件。",
+      "category": "apps",
+      "common": false,
+      "platforms": []
+    },
+    {
+      "path": "plugins._default.enabled",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "default": true,
+      "name": "默认启用插件",
+      "chinese": "已安装插件是否默认启用，默认 `true`；设为 `false` 时只有单独设置了 `enabled = true` 的插件才会生效。",
+      "category": "apps",
+      "common": false,
+      "platforms": []
+    },
+    {
       "path": "profile",
       "kind": "string",
       "types": [
@@ -10139,7 +10529,10 @@
       "chinese": "目录中没有 `AGENTS.override.md` 或 `AGENTS.md` 时，按顺序尝试的备用文件名。只能写文件名，不能包含路径；默认为空列表。",
       "category": "context",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "project_doc_max_bytes",
@@ -10167,7 +10560,10 @@
       "chinese": "向上查找父目录时用来识别项目根目录的标记，未设置时为 `.git`。项目根决定从哪一级开始读取 `.codex` 配置目录和 `AGENTS.md`；设为空列表则不再向上查找。",
       "category": "context",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "projects",
@@ -10533,7 +10929,10 @@
       "chinese": "除当前工作区外额外允许写入的目录列表，须为绝对路径。",
       "category": "approvals",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "service_tier",
@@ -10571,7 +10970,10 @@
       "chinese": "旧写法：要从环境中移除的变量名模式列表。模式实际按通配符匹配（支持 `*` 和 `?`，不区分大小写），不是正则表达式；不能与 `filters` 同时使用。",
       "category": "approvals",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "shell_environment_policy.experimental_use_profile",
@@ -10641,7 +11043,10 @@
       "chinese": "旧写法：非空时只保留名称匹配这些模式的变量（`*`、`?` 通配，不区分大小写），在应用 `set` 之后执行；不能与 `filters` 同时使用。",
       "category": "approvals",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "shell_environment_policy.inherit",
@@ -10754,7 +11159,10 @@
       "chinese": "按顺序排列的技能开关规则，每项用 `path`（SKILL.md 的绝对路径）或 `name` 选中技能，再用 `enabled` 启用或停用，后面的规则覆盖前面的。在界面中开关技能时由 Codex 写入。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "skills.include_instructions",
@@ -10861,7 +11269,10 @@
       "chinese": "不再建议安装的应用连接器或插件列表，每项包含 `type`（`connector` 或 `plugin`）和 `id`。用户在建议提示中选择不再提示时由 Codex 追加，各配置层的列表会合并。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "tool_suggest.discoverables",
@@ -10874,7 +11285,10 @@
       "chinese": "额外允许模型建议安装的应用连接器或插件列表，每项包含 `type`（`connector` 或 `plugin`）和 `id`；同时出现在 `disabled_tools` 中的项目不会被建议。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "object"
+      ]
     },
     {
       "path": "tools",
@@ -10961,7 +11375,10 @@
       "chinese": "只在这些域名内搜索的域名列表（如 `docs.python.org`），作为过滤条件随搜索请求发送；未设置时不限制。",
       "category": "tools",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tools.web_search.context_size",
@@ -11351,7 +11768,10 @@
       "chinese": "确认后归档选中的任务及其子代理。默认 `a`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.agents.delete",
@@ -11365,7 +11785,10 @@
       "chinese": "确认后永久删除选中的任务及其子代理。默认 `backspace`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.agents.fork",
@@ -11379,7 +11802,10 @@
       "chinese": "分叉（fork）选中的对话并打开得到的新会话。默认 `f`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.agents.hide",
@@ -11393,7 +11819,10 @@
       "chinese": "在总览中隐藏选中的任务，直到再次显式恢复它或重启 TUI。默认 `h`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.agents.new_task",
@@ -11407,7 +11836,10 @@
       "chinese": "在选中任务所在的代码检出目录中新开一个会话。默认 `n`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.agents.new_worktree",
@@ -11421,7 +11853,10 @@
       "chinese": "从项目默认分支新建一个 Git 工作树（worktree），并在其中打开新会话。默认 `w`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.agents.rename",
@@ -11435,7 +11870,10 @@
       "chinese": "重命名选中的任务。默认 `r`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.agents.resume",
@@ -11449,7 +11887,10 @@
       "chinese": "打开会话恢复选择器，挑选要继续的历史会话。默认 `o`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.agents.search",
@@ -11463,7 +11904,10 @@
       "chinese": "在可用的代理任务中搜索。默认 `f3` 或 `/`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.agents.stop",
@@ -11477,7 +11921,10 @@
       "chinese": "停止选中的、正在运行的任务。默认 `x`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.agents.toggle_grouping",
@@ -11491,7 +11938,10 @@
       "chinese": "切换任务的分组方式（如按状态或按项目），所选分组会保存到 `tui.agents_overview_grouping`。默认 `g`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.agents.toggle_pin",
@@ -11505,7 +11955,10 @@
       "chinese": "在共享侧边栏区域中置顶或取消置顶选中的任务。默认 `p`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.approval",
@@ -11531,7 +11984,10 @@
       "chinese": "选择主选项（“是，继续”），批准本次请求。默认 `y`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.approval.approve_for_prefix",
@@ -11545,7 +12001,10 @@
       "chinese": "存在该选项时，批准并把命令前缀写入执行策略（exec policy），以后以相同前缀开头的命令不再询问；网络访问审批中对应“以后允许此主机”。默认 `p`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.approval.approve_for_session",
@@ -11559,7 +12018,10 @@
       "chinese": "存在该选项时，在本会话内批准：同一命令、同一批文件或同一组权限在本会话中不再询问。默认 `a`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.approval.cancel",
@@ -11573,7 +12035,10 @@
       "chinese": "取消 MCP 服务器发起的信息征询（elicitation）请求；无论如何设置，`esc` 始终也能取消。默认 `c`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.approval.decline",
@@ -11587,7 +12052,10 @@
       "chinese": "拒绝请求并停下来，让用户告诉 Codex 应该怎么换种做法（“否，并告诉 Codex 怎么做”）。默认 `esc` 或 `n`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.approval.deny",
@@ -11601,7 +12069,10 @@
       "chinese": "拒绝请求但不给出后续指示，代理跳过该操作继续工作（如“否，不运行并继续”）。默认 `d`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.approval.open_fullscreen",
@@ -11615,7 +12086,10 @@
       "chinese": "打开全屏的审批详情视图，查看完整的命令或改动。默认 `ctrl-a`，也接受 `ctrl-shift-a`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.approval.open_thread",
@@ -11629,7 +12103,10 @@
       "chinese": "当审批请求来自另一个会话（如子代理）时，跳转到发起该请求的会话。默认 `o`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.chat",
@@ -11655,7 +12132,10 @@
       "chinese": "把当前推理强度调低一档。默认 `alt-,` 或 `shift-down`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.chat.edit_queued_message",
@@ -11669,7 +12149,10 @@
       "chinese": "先向上浏览待回答的异步问题，再编辑最近一条排队待发送的消息。默认 `shift-left` 或 `alt-up`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.chat.increase_reasoning_effort",
@@ -11683,7 +12166,10 @@
       "chinese": "把当前推理强度调高一档。默认 `alt-.` 或 `shift-up`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.chat.interrupt_turn",
@@ -11697,7 +12183,10 @@
       "chinese": "中断正在进行的轮次，让代理停止当前工作。默认 `esc`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.chat.next_permission_mode",
@@ -11711,7 +12200,10 @@
       "chinese": "切换到下一个可用的权限模式（审批与沙箱的组合预设）。默认未绑定按键。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.chat.open_presets",
@@ -11725,7 +12217,10 @@
       "chinese": "打开已保存的提示词和斜杠命令（`[tui.presets]`）菜单。默认 `leader p`（按前导键后再按 `p`），该组合已被其他绑定占用时不设默认。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.chat.previous_permission_mode",
@@ -11739,7 +12234,10 @@
       "chinese": "切换到上一个可用的权限模式（审批与沙箱的组合预设）。默认未绑定按键。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.chat.prompt_stack_back",
@@ -11753,7 +12251,10 @@
       "chinese": "在待回答的异步问题之间往回移动，直到回到输入框。默认 `shift-right` 或 `alt-down`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.chat.skip_question",
@@ -11767,7 +12268,10 @@
       "chinese": "跳过当前聚焦的问题。默认 `ctrl-]`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.chat.toggle_voice",
@@ -11781,7 +12285,10 @@
       "chinese": "开始或结束实时语音对话。默认 `f8`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.chat.toggle_voice_mute",
@@ -11795,7 +12302,10 @@
       "chinese": "在进行中的实时语音对话里开关麦克风。默认 `f9`；若 `f9` 已被其他快捷键占用，则不使用默认值。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.composer",
@@ -11821,7 +12331,10 @@
       "chinese": "在反向历史搜索中跳到下一个匹配项。默认 `ctrl-s`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.composer.history_search_previous",
@@ -11835,7 +12348,10 @@
       "chinese": "打开对已发送提示词的反向历史搜索，或跳到上一个匹配项。默认 `ctrl-r`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.composer.queue",
@@ -11849,7 +12365,10 @@
       "chinese": "任务运行期间把当前草稿加入待发送队列，等当前轮次结束后再发出。默认 `tab`，优先于 `global.queue`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.composer.submit",
@@ -11863,7 +12382,10 @@
       "chinese": "提交输入框中的当前草稿。默认 `enter`，优先于 `global.submit`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.composer.toggle_shortcuts",
@@ -11877,7 +12399,10 @@
       "chinese": "显示或隐藏输入框的快捷键提示浮层。默认 `?`，优先于 `global.toggle_shortcuts`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor",
@@ -11903,7 +12428,10 @@
       "chinese": "删除光标左侧的一个字符（字形簇）。默认 `backspace`、`shift-backspace` 或 `ctrl-h`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor.delete_backward_word",
@@ -11917,7 +12445,10 @@
       "chinese": "删除光标前的一个词。默认包括 `alt-backspace`、`ctrl-backspace`、`ctrl-w` 等。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor.delete_forward",
@@ -11931,7 +12462,10 @@
       "chinese": "删除光标右侧的一个字符（字形簇）。默认 `delete`、`shift-delete` 或 `ctrl-d`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor.delete_forward_word",
@@ -11945,7 +12479,10 @@
       "chinese": "删除光标后的一个词。默认包括 `alt-delete`、`ctrl-delete`、`alt-d` 等。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor.insert_newline",
@@ -11959,7 +12496,10 @@
       "chinese": "在编辑区中插入换行而不提交。默认包括 `ctrl-j`、`shift-enter`、`alt-enter` 等。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor.kill_line_end",
@@ -11973,7 +12513,10 @@
       "chinese": "把光标到行尾的文本剪切到剪切缓冲区（kill buffer），之后可用 `yank` 粘回。默认 `ctrl-k`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor.kill_line_start",
@@ -11987,7 +12530,10 @@
       "chinese": "把光标到行首的文本剪切到剪切缓冲区。默认 `ctrl-u`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor.kill_whole_line",
@@ -12001,7 +12547,10 @@
       "chinese": "把当前整行剪切到剪切缓冲区。默认未绑定按键。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor.move_down",
@@ -12015,7 +12564,10 @@
       "chinese": "把光标下移一个显示行（自动换行后的视觉行）。默认 `down` 或 `ctrl-n`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor.move_left",
@@ -12029,7 +12581,10 @@
       "chinese": "把光标左移一个字符（字形簇）。默认 `left` 或 `ctrl-b`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor.move_line_end",
@@ -12043,7 +12598,10 @@
       "chinese": "把光标移到行尾。默认 `end` 或 `ctrl-e`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor.move_line_start",
@@ -12057,7 +12615,10 @@
       "chinese": "把光标移到行首。默认 `home` 或 `ctrl-a`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor.move_right",
@@ -12071,7 +12632,10 @@
       "chinese": "把光标右移一个字符（字形簇）。默认 `right` 或 `ctrl-f`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor.move_up",
@@ -12085,7 +12649,10 @@
       "chinese": "把光标上移一个显示行（自动换行后的视觉行）。默认 `up` 或 `ctrl-p`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor.move_word_left",
@@ -12099,7 +12666,10 @@
       "chinese": "把光标移到前一个词的开头。默认 `alt-b`、`alt-left` 或 `ctrl-left`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor.move_word_right",
@@ -12113,7 +12683,10 @@
       "chinese": "把光标移到下一个词的末尾。默认 `alt-f`、`alt-right` 或 `ctrl-right`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.editor.yank",
@@ -12127,7 +12700,10 @@
       "chinese": "把剪切缓冲区（kill buffer）中的文本粘贴到光标处。默认 `ctrl-y`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.global",
@@ -12153,7 +12729,10 @@
       "chinese": "清空并重绘终端界面。默认 `ctrl-l`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.global.copy",
@@ -12167,7 +12746,10 @@
       "chinese": "把代理的最近一条回复复制到剪贴板。默认 `ctrl-o`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.global.find_transcript",
@@ -12181,7 +12763,10 @@
       "chinese": "在完整的对话记录中搜索文本。默认 `f3`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.global.focus_activity",
@@ -12195,7 +12780,10 @@
       "chinese": "在 Codex 接管的全屏对话记录中聚焦到活动分组，以便查看其详情。默认 `f4`；该键已被自定义绑定占用时不使用默认值。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.global.leader",
@@ -12209,7 +12797,10 @@
       "chinese": "前导键（leader）：按下后弹出随上下文变化的快捷菜单，其他动作可绑定成 `leader c` 这样的形式。默认 `ctrl-x`（`ctrl-x` 已被其他绑定占用时不设默认）；每个绑定只能是单个按键（不能是按键序列，可列出多个备选），且须带 `ctrl`/`alt` 或为非字符键。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.global.open_agents",
@@ -12223,7 +12814,10 @@
       "chinese": "打开共享的代理会话总览（Agent Command Center），在其中查看和管理各个任务。默认未绑定按键。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.global.open_external_editor",
@@ -12237,7 +12831,10 @@
       "chinese": "用外部编辑器（优先 `$VISUAL`，其次 `$EDITOR`）编辑当前草稿，保存退出后内容回填到输入框。默认 `ctrl-g`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.global.open_transcript",
@@ -12251,7 +12848,10 @@
       "chinese": "打开对话记录浮层，浏览完整对话。默认 `ctrl-t`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.global.queue",
@@ -12265,7 +12865,26 @@
       "chinese": "任务运行期间把当前草稿加入待发送队列。这是全局后备绑定，设置了 `composer.queue` 时以后者为准；内置默认 `tab`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
+    },
+    {
+      "path": "tui.keymap.global.select_transcript",
+      "kind": "union",
+      "types": [
+        "array",
+        "string"
+      ],
+      "name": "选择终端会话文本快捷键",
+      "chinese": "终端会话文本选择操作的全局快捷键，支持单键或按键列表。",
+      "category": "interface",
+      "common": false,
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.global.submit",
@@ -12279,7 +12898,10 @@
       "chinese": "提交输入框中的当前草稿。这是全局后备绑定，设置了 `composer.submit` 时以后者为准；内置默认 `enter`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.global.toggle_fast_mode",
@@ -12293,7 +12915,10 @@
       "chinese": "开关 Fast 模式（Fast 服务档）。默认未绑定按键。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.global.toggle_raw_output",
@@ -12307,7 +12932,10 @@
       "chinese": "开关原始滚动输出模式，让对话记录便于在终端里直接选择复制，作用同 `/raw`。默认 `alt-r`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.global.toggle_shortcuts",
@@ -12321,7 +12949,10 @@
       "chinese": "显示或隐藏输入框的快捷键提示浮层。这是全局后备绑定，设置了 `composer.toggle_shortcuts` 时以后者为准；内置默认 `?`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.global.toggle_side_conversation",
@@ -12335,7 +12966,10 @@
       "chinese": "在旁支对话（用 `/side` 开启的临时分叉会话）与其主会话之间来回切换，两者都不会关闭。默认 `ctrl-/`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.global.toggle_vim_mode",
@@ -12349,7 +12983,10 @@
       "chinese": "开关输入框的 Vim 编辑模式，作用同 `/vim`。默认未绑定按键。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.list",
@@ -12375,7 +13012,10 @@
       "chinese": "确认当前选中的项。默认 `enter`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.list.cancel",
@@ -12389,7 +13029,10 @@
       "chinese": "取消并关闭选择视图。默认 `esc`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.list.jump_bottom",
@@ -12403,7 +13046,10 @@
       "chinese": "跳到列表的最后一项。默认 `end`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.list.jump_top",
@@ -12417,7 +13063,10 @@
       "chinese": "跳到列表的第一项。默认 `home`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.list.move_down",
@@ -12431,7 +13080,10 @@
       "chinese": "把选中项下移一项。默认包括 `down`、`ctrl-n`、`ctrl-j` 和 `j`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.list.move_left",
@@ -12445,7 +13097,10 @@
       "chinese": "在支持横向操作的列表选择器中向左移动。默认 `left` 或 `ctrl-h`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.list.move_right",
@@ -12459,7 +13114,10 @@
       "chinese": "在支持横向操作的列表选择器中向右移动。默认 `right` 或 `ctrl-l`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.list.move_up",
@@ -12473,7 +13131,10 @@
       "chinese": "把选中项上移一项。默认包括 `up`、`ctrl-p`、`ctrl-k` 和 `k`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.list.page_down",
@@ -12487,7 +13148,10 @@
       "chinese": "把选中项向下移动一页。默认 `page-down` 或 `ctrl-f`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.list.page_up",
@@ -12501,7 +13165,10 @@
       "chinese": "把选中项向上移动一页。默认 `page-up` 或 `ctrl-b`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.pager",
@@ -12527,7 +13194,10 @@
       "chinese": "关闭分页浮层。默认 `q` 或 `ctrl-c`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.pager.close_transcript",
@@ -12541,7 +13211,10 @@
       "chinese": "用对话记录专用的切换键关闭对话记录浮层。默认 `ctrl-t`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.pager.find",
@@ -12555,7 +13228,10 @@
       "chinese": "在对话记录分页浮层中查找文本。默认 `f3` 或 `/`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.pager.half_page_down",
@@ -12569,7 +13245,10 @@
       "chinese": "向下滚动半页。默认 `ctrl-d`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.pager.half_page_up",
@@ -12583,7 +13262,10 @@
       "chinese": "向上滚动半页。默认 `ctrl-u`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.pager.jump_bottom",
@@ -12597,7 +13279,10 @@
       "chinese": "跳到内容末尾。默认 `end`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.pager.jump_top",
@@ -12611,7 +13296,10 @@
       "chinese": "跳到内容开头。默认 `home`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.pager.page_down",
@@ -12625,7 +13313,10 @@
       "chinese": "向下滚动一页。默认 `page-down`、`space` 或 `ctrl-f`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.pager.page_up",
@@ -12639,7 +13330,10 @@
       "chinese": "向上滚动一页。默认 `page-up`、`shift-space` 或 `ctrl-b`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.pager.scroll_down",
@@ -12653,7 +13347,10 @@
       "chinese": "向下滚动一行。默认 `down` 或 `j`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.pager.scroll_up",
@@ -12667,7 +13364,10 @@
       "chinese": "向上滚动一行。默认 `up` 或 `k`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal",
@@ -12693,7 +13393,10 @@
       "chinese": "在光标之后进入插入模式（Vim 的 `a`）。默认 `a`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.append_line_end",
@@ -12707,7 +13410,10 @@
       "chinese": "在行尾进入插入模式（Vim 的 `A`）。默认 `shift-a`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.cancel_operator",
@@ -12721,7 +13427,10 @@
       "chinese": "取消尚未完成的操作符（如已按下 `d` 还没选动作），回到普通模式。默认 `esc`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.change_to_line_end",
@@ -12735,7 +13444,10 @@
       "chinese": "删除从光标到行尾的内容并进入插入模式（Vim 的 `C`）。默认 `shift-c`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.delete_char",
@@ -12749,7 +13461,10 @@
       "chinese": "删除光标下的字符（Vim 的 `x`）。默认 `x`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.delete_to_line_end",
@@ -12763,7 +13478,10 @@
       "chinese": "删除从光标到行尾的内容（Vim 的 `D`）。默认 `shift-d`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.enter_insert",
@@ -12777,7 +13495,10 @@
       "chinese": "在光标处进入插入模式（Vim 的 `i`）。默认 `i`，也可用 Insert 键。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.enter_replace_mode",
@@ -12791,7 +13512,10 @@
       "chinese": "进入替换模式，输入的字符逐个覆盖光标下的字符（Vim 的 `R`）。默认 `shift-r`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.find_backward",
@@ -12805,7 +13529,10 @@
       "chinese": "在当前行向左查找下一个输入的字符并跳到该处（Vim 的 `F`）。默认 `shift-f`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.find_forward",
@@ -12819,7 +13546,10 @@
       "chinese": "在当前行向右查找下一个输入的字符并跳到该处（Vim 的 `f`）。默认 `f`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.insert_line_start",
@@ -12833,7 +13563,10 @@
       "chinese": "在本行第一个非空白字符处进入插入模式（Vim 的 `I`）。默认 `shift-i`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.jump_bottom",
@@ -12847,7 +13580,10 @@
       "chinese": "跳到缓冲区的最后一行（Vim 的 `G`）。默认 `shift-g`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.jump_top",
@@ -12861,7 +13597,10 @@
       "chinese": "跳到缓冲区的第一行。默认是两段组合键 `g g`（即 Vim 的 `gg`），也可改绑为单个按键。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.move_down",
@@ -12875,7 +13614,10 @@
       "chinese": "光标下移一行（Vim 的 `j`）；已在边界时改为调出较新的输入历史。默认 `j` 或 `down`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.move_left",
@@ -12889,7 +13631,10 @@
       "chinese": "光标左移一个字符（Vim 的 `h`）。默认 `h` 或 `left`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.move_line_end",
@@ -12903,7 +13648,10 @@
       "chinese": "把光标移到行尾（Vim 的 `$`）。默认 `$`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.move_line_start",
@@ -12917,7 +13665,10 @@
       "chinese": "把光标移到行首（Vim 的 `0`）。默认 `0`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.move_right",
@@ -12931,7 +13682,10 @@
       "chinese": "光标右移一个字符（Vim 的 `l`）。默认 `l` 或 `right`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.move_up",
@@ -12945,7 +13699,10 @@
       "chinese": "光标上移一行（Vim 的 `k`）；已在边界时改为调出较早的输入历史。默认 `k` 或 `up`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.move_word_backward",
@@ -12959,7 +13716,10 @@
       "chinese": "把光标移到前一个词的开头（Vim 的 `b`）。默认 `b`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.move_word_end",
@@ -12973,7 +13733,10 @@
       "chinese": "把光标移到当前或下一个词的末尾（Vim 的 `e`）。默认 `e`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.move_word_forward",
@@ -12987,7 +13750,10 @@
       "chinese": "把光标移到下一个词的开头（Vim 的 `w`）。默认 `w`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.open_line_above",
@@ -13001,7 +13767,10 @@
       "chinese": "在当前行上方新开一行并进入插入模式（Vim 的 `O`）。默认 `shift-o`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.open_line_below",
@@ -13015,7 +13784,10 @@
       "chinese": "在当前行下方新开一行并进入插入模式（Vim 的 `o`）。默认 `o`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.paste_after",
@@ -13029,7 +13801,10 @@
       "chinese": "把已复制（yank）的内容粘贴到光标之后（Vim 的 `p`）。默认 `p`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.redo",
@@ -13043,7 +13818,10 @@
       "chinese": "重做上一次被撤销的编辑（Vim 的 `ctrl-r`）。默认 `ctrl-r`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.repeat_last_change",
@@ -13057,7 +13835,10 @@
       "chinese": "重复上一次完整的编辑操作（Vim 的 `.`）。默认 `.`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.replace_char",
@@ -13071,7 +13852,10 @@
       "chinese": "用下一个输入的字符替换光标下的字符（Vim 的 `r`）。默认 `r`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.start_change_operator",
@@ -13085,7 +13869,10 @@
       "chinese": "开始修改（change）操作符，随后的按键选择文本对象（如 `ciw`），所选内容被删除后进入插入模式（Vim 的 `c`）。默认 `c`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.start_delete_operator",
@@ -13099,7 +13886,10 @@
       "chinese": "开始删除操作符，下一个按键选择动作范围（Vim 的 `d`）。默认 `d`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.start_yank_operator",
@@ -13113,7 +13903,10 @@
       "chinese": "开始复制（yank）操作符，下一个按键选择动作范围（Vim 的 `y`）。默认 `y`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.substitute_char",
@@ -13127,7 +13920,10 @@
       "chinese": "删除光标下的字符并进入插入模式（Vim 的 `s`）。默认 `s`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.till_backward",
@@ -13141,7 +13937,10 @@
       "chinese": "在当前行向左查找下一个输入的字符，停在它的后一位（Vim 的 `T`）。默认 `shift-t`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.till_forward",
@@ -13155,7 +13954,10 @@
       "chinese": "在当前行向右查找下一个输入的字符，停在它的前一位（Vim 的 `t`）。默认 `t`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.undo",
@@ -13169,7 +13971,10 @@
       "chinese": "撤销上一次完整的编辑（Vim 的 `u`）。默认 `u`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_normal.yank_line",
@@ -13183,7 +13988,10 @@
       "chinese": "复制（yank）整行（Vim 的 `Y`）。默认 `shift-y`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator",
@@ -13209,7 +14017,10 @@
       "chinese": "取消待定的操作符并回到普通模式。默认 `esc`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.delete_line",
@@ -13223,7 +14034,10 @@
       "chinese": "再按一次删除操作符键以删除整行（Vim 的 `dd`）。默认 `d`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.motion_down",
@@ -13237,7 +14051,10 @@
       "chinese": "作为操作符的动作范围：向下一行（Vim 的 `j`）。默认 `j`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.motion_find_backward",
@@ -13251,7 +14068,10 @@
       "chinese": "作为操作符的动作范围：到当前行左侧的下一个指定字符（Vim 的 `F`）。默认 `shift-f`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.motion_find_forward",
@@ -13265,7 +14085,10 @@
       "chinese": "作为操作符的动作范围：到当前行右侧的下一个指定字符（Vim 的 `f`）。默认 `f`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.motion_jump_bottom",
@@ -13279,7 +14102,10 @@
       "chinese": "作为操作符的动作范围：到缓冲区最后一行（Vim 的 `G`）。默认 `shift-g`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.motion_jump_top",
@@ -13293,7 +14119,10 @@
       "chinese": "作为操作符的动作范围：到缓冲区第一行。默认是两段组合键 `g g`（即 Vim 的 `gg`），也可改绑为单个按键。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.motion_left",
@@ -13307,7 +14136,10 @@
       "chinese": "作为操作符的动作范围：向左一个字符（Vim 的 `h`）。默认 `h`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.motion_line_end",
@@ -13321,7 +14153,10 @@
       "chinese": "作为操作符的动作范围：到行尾（Vim 的 `$`）。默认 `$`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.motion_line_start",
@@ -13335,7 +14170,10 @@
       "chinese": "作为操作符的动作范围：到行首（Vim 的 `0`）。默认 `0`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.motion_right",
@@ -13349,7 +14187,10 @@
       "chinese": "作为操作符的动作范围：向右一个字符（Vim 的 `l`）。默认 `l`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.motion_till_backward",
@@ -13363,7 +14204,10 @@
       "chinese": "作为操作符的动作范围：到当前行左侧指定字符的后一位（Vim 的 `T`）。默认 `shift-t`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.motion_till_forward",
@@ -13377,7 +14221,10 @@
       "chinese": "作为操作符的动作范围：到当前行右侧指定字符的前一位（Vim 的 `t`）。默认 `t`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.motion_up",
@@ -13391,7 +14238,10 @@
       "chinese": "作为操作符的动作范围：向上一行（Vim 的 `k`）。默认 `k`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.motion_word_backward",
@@ -13405,7 +14255,10 @@
       "chinese": "作为操作符的动作范围：到前一个词的开头（Vim 的 `b`）。默认 `b`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.motion_word_end",
@@ -13419,7 +14272,10 @@
       "chinese": "作为操作符的动作范围：到当前或下一个词的末尾（Vim 的 `e`）。默认 `e`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.motion_word_forward",
@@ -13433,7 +14289,10 @@
       "chinese": "作为操作符的动作范围：到下一个词的开头（Vim 的 `w`）。默认 `w`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.select_around_text_object",
@@ -13447,7 +14306,10 @@
       "chinese": "在操作符之后选择包含边界的文本对象（Vim 的 `a`，如 `daw`、`da(`）。默认 `a`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.select_inner_text_object",
@@ -13461,7 +14323,10 @@
       "chinese": "在操作符之后选择不含边界的文本对象（Vim 的 `i`，如 `diw`、`ci(`）。默认 `i`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_operator.yank_line",
@@ -13475,7 +14340,10 @@
       "chinese": "再按一次复制操作符键以复制整行（Vim 的 `yy`）。默认 `y`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_search",
@@ -13501,7 +14369,10 @@
       "chinese": "在当前缓冲区中朝文本开头方向搜索（Vim 的 `?`）。默认 `?`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_search.forward",
@@ -13515,7 +14386,10 @@
       "chinese": "在当前缓冲区中朝文本末尾方向搜索（Vim 的 `/`）。默认 `/`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_search.next",
@@ -13529,7 +14403,10 @@
       "chinese": "按原方向重复上一次已确认的搜索（Vim 的 `n`）。默认 `n`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_search.previous",
@@ -13543,7 +14420,10 @@
       "chinese": "按相反方向重复上一次搜索（Vim 的 `N`）。默认 `shift-n`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_text_object",
@@ -13569,7 +14449,10 @@
       "chinese": "文本对象：一对反引号包围的内容。默认为反引号键。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_text_object.big_word",
@@ -13583,7 +14466,10 @@
       "chinese": "文本对象：以空白分隔的 WORD（可含标点）。默认 `shift-w`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_text_object.braces",
@@ -13597,7 +14483,10 @@
       "chinese": "文本对象：一对花括号 `{}` 包围的内容。默认 `{`、`}` 或 `shift-b`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_text_object.brackets",
@@ -13611,7 +14500,10 @@
       "chinese": "文本对象：一对方括号 `[]` 包围的内容。默认 `[` 或 `]`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_text_object.cancel",
@@ -13625,7 +14517,10 @@
       "chinese": "取消尚未完成的文本对象命令。默认 `esc`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_text_object.double_quote",
@@ -13639,7 +14534,10 @@
       "chinese": "文本对象：一对英文双引号包围的内容。默认为双引号键。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_text_object.parentheses",
@@ -13653,7 +14551,10 @@
       "chinese": "文本对象：一对圆括号 `()` 包围的内容。默认 `(`、`)` 或 `b`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_text_object.single_quote",
@@ -13667,7 +14568,10 @@
       "chinese": "文本对象：一对英文单引号包围的内容。默认为单引号键。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.keymap.vim_text_object.word",
@@ -13681,7 +14585,10 @@
       "chinese": "文本对象：一个词（word）。默认 `w`。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.model_availability_nux",
@@ -13784,7 +14691,10 @@
       "chinese": "是否从 TUI 发送桌面通知，默认 `true`。也可写成事件类型列表，只为列出的事件发通知：`agent-turn-complete`（轮次完成）、`approval-requested`（请求审批）、`plan-mode-prompt`（计划模式提问）、`async-question`（异步问题）。",
       "category": "interface",
       "common": true,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.pet",
@@ -14101,7 +15011,10 @@
       "chinese": "状态栏要显示的项目 ID 列表（按顺序）。未设置时默认为 `model-with-reasoning`、`current-dir` 和 `thread-name`；可选项目还有 Git 分支、上下文用量、限额剩余等，可用 `/statusline` 命令交互配置。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.status_line_use_colors",
@@ -14142,7 +15055,10 @@
       "chinese": "写入终端窗口/标签标题的项目 ID 列表（按顺序）。未设置时默认为 `activity`、`thread-name` 和 `project-name`；其中 `activity` 在工作时显示转动指示，等待用户操作时显示提醒。可用 `/title` 命令交互配置。",
       "category": "interface",
       "common": false,
-      "platforms": []
+      "platforms": [],
+      "item_types": [
+        "string"
+      ]
     },
     {
       "path": "tui.theme",
@@ -14253,5 +15169,12 @@
         "windows"
       ]
     }
-  ]
+  ],
+  "provenance": {
+    "source": "https://learn.chatgpt.com/docs/config-schema.json",
+    "retrieved_at": "2026-11-02",
+    "sha256": "211bec2282459fcd70e4905af948721177b6ec7a03e0df84cd8b7c131006a6ca",
+    "verified_runtime": "codex-cli 0.166.0-alpha.5.1",
+    "defaults_scope": "Reference values for the verified runtime; not effective session values."
+  }
 }

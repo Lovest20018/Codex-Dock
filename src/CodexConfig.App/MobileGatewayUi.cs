@@ -79,6 +79,11 @@ public partial class MainWindow
         runtime.Children.Add(controls);
         runtime.Children.Add(OverviewText("关闭或退出 Dock 后服务继续运行；点击“停止”才停用手机访问。重启 Windows 后，打开此页并点击“启动”。", "Muted", 12));
         MobileBody.Children.Add(OverviewSurface(runtime, new(0, 0, 0, 16)));
+        var notifications = new StackPanel(); notifications.Children.Add(OverviewText("任务完成提醒", size: 18));
+        notifications.Children.Add(OverviewText("先在手机工作台的“聊天与通知”中选择需要的完成提醒；单条聊天也可单独覆盖。", "Muted", 13));
+        notifications.Children.Add(OverviewText("安卓：在 App 设置中按需开启任务通知并允许系统通知权限。离开 App 后仍需提醒时，再开启后台通知；后台常驻会增加耗电。可先使用“测试通知”检查本机权限，测试通过不代表远程通知已接通。", "Muted", 13));
+        notifications.Children.Add(OverviewText("浏览器、安卓和当前网关分别保存各自设置；本页只提供引导，不会自动修改或发送通知。", "Muted", 12));
+        MobileBody.Children.Add(OverviewSurface(notifications, new(0, 0, 0, 16)));
 
         var pairing = new StackPanel(); pairing.Children.Add(OverviewText("安卓扫码登录", size: 18));
         pairing.Children.Add(OverviewText("使用上游 Codex Mobile Bridge 安卓 App 添加电脑并扫码，也可手动填写上方域名后用账号密码登录。", "Muted", 13));

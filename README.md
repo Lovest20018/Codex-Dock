@@ -10,17 +10,19 @@
 
 ## 当前状态
 
-截至 2026-10-31，本仓库的版本为：
+截至 2026-11-02，本仓库的版本为：
 
 | 组件 | 稳定版本 | 当前内容 |
 | --- | --- | --- |
-| Windows Codex Dock | **0.15.1** | 配置与账号、可选模型网关、手机网关、两个网关的常驻状态与托盘控制。 |
+| Windows Codex Dock | **0.16.0** | 配置实例、来源与 profile、组合校验、模型能力选项、压缩和连接耗时诊断，以及原有账号与网关管理。 |
 | Web / 手机工作台 | 随 Windows 版本提供 | Codex 聊天、审批、文件、Git、终端、通知及本机接入管理。 |
 | Android Lovest Code | **0.2.2** / versionCode 5 | 聊天／电脑／我的导航，恢复上次聊天，保留草稿，独立设置；文字输入区保持展开。 |
 
-GitHub Actions 从同一提交自动构建 Windows **0.15.1** 与 Android **0.2.2**，完成 Windows 安装验证、安卓签名与源码校验后，提供安装包、源码和 SHA-256 清单。手动运行默认只打包，在成功运行的 **Artifacts** 中下载 `windows-release` 与 `android-release`；发布标签或明确选择公开发布时，才将双端附件放入同一个稳定 Release。公开版本以 [Release 页面](https://github.com/Lovest20018/Codex-Dock/releases) 为准，维护方式见 [自动发布说明](docs/github-releases.md)。
+GitHub Actions 从同一提交自动构建 Windows **0.16.0** 与 Android **0.2.2**，完成 Windows 安装验证、安卓签名与源码校验后，提供安装包、源码和 SHA-256 清单。手动运行默认只打包，在成功运行的 **Artifacts** 中下载 `windows-release` 与 `android-release`；发布标签或明确选择公开发布时，才将双端附件放入同一个稳定 Release。公开版本以 [Release 页面](https://github.com/Lovest20018/Codex-Dock/releases) 为准，维护方式见 [自动发布说明](docs/github-releases.md)。
 
 Web / 手机工作台复用固定的 Codex Mobile Bridge 2.1.7 快照，并通过显式覆盖和自有适配提供 Codex 范围的功能。上游来源、许可与维护方式见 [UPSTREAM](src/CodexMobile/UPSTREAM.md)。
+
+0.16.0 完成三批配置优化：配置目录更新、组合校验、已配置实例、配置来源、独立 profile，以及压缩与连接耗时诊断。使用入口和验证边界见 [实施记录](docs/configuration-implementation-2026-11-02.md)。
 
 ## 可以做什么
 
@@ -61,6 +63,10 @@ Lovest Code 沿用本项目安卓包名、签名与 Logo，可覆盖升级已交
 选择 **官方账号 + 独立模型入口** 时，先检测已有文件凭据或使用 **ChatGPT 登录**，再保存模型入口。登录结果先暂存，保存后才写入当前目录并启动模型网关。该模式保留原生官方身份，为模型请求替换独立凭据；服务失败时不会自动使用官方额度。
 
 此模式要求文件凭据，不会自动转换 `keyring` / `auto`。网关支持 HTTP / SSE、压缩请求和 WebSocket 转发，是否可用取决于上游服务；完整能力和真实线路验证边界见 [0.12.0 审查](docs/review-0.12.0.md)。
+
+新增配置功能位于 **全部配置**：选择 **已配置** 可直接编辑实际 MCP / 供应商名称；**更多选项** 可添加结构化实例。展开 **来源与 profile**，选择本机执行端和项目目录后读取文件值、执行端值及配置层；此快照不包含现有聊天参数和未保存草稿。**管理 Profile 文件** 独立保存 `<名称>.config.toml`，通过 `codex --profile <名称>` 选择。当前核查内核的 app-server 不支持读取指定 profile 的来源，界面会明确显示未确认。
+
+**配置模板** 提供日常 high / 复杂任务 xhigh，只修改所选推理强度。混合连接的模型网关状态区分别显示压缩请求、返回条目和确认完成次数，并提供队列与传输耗时；指标只覆盖经该网关的当前进程流量。
 
 ## 连接手机
 
@@ -109,6 +115,6 @@ Windows 使用 C# / .NET 8 / WPF；手机服务使用 Python 3.12；安卓壳使
 | `src/CodexAndroid` | Lovest Code 自有原生壳、资源和页面适配。 |
 | `tests`、`scripts` | 隔离回归、构建、完整性检查与发布包验证。 |
 
-[Windows 0.15.1](docs/release-0.15.1.md) · [Android 0.2.2](docs/release-android-0.2.2.md) · [手机功能对照](docs/mobile-upstream-comparison.md) · [GitHub 发布约定](docs/github-releases.md)
+[Windows 0.16.0](docs/release-0.16.0.md) · [Android 0.2.2](docs/release-android-0.2.2.md) · [手机功能对照](docs/mobile-upstream-comparison.md) · [GitHub 发布约定](docs/github-releases.md)
 
 [MIT 许可证](LICENSE) · [第三方许可](THIRD-PARTY-NOTICES.md)

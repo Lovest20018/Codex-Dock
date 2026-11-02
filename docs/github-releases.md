@@ -6,12 +6,12 @@
 
 完成测试与提交后，在 Actions 的 **Windows and Android release → Run workflow** 手动触发，默认只生成双端构建产物，不创建或公开 Release。从成功运行的 Artifacts 下载 `windows-release` 和 `android-release`。
 
-需要公开发布时，明确勾选 `publish`，或推送与 Windows 版本一致的 `vX.Y.Z` 发布标签。例如当前 Windows 0.15.1 / Android 0.2.2 使用 `v0.15.1`。普通 main 推送只更新源码；发布标签或勾选公开发布的手动运行才生成稳定 Release。
+需要公开发布时，明确勾选 `publish`，或推送与 Windows 版本一致的 `vX.Y.Z` 发布标签。例如当前 Windows 0.16.0 / Android 0.2.2 使用 `v0.16.0`。普通 main 推送只更新源码；发布标签或勾选公开发布的手动运行才生成稳定 Release。
 
 ```powershell
 git push origin HEAD:main
-git tag v0.15.1
-git push origin v0.15.1
+git tag v0.16.0
+git push origin v0.16.0
 ```
 
 版本与标签不匹配会直接失败。已公开版本不覆盖；再次发布须递增 Windows 版本并同步发布说明。Android 有实际客户端更新时同时递增 versionName 和 versionCode，保留原包名及证书。
