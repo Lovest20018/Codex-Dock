@@ -71,6 +71,7 @@ jobs:
         run: |
           python -B -m unittest discover -s tests/release -p 'test_*.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Release pipeline tests failed.' }
+          $env:CODEX_DOCK_TEST_PYTHON = (Get-Command python).Source
           dotnet build tests/CodexConfig.Tests/CodexConfig.Tests.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Core test build failed.' }
           & ./tests/CodexConfig.Tests/bin/Release/net8.0-windows/CodexConfig.Tests.exe

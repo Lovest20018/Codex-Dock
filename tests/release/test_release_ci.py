@@ -30,7 +30,8 @@ class ReleasePipelineTests(unittest.TestCase):
             archive.writestr(f'CodexDock-{w}-win-x64/verification/ui-report.json', '{"status":"PASS"}')
         windows_names = [f'CodexDock-{w}-Setup-win-x64.exe', f'CodexDock-{w}-source.zip', f'CodexDock-{w}-win-x64.zip']
         (self.out / f'SHA256SUMS-{w}.txt').write_text(''.join(f'{release.sha(self.out / name)}  {name}\n' for name in windows_names))
-        (self.out / f'installer-verification-{w}.json').write_text(json.dumps({'status': 'PASS', 'installerSha256': release.sha(self.out / windows_names[0])}))
+        (self.out / f'installer-verification-{w}.json').write_text(json.dumps({'status': 'PASS', 'installerSha256': release.sha(self.out / windows_names[0]),
+            'runningMobileUpgrade': True, 'otherInstallationWorkerPreserved': True, 'mobileSettingsUnchanged': True}))
         (self.out / f'LovestCode-Android-{a}.apk').write_bytes(b'fixture APK')
         (self.out / f'LovestCode-Android-{a}-source.zip').write_bytes(b'fixture Android source')
         self.android_manifest = self.out / f'LovestCode-Android-{a}.manifest.json'
@@ -77,6 +78,16 @@ class ReleasePipelineTests(unittest.TestCase):
         with patch.dict(os.environ, {'GITHUB_REF_TYPE': 'tag', 'GITHUB_REF_NAME': 'v99.0.0'}):
             with self.assertRaisesRegex(ValueError, 'tag must match'):
                 release.metadata()
+
+    def test_missing_running_upgrade_evidence_is_rejected(self):
+        report = self.out / f'installer-verification-{self.windows}.json'
+        values = json.loads(report.read_text())
+        for key in ('runningMobileUpgrade', 'otherInstallationWorkerPreserved', 'mobileSettingsUnchanged'):
+            with self.subTest(key=key):
+                changed = dict(values); changed.pop(key)
+                report.write_text(json.dumps(changed))
+                with self.assertRaisesRegex(ValueError, 'running mobile upgrade'):
+                    release.release_files(self.out, self.windows, self.android)
 
     def test_existing_stable_release_is_never_modified(self):
         with patch.object(release, 'GitHub') as github:

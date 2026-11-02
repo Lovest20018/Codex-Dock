@@ -43,6 +43,7 @@ public partial class MainWindow
         }
         var saved = loadedSettings.Mode == ConnectionMode.OfficialWithApi && snapshot?.Bridge is not null;
         StartGatewayButton.IsEnabled = saved && !gatewayPolling && !closing;
+        RestartGatewayButton.IsEnabled = saved && !gatewayPolling && !closing;
         StopGatewayButton.IsEnabled = saved && !gatewayPolling && gatewayStatus is not null && !closing;
         if (!saved) GatewayStatusText.Text = "保存混合连接后启动。模型入口是否可用需要单独验证。";
     }
@@ -155,6 +156,11 @@ public partial class MainWindow
         stoppedGatewayHomes.Remove(home); await RefreshGatewayAsync(start: true);
     }
     private async void RefreshGatewayClicked(object sender, RoutedEventArgs e) => await RefreshGatewayAsync();
+    private async void RestartGatewayClicked(object sender, RoutedEventArgs e)
+    {
+        try { await RestartModelGatewayAsync(); }
+        catch (Exception error) { GatewayStatusText.Text = error is IOException or InvalidOperationException ? error.Message : "模型网关重启未完成，请刷新状态后重试。"; }
+    }
     private async void StopGatewayClicked(object sender, RoutedEventArgs e)
     {
         try { await StopModelGatewayAsync(); }
@@ -172,6 +178,26 @@ public partial class MainWindow
             var saved = await Task.Run(() => store.Load(expectedHome), lifetime.Token);
             if (saved.Bridge is { } bytes) await BridgeProcess.StopAsync(bytes, lifetime.Token);
             if (home == expectedHome) gatewayStatus = null;
+        }
+        finally
+        {
+            gatewayPolling = false;
+            if (!closing && home == expectedHome) await RefreshGatewayAsync();
+        }
+    }
+
+    private async Task RestartModelGatewayAsync()
+    {
+        if (gatewayPolling || closing) throw new InvalidOperationException("模型网关正在处理操作，请稍后重试。");
+        var expectedHome = home;
+        gatewayPolling = true; stoppedGatewayHomes.Add(expectedHome); RefreshMixedUi();
+        GatewayStatusText.Text = "正在停止旧进程并重启模型网关…";
+        try
+        {
+            var saved = await Task.Run(() => store.Load(expectedHome), lifetime.Token);
+            if (saved.Bridge is not { } bytes) throw new InvalidOperationException("请先保存混合连接，再重启模型网关。");
+            var status = await BridgeProcess.RestartAsync(expectedHome, bytes, cancellation: lifetime.Token);
+            if (home == expectedHome) { stoppedGatewayHomes.Remove(expectedHome); gatewayStatus = status; }
         }
         finally
         {

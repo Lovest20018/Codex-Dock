@@ -109,6 +109,8 @@ def release_files(directory, windows, android):
     installer = json.loads((directory / f'installer-verification-{windows}.json').read_text(encoding='utf-8-sig'))
     if installer['status'] != 'PASS' or installer['installerSha256'] != sha(directory / f'CodexDock-{windows}-Setup-win-x64.exe'):
         raise ValueError('Windows installer verification does not match the release.')
+    if any(installer.get(key) is not True for key in ('runningMobileUpgrade', 'otherInstallationWorkerPreserved', 'mobileSettingsUnchanged')):
+        raise ValueError('Windows installer verification must cover the running mobile upgrade and installation isolation.')
     android_manifest = json.loads((directory / f'LovestCode-Android-{android}.manifest.json').read_text())
     android_meta = json.loads((ROOT / 'src/CodexAndroid/android.json').read_text())
     if (android_manifest['sourceCommit'] != commit() or android_manifest['dirtyBuild']

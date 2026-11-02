@@ -52,7 +52,7 @@
           <StackPanel x:Name="NavigationFooter" Grid.Row="3">
             <Button Content="配置位置" Click="LocationClicked" Style="{StaticResource QuietButton}" HorizontalContentAlignment="Left" />
             <Button Content="使用说明" Click="HelpClicked" Style="{StaticResource QuietButton}" HorizontalContentAlignment="Left" />
-            <TextBlock Text="v0.15.1" Style="{StaticResource Helper}" Margin="14,6,0,0" FontSize="11" />
+            <TextBlock x:Name="SidebarVersionText" Style="{StaticResource Helper}" Margin="14,6,0,0" FontSize="11" />
           </StackPanel>
         </Grid>
       </Border>
@@ -195,10 +195,11 @@
                   <CheckBox x:Name="GatewayProxyBox" Content="使用本机 HTTP 代理连接模型入口" Checked="MixedOptionChanged" Unchecked="MixedOptionChanged" Margin="0,0,0,10"/>
                   <WrapPanel>
                     <Button x:Name="StartGatewayButton" Content="启动网关" Click="StartGatewayClicked" Margin="0,0,8,0"/>
+                    <Button x:Name="RestartGatewayButton" Content="重启网关" Click="RestartGatewayClicked" Margin="0,0,8,0" ToolTip="按已保存的连接重启，不保存当前草稿。"/>
                     <Button x:Name="StopGatewayButton" Content="停止网关" Click="StopGatewayClicked" Margin="0,0,8,0"/>
                     <Button Content="刷新状态" Click="RefreshGatewayClicked"/>
                   </WrapPanel>
-                  <TextBlock Text="关闭编辑器后网关继续运行。需要随 Windows 登录启动时，可在“应用设置与帮助”开启自动启动。停止网关会中断使用该连接的 Codex。" Style="{StaticResource Helper}" Margin="0,10,0,0"/>
+                  <TextBlock Text="重启使用已保存的连接，不保存草稿；停止或重启会断开正在使用的模型连接。普通退出保留网关，更新前请使用“停止网关并退出”。" Style="{StaticResource Helper}" Margin="0,10,0,0"/>
                 </StackPanel>
               </Border>
               <Expander x:Name="MoreConnection" Header="更多连接选项" Margin="0,2,0,0">
@@ -280,7 +281,8 @@
               <WrapPanel Margin="0,15,0,16">
                 <Button Content="收起到托盘" Click="HideToTrayClicked" Margin="0,0,8,8" />
                 <Button Content="最小化到任务栏" Click="MinimizeClicked" Margin="0,0,8,8" />
-                <Button Content="退出程序" Click="ExitClicked" Style="{StaticResource QuietButton}" Margin="0,0,0,8" />
+                <Button Content="退出程序" Click="ExitClicked" Style="{StaticResource QuietButton}" Margin="0,0,8,8" />
+                <Button x:Name="StopAndExitButton" Content="停止网关并退出" Click="StopAndExitClicked" Style="{StaticResource QuietButton}" Margin="0,0,0,8" ToolTip="停止当前配置目录的手机和模型网关，再退出 Dock，适合手动更新前使用。"/>
               </WrapPanel>
               <TextBlock x:Name="BackgroundModeHint" Style="{StaticResource Helper}" />
             </StackPanel></Border>

@@ -1,8 +1,8 @@
 #ifndef AppVersion
-  #define AppVersion "0.16.0"
+  #define AppVersion "0.16.1"
 #endif
 #ifndef PayloadDir
-  #define PayloadDir "..\artifacts\CodexDock-0.16.0-win-x64"
+  #define PayloadDir "..\artifacts\CodexDock-0.16.1-win-x64"
 #endif
 
 [Setup]
@@ -50,6 +50,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "快捷方式："; Flags: unchecked; Check: ShouldRegister
 
 [Files]
+Source: "installer-stop-mobile.ps1"; Flags: dontcopy
 Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
@@ -84,6 +85,23 @@ end;
 procedure RegisterExtraCloseApplicationsResources;
 begin
   RegisterExtraCloseApplicationsResource(False, ExpandConstant('{app}\CodexConfig.exe'));
+  RegisterExtraCloseApplicationsResource(False, ExpandConstant('{app}\mobile\CodexDock.Mobile.exe'));
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var ExitCode: Integer; Arguments: String;
+begin
+  Result := '';
+  ExtractTemporaryFile('installer-stop-mobile.ps1');
+  Arguments := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\installer-stop-mobile.ps1') +
+    '" -InstallDir "' + ExpandConstant('{app}') + '"';
+  if IsVerificationInstall and (ExpandConstant('{param:MOBILESTATEROOT|}') <> '') then
+    Arguments := Arguments + ' -StateRoot "' + ExpandConstant('{param:MOBILESTATEROOT|}') + '"';
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    Arguments, '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
+    ExitCode := -1;
+  if ExitCode <> 0 then
+    Result := '手机网关尚未完全退出。请在旧版 Dock 的“手机连接”页点击“停止”，退出 Dock 后重试安装。';
 end;
 
 function StartupTargetsThisInstall(const Command: String): Boolean;

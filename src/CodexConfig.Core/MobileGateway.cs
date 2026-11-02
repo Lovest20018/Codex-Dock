@@ -136,6 +136,19 @@ public sealed partial class MobileGatewayManager
     {
         await using var managerLock = await LockAsync(cancellation).ConfigureAwait(false);
         var config = Load() ?? throw new InvalidOperationException("请先保存 HTTPS 域名和访问密码。");
+        return await StartCoreAsync(config, cancellation, workerExecutable, workerScript).ConfigureAwait(false);
+    }
+
+    public async Task<MobileGatewayStatus> RestartAsync(CancellationToken cancellation = default, string? workerExecutable = null, string? workerScript = null)
+    {
+        await using var managerLock = await LockAsync(cancellation).ConfigureAwait(false);
+        var config = Load() ?? throw new InvalidOperationException("请先保存手机连接设置，再重启网关。");
+        await StopCoreAsync(config, cancellation).ConfigureAwait(false);
+        return await StartCoreAsync(config, cancellation, workerExecutable, workerScript).ConfigureAwait(false);
+    }
+
+    private static async Task<MobileGatewayStatus> StartCoreAsync(MobileGatewayConfig config, CancellationToken cancellation, string? workerExecutable, string? workerScript)
+    {
         if (await StatusCoreAsync(config, cancellation).ConfigureAwait(false) is { } existing)
         {
             if (existing.Protocol == Protocol) return existing;
@@ -180,16 +193,21 @@ public sealed partial class MobileGatewayManager
     {
         if (await StatusCoreAsync(config, cancellation).ConfigureAwait(false) is null)
         {
-            if (!PortsFree(config)) throw new IOException("无法核对已有手机服务，设置未覆盖。请检查端口或稍后重试。");
+            if (!PortsFree(config) || !WorkerReleased(config)) throw new IOException("无法核对已有手机服务，尚未确认进程退出。请检查端口或稍后重试。");
             return;
         }
+        using var process = GatewayWorkerProcess.Capture(config.ControlPort);
         using var result = await CallCoreAsync(config, "stop", new { }, cancellation).ConfigureAwait(false);
-        for (var i = 0; i < 80; i++)
-        {
-            if (PortsFree(config)) return;
-            await Task.Delay(100, cancellation).ConfigureAwait(false);
-        }
-        throw new IOException("手机后台服务尚未完全停止，请稍后重试。");
+        await GatewayWorkerProcess.WaitStoppedAsync(process, () => PortsFree(config) && WorkerReleased(config),
+            "手机后台进程尚未完全退出，未继续重启或安装，请稍后重试。", cancellation).ConfigureAwait(false);
+    }
+
+    private static bool WorkerReleased(MobileGatewayConfig config)
+    {
+        var path = Path.Combine(config.DataDir, "worker.lock");
+        if (!File.Exists(path)) return true;
+        try { using var probe = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None); return true; }
+        catch (IOException) { return false; }
     }
 
     public async Task<JsonDocument> ControlAsync(string action, object body, CancellationToken cancellation = default)

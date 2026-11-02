@@ -50,17 +50,24 @@ public static class BridgeProcess
     public static async Task StopAsync(byte[] bytes, CancellationToken cancellation = default)
     {
         var connection = MixedConnection.Read(bytes);
-        if (await StatusAsync(connection, cancellation).ConfigureAwait(false) is null) return;
+        if (await StatusAsync(connection, cancellation).ConfigureAwait(false) is null)
+        {
+            if (!GatewayWorkerProcess.PortFree(connection.Port)) throw new IOException("无法核对已有模型网关，尚未确认停止，请稍后重试。");
+            return;
+        }
+        using var process = GatewayWorkerProcess.Capture(connection.Port);
         using var client = LocalClient(TimeSpan.FromSeconds(3));
         using var request = Request(connection, HttpMethod.Post, "stop");
         using var response = await client.SendAsync(request, cancellation).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        for (var i = 0; i < 60; i++)
-        {
-            if (await StatusAsync(connection, cancellation).ConfigureAwait(false) is null) return;
-            await Task.Delay(100, cancellation).ConfigureAwait(false);
-        }
-        throw new IOException("网关尚未停止，请稍后重试。");
+        await GatewayWorkerProcess.WaitStoppedAsync(process, () => GatewayWorkerProcess.PortFree(connection.Port),
+            "模型网关进程尚未完全退出，未继续重启或安装，请稍后重试。", cancellation).ConfigureAwait(false);
+    }
+
+    public static async Task<BridgeStatus> RestartAsync(string home, byte[] bytes, string? executable = null, CancellationToken cancellation = default)
+    {
+        await StopAsync(bytes, cancellation).ConfigureAwait(false);
+        return await EnsureAsync(home, bytes, executable, cancellation).ConfigureAwait(false);
     }
 
     public static async Task<int> RunAsync(string home, CancellationToken cancellation = default)

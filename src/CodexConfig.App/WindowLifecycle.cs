@@ -11,6 +11,8 @@ public partial class MainWindow
 {
     private TrayIcon? tray;
     private bool exitRequested, exitReady, smokeLifecycle;
+    private bool stopGatewaysOnExit;
+    private Action<VerifiedInstaller>? smokeInstallerLaunch;
 
     private void InitializeWindowLifecycle() => Closed += (_, _) => { tray?.Dispose(); tray = null; };
 
@@ -18,10 +20,12 @@ public partial class MainWindow
     {
         try
         {
-            tray = new TrayIcon(() => Dispatcher.Invoke(RestoreWindow), () => Dispatcher.Invoke(RequestExit),
+            tray = new TrayIcon(() => Dispatcher.Invoke(RestoreWindow), () => Dispatcher.Invoke(() => RequestExit()), () => Dispatcher.Invoke(() => RequestExit(true)),
                 () => Dispatcher.InvokeAsync(ReadTrayGatewaysAsync).Task.Unwrap(),
                 () => Dispatcher.InvokeAsync(() => RunMobileActionAsync(StopMobileGatewayAsync)).Task.Unwrap(),
-                () => Dispatcher.InvokeAsync(StopModelGatewayAsync).Task.Unwrap(), notifications: smokeOutput is null);
+                () => Dispatcher.InvokeAsync(StopModelGatewayAsync).Task.Unwrap(),
+                () => Dispatcher.InvokeAsync(() => RunMobileActionAsync(RestartMobileGatewayAsync)).Task.Unwrap(),
+                () => Dispatcher.InvokeAsync(RestartModelGatewayAsync).Task.Unwrap(), notifications: smokeOutput is null);
         }
         catch (Exception) { SetStatus("系统托盘暂不可用，关闭窗口将退出程序。", true); }
     }
@@ -69,9 +73,13 @@ public partial class MainWindow
     }
     private void MinimizeClicked(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     private void ExitClicked(object sender, RoutedEventArgs e) => RequestExit();
-    private void RequestExit()
+    private void StopAndExitClicked(object sender, RoutedEventArgs e) => RequestExit(true);
+    private void RequestExit(bool stopGateways = false)
     {
         if (closing) return;
+        if (mobileBusy || gatewayPolling || tray?.GatewayActionInProgress == true)
+        { RestoreWindow(); SetStatus("网关正在处理操作，请完成后再退出。", true); return; }
+        stopGatewaysOnExit = stopGateways;
         exitRequested = true; RestoreWindow(); Close();
     }
 
@@ -88,17 +96,25 @@ public partial class MainWindow
         e.Cancel = true;
         if (!exitRequested && tray is not null) { Hide(); return; }
         if (closing) return;
-        if (!ResolveUnsaved()) { exitRequested = false; return; }
+        if (!ResolveUnsaved()) { exitRequested = false; stopGatewaysOnExit = false; return; }
         closing = true; localStateTimer.Stop(); MainShell.IsEnabled = false;
         SetStatus("正在退出…");
         try
         {
+            using var verifiedFile = pendingInstaller?.OpenVerified();
+            if (stopGatewaysOnExit || pendingInstaller is not null)
+            {
+                SetStatus("正在停止手机和模型网关，并等待后台进程退出…");
+                await StopSavedGatewaysForExitAsync();
+            }
             if (pendingInstaller is not null)
             {
-                if (smokeOutput is not null) throw new InvalidOperationException("隔离检查不能启动安装器。");
-                using var verifiedFile = pendingInstaller.OpenVerified();
-                if (snapshot?.Bridge is { } bridge) await CodexConfig.Core.BridgeProcess.StopAsync(bridge);
-                _ = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(pendingInstaller.Path) { UseShellExecute = true })
+                if (smokeOutput is not null)
+                {
+                    if (smokeInstallerLaunch is null) throw new InvalidOperationException("隔离检查不能启动安装器。");
+                    smokeInstallerLaunch(pendingInstaller);
+                }
+                else _ = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(pendingInstaller.Path) { UseShellExecute = true })
                     ?? throw new IOException("无法启动更新安装器。");
             }
             exitReady = true;
@@ -107,8 +123,17 @@ public partial class MainWindow
         catch (Exception error)
         {
             pendingInstaller = null;
-            closing = false; exitRequested = false; MainShell.IsEnabled = true;
+            stopGatewaysOnExit = false; closing = false; exitRequested = false; MainShell.IsEnabled = true;
             localStateTimer.Start(); RestoreWindow(); ShowError(error);
         }
+    }
+
+    private async Task StopSavedGatewaysForExitAsync()
+    {
+        var expectedHome = home;
+        var saved = await Task.Run(() => store.Load(expectedHome));
+        await MobileManager().StopAsync();
+        if (saved.Bridge is { } bridge) await BridgeProcess.StopAsync(bridge);
+        stoppedGatewayHomes.Add(expectedHome); gatewayStatus = null;
     }
 }

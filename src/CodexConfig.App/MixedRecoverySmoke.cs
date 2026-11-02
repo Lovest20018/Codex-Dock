@@ -46,6 +46,13 @@ public partial class MainWindow
             Assert(fixture.tray.StopModelItem.Enabled && !fixture.tray.StopMobileItem.Enabled, "Tray shows the running model gateway independently");
             var beforeTrayStop = fixtureStore.Load(fixtureHome);
             fixture.ModelBox.Text = "unsaved-tray-model"; fixture.Hide();
+            fixture.tray.RestartModelItem.PerformClick();
+            for (var i = 0; i < 200 && fixture.tray.GatewayActionInProgress; i++) await Task.Delay(100);
+            await fixture.tray.RefreshGatewayActionsAsync();
+            Assert(!fixture.tray.GatewayActionInProgress && !fixture.IsVisible && fixture.Dirty && fixture.ModelBox.Text == "unsaved-tray-model" &&
+                fixture.tray.StopModelItem.Enabled && await BridgeProcess.StatusAsync(connection) is not null && beforeTrayStop.SameContents(fixtureStore.Load(fixtureHome)),
+                "Model restart uses saved connection and preserves hidden editor draft");
+            checks.Add("Model page and tray offer restart using saved settings while preserving drafts");
             fixture.tray.StopModelItem.PerformClick();
             for (var i = 0; i < 150 && fixture.tray.GatewayActionInProgress; i++) await Task.Delay(100);
             await fixture.RefreshLocalCodexStateAsync();

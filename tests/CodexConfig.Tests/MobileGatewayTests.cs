@@ -195,8 +195,15 @@ public static class MobileGatewayTests
                 }
                 var blockedLogin = await Request("/api/login", new { username = "tester", password = "isolated-test-password" }, expected: HttpStatusCode.Forbidden);
                 using (blockedLogin.Data) Assert(blockedLogin.Data.RootElement.GetProperty("loginStatus").GetProperty("blocked").GetBoolean(), "new authentication remains limited");
-                await manager.StopAsync(timeout.Token);
-                await manager.StartAsync(timeout.Token, executable);
+                var settingsBeforeRestart = await File.ReadAllBytesAsync(manager.SettingsPath, timeout.Token);
+                using (var oldProcess = GatewayWorkerProcess.Capture(saved.ControlPort) ?? throw new InvalidOperationException("Capture mobile listener owner"))
+                {
+                    await manager.RestartAsync(timeout.Token, executable);
+                    Assert(oldProcess.HasExited, "Restart waits for the actual old worker process, not just its port");
+                    using var newProcess = GatewayWorkerProcess.Capture(saved.ControlPort);
+                    Assert(newProcess is not null && oldProcess.Id != newProcess.Id, "Restart creates a new worker");
+                }
+                Assert(settingsBeforeRestart.SequenceEqual(await File.ReadAllBytesAsync(manager.SettingsPath, timeout.Token)), "restart never resaves credentials, identity or preferences");
                 authorized = await Request("/api/auth", cookie: cookie);
                 using (authorized.Data)
                 {
@@ -212,6 +219,27 @@ public static class MobileGatewayTests
                 authorized = await Request("/api/auth", cookie: cookie);
                 using (authorized.Data) Assert(!authorized.Data.RootElement.GetProperty("authenticated").GetBoolean(), "revocation defeats native cookie restore");
                 Assert(await File.ReadAllTextAsync(configPath) == "# fake home, no native IPC calls\n" && !File.Exists(Path.Combine(home, "auth.json")), "worker does not alter Codex home");
+            }
+            finally { await manager.StopAsync(CancellationToken.None); }
+        }));
+        tests.Add(("mobile stop waits for process exit after listeners close and restart refuses an unrelated listener", async () =>
+        {
+            var python = Environment.GetEnvironmentVariable("CODEX_DOCK_TEST_PYTHON") ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Python", "pythoncore-3.12-64", "python.exe");
+            if (!File.Exists(python)) throw new FileNotFoundException("Set CODEX_DOCK_TEST_PYTHON to run the process-exit regression.", python);
+            var manager = new MobileGatewayManager(Home(), Path.Combine(root, "mobile-delayed-shutdown"));
+            var config = await manager.SaveAsync("https://phone.example.com", "tester", "isolated-test-password", Port());
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            try
+            {
+                await manager.StartAsync(deadline.Token, python, Path.GetFullPath("tests/mobile/delayed_shutdown_fixture.py"));
+                using var process = GatewayWorkerProcess.Capture(config.ControlPort) ?? throw new InvalidOperationException("Capture delayed fixture process");
+                await manager.StopAsync(deadline.Token);
+                Assert(File.Exists(Path.Combine(manager.StateDirectory, "fixture-listeners-closed.txt")) && process.HasExited,
+                    "Stop cannot report success during the fixture's post-listener shutdown delay");
+                using var other = new TcpListener(IPAddress.Loopback, config.ControlPort); other.Start();
+                await Throws<IOException>(() => manager.RestartAsync(deadline.Token, python, Path.GetFullPath("tests/mobile/delayed_shutdown_fixture.py")));
+                Assert(other.Server.IsBound && manager.Load() == config, "Unknown listener and saved settings remain untouched");
             }
             finally { await manager.StopAsync(CancellationToken.None); }
         }));

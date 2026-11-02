@@ -62,6 +62,7 @@ public partial class MainWindow
         mobileStatus.Margin = new(0, 10, 0, 9); runtime.Children.Add(mobileStatus); runtime.Children.Add(mobileEndpoint);
         var controls = new WrapPanel { Margin = new(0, 16, 0, 0) };
         Action(controls, "启动", async () => { await MobileManager().StartAsync(lifetime.Token); await RefreshMobilePageAsync(); });
+        Action(controls, "重启", RestartMobileGatewayAsync).ToolTip = "使用已保存设置重启；不保存表单草稿，手机会暂时断开。";
         Action(controls, "停止", StopMobileGatewayAsync);
         Action(controls, "刷新状态", () => RefreshMobilePageAsync());
         Action(controls, "管理 Codex 接入", async () =>
@@ -77,7 +78,7 @@ public partial class MainWindow
             mobileStatus.Text = "HTTPS 入口已确认指向这台电脑，可生成配对码。";
         });
         runtime.Children.Add(controls);
-        runtime.Children.Add(OverviewText("关闭或退出 Dock 后服务继续运行；点击“停止”才停用手机访问。重启 Windows 后，打开此页并点击“启动”。", "Muted", 12));
+        runtime.Children.Add(OverviewText("重启使用已保存设置，不保存表单草稿；手机会暂时断开，已有登录保持。普通退出保留服务；手动更新前可在应用设置或托盘选择“停止网关并退出”。", "Muted", 12));
         MobileBody.Children.Add(OverviewSurface(runtime, new(0, 0, 0, 16)));
         var notifications = new StackPanel(); notifications.Children.Add(OverviewText("任务完成提醒", size: 18));
         notifications.Children.Add(OverviewText("先在手机工作台的“聊天与通知”中选择需要的完成提醒；单条聊天也可单独覆盖。", "Muted", 13));
@@ -136,6 +137,14 @@ public partial class MainWindow
         var expectedHome = home;
         await MobileManager().StopAsync(lifetime.Token);
         if (expectedHome == home && !closing) { ClearMobileQr(); await RefreshMobilePageAsync(); }
+    }
+
+    private async Task RestartMobileGatewayAsync()
+    {
+        var expectedHome = home;
+        ClearMobileQr(); mobileStatus.Text = "正在停止旧进程并重启手机网关…";
+        await MobileManager().RestartAsync(lifetime.Token);
+        if (expectedHome == home && !closing) await RefreshMobilePageAsync();
     }
 
     private async Task SaveAndStartMobileAsync()

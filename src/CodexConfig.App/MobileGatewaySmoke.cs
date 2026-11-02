@@ -52,7 +52,19 @@ public partial class MainWindow
             Assert(fixture.MobileGatewaySummary.Content.ToString()!.Contains("运行中") && fixture.ModelGatewaySummary.Content.ToString()!.Contains("已停止"), "Persistent header shows mobile and model states separately");
             fixture.InitializeTray(); await fixture.tray!.RefreshGatewayActionsAsync();
             Assert(fixture.tray.StopMobileItem.Enabled && !fixture.tray.StopModelItem.Enabled, "Tray shows the running mobile gateway independently");
+            await fixture.RefreshMobilePageAsync();
             fixture.ModelBox.Text = "unsaved-mobile-tray-model";
+            fixture.mobileUrl.Text = "https://unsaved-mobile.example.com";
+            fixture.mobilePassword.Password = "unsaved-mobile-password";
+            fixture.tray.RestartMobileItem.PerformClick();
+            for (var i = 0; i < 200 && fixture.tray.GatewayActionInProgress; i++) await Task.Delay(100);
+            await fixture.tray.RefreshGatewayActionsAsync();
+            Assert(!fixture.tray.GatewayActionInProgress && fixture.Dirty && fixture.ModelBox.Text == "unsaved-mobile-tray-model" &&
+                fixture.mobileUrl.Text == "https://unsaved-mobile.example.com" && fixture.mobilePassword.Password == "unsaved-mobile-password" &&
+                fixture.tray.StopMobileItem.Enabled && await fixtureManager.StatusAsync() is not null && fixtureManager.Load() == config && before.SameContents(store.Load(home)),
+                "Tray restarts mobile gateway from saved settings while preserving form and model drafts");
+            Assert(fixture.mobileActions.Any(button => Equals(button.Content, "重启")), "Mobile runtime offers a separate restart button");
+            checks.Add("Mobile page and tray restart the worker without saving form or model drafts");
             fixture.tray.StopMobileItem.PerformClick();
             for (var i = 0; i < 150 && fixture.tray.GatewayActionInProgress; i++) await Task.Delay(100);
             Assert(!fixture.tray.GatewayActionInProgress && !fixture.IsVisible && fixture.Dirty && fixture.ModelBox.Text == "unsaved-mobile-tray-model" &&

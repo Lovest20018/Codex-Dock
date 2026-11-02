@@ -72,6 +72,7 @@ public partial class MainWindow : Window
         InitializeLocalCodexState();
         RefreshStartupSetting();
         AppVersionText.Text = "当前版本 " + CurrentVersion.ToString(3);
+        SidebarVersionText.Text = "v" + CurrentVersion.ToString(3);
         initializing = false;
         // Populate the connection before Show can paint the window or tray setup can delay it.
         Reload();
@@ -812,6 +813,7 @@ public partial class MainWindow : Window
         await RunApplicationSettingsSmokeAsync(output, checks);
         await RunUpdateSmokeAsync(output, checks);
         await RunMobileSmokeAsync(output, checks);
+        await RunGatewayLifecycleSmokeAsync(output, checks);
         await RunConfigurationOptimizationSmokeAsync(output, checks);
         await RunLayoutReviewAsync(output, checks);
         Assert(Environment.GetEnvironmentVariable(WindowsUserEnvironment.Variable, EnvironmentVariableTarget.User) == originalEnvironment, "Real environment changed");

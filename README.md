@@ -12,13 +12,13 @@
 
 截至 2026-11-02，本仓库的版本为：
 
-| 组件 | 稳定版本 | 当前内容 |
+| 组件 | 源码版本 | 当前内容 |
 | --- | --- | --- |
-| Windows Codex Dock | **0.16.0** | 配置实例、来源与 profile、组合校验、模型能力选项、压缩和连接耗时诊断，以及原有账号与网关管理。 |
+| Windows Codex Dock | **0.16.1** | 修复更新时手机后台占用文件，增加两个网关的独立重启和“停止网关并退出”；包含 0.16.0 配置优化。 |
 | Web / 手机工作台 | 随 Windows 版本提供 | Codex 聊天、审批、文件、Git、终端、通知及本机接入管理。 |
 | Android Lovest Code | **0.2.2** / versionCode 5 | 聊天／电脑／我的导航，恢复上次聊天，保留草稿，独立设置；文字输入区保持展开。 |
 
-GitHub Actions 从同一提交自动构建 Windows **0.16.0** 与 Android **0.2.2**，完成 Windows 安装验证、安卓签名与源码校验后，提供安装包、源码和 SHA-256 清单。手动运行默认只打包，在成功运行的 **Artifacts** 中下载 `windows-release` 与 `android-release`；发布标签或明确选择公开发布时，才将双端附件放入同一个稳定 Release。公开版本以 [Release 页面](https://github.com/Lovest20018/Codex-Dock/releases) 为准，维护方式见 [自动发布说明](docs/github-releases.md)。
+GitHub Actions 从同一提交自动构建 Windows **0.16.1** 与 Android **0.2.2**，完成 Windows 安装验证、安卓签名与源码校验后，提供安装包、源码和 SHA-256 清单。手动运行默认只打包，在成功运行的 **Artifacts** 中下载 `windows-release` 与 `android-release`；发布标签或明确选择公开发布时，才将双端附件放入同一个稳定 Release。公开版本以 [Release 页面](https://github.com/Lovest20018/Codex-Dock/releases) 为准，维护方式见 [自动发布说明](docs/github-releases.md)。
 
 Web / 手机工作台复用固定的 Codex Mobile Bridge 2.1.7 快照，并通过显式覆盖和自有适配提供 Codex 范围的功能。上游来源、许可与维护方式见 [UPSTREAM](src/CodexMobile/UPSTREAM.md)。
 
@@ -51,7 +51,7 @@ Lovest Code 沿用本项目安卓包名、签名与 Logo，可覆盖升级已交
 
 已公开版本从稳定版下载页取得；构建中的新版本可从 Actions 的成功运行页面下载对应 Artifacts。Windows 选 `Setup-win-x64.exe` 或便携 ZIP，安卓选 APK；安卓需要允许浏览器或文件管理器安装此 APK。
 
-更新 Windows 前先停止手机网关，再从托盘退出旧 Dock；更新后重新启动手机服务并检测 HTTPS 入口。安卓 0.2.2 可直接覆盖安装 0.2.1，保留连接和登录。
+Windows 0.16.1 起，可在应用设置或托盘选择 **停止网关并退出**；软件内安装更新会停止当前配置的手机与模型网关，并等待进程退出。旧版升级前先停止两个网关并退出。更新后重新启动手机服务并检测 HTTPS 入口。安卓 0.2.2 可直接覆盖安装 0.2.1，保留连接和登录。
 
 ## 配置电脑端
 
@@ -63,6 +63,8 @@ Lovest Code 沿用本项目安卓包名、签名与 Logo，可覆盖升级已交
 选择 **官方账号 + 独立模型入口** 时，先检测已有文件凭据或使用 **ChatGPT 登录**，再保存模型入口。登录结果先暂存，保存后才写入当前目录并启动模型网关。该模式保留原生官方身份，为模型请求替换独立凭据；服务失败时不会自动使用官方额度。
 
 此模式要求文件凭据，不会自动转换 `keyring` / `auto`。网关支持 HTTP / SSE、压缩请求和 WebSocket 转发，是否可用取决于上游服务；完整能力和真实线路验证边界见 [0.12.0 审查](docs/review-0.12.0.md)。
+
+可在 **手机连接 → 后台服务 → 重启**、**连接与账号 → 本地模型网关 → 重启**，或托盘菜单中分别重启两个网关。独立重启使用已保存设置，保留草稿和手机登录；连接会短暂中断。
 
 新增配置功能位于 **全部配置**：选择 **已配置** 可直接编辑实际 MCP / 供应商名称；**更多选项** 可添加结构化实例。展开 **来源与 profile**，选择本机执行端和项目目录后读取文件值、执行端值及配置层；此快照不包含现有聊天参数和未保存草稿。**管理 Profile 文件** 独立保存 `<名称>.config.toml`，通过 `codex --profile <名称>` 选择。当前核查内核的 app-server 不支持读取指定 profile 的来源，界面会明确显示未确认。
 
@@ -115,6 +117,6 @@ Windows 使用 C# / .NET 8 / WPF；手机服务使用 Python 3.12；安卓壳使
 | `src/CodexAndroid` | Lovest Code 自有原生壳、资源和页面适配。 |
 | `tests`、`scripts` | 隔离回归、构建、完整性检查与发布包验证。 |
 
-[Windows 0.16.0](docs/release-0.16.0.md) · [Android 0.2.2](docs/release-android-0.2.2.md) · [手机功能对照](docs/mobile-upstream-comparison.md) · [GitHub 发布约定](docs/github-releases.md)
+[Windows 0.16.1](docs/release-0.16.1.md) · [Android 0.2.2](docs/release-android-0.2.2.md) · [手机功能对照](docs/mobile-upstream-comparison.md) · [GitHub 发布约定](docs/github-releases.md)
 
 [MIT 许可证](LICENSE) · [第三方许可](THIRD-PARTY-NOTICES.md)
