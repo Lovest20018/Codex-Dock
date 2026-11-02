@@ -6,19 +6,20 @@
 
 项目包含 Windows 应用 **Codex Dock**、由 Windows 托管的 **Web / 手机网关**，以及独立安卓客户端 **Lovest Code**。手机端连接自己的电脑和原生执行环境，聊天能力由所选 Codex Desktop、CLI 或已登记的 WSL / SSH 提供。
 
-[双端自动构建](https://github.com/Lovest20018/Codex-Dock/actions/workflows/release.yml) · [稳定版下载](https://github.com/Lovest20018/Codex-Dock/releases/latest) · [全部版本](https://github.com/Lovest20018/Codex-Dock/releases) · [反馈问题](https://github.com/Lovest20018/Codex-Dock/issues)
+[Windows 下载](https://github.com/Lovest20018/Codex-Dock/releases/latest) · [Android 下载](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.2) · [全部版本](https://github.com/Lovest20018/Codex-Dock/releases) · [构建流程](https://github.com/Lovest20018/Codex-Dock/actions/workflows/release.yml) · [反馈问题](https://github.com/Lovest20018/Codex-Dock/issues)
 
 ## 当前状态
 
 截至 2026-11-02，本仓库的版本为：
 
-| 组件 | 源码版本 | 当前内容 |
+| 应用 | 版本与下载 | 本版更新 |
 | --- | --- | --- |
-| Windows Codex Dock | **0.16.1** | 修复更新时手机后台占用文件，增加两个网关的独立重启和“停止网关并退出”；包含 0.16.0 配置优化。 |
-| Web / 手机工作台 | 随 Windows 版本提供 | Codex 聊天、审批、文件、Git、终端、通知及本机接入管理。 |
-| Android Lovest Code | **0.2.2** / versionCode 5 | 聊天／电脑／我的导航，恢复上次聊天，保留草稿，独立设置；文字输入区保持展开。 |
+| Windows · Codex Dock | **[0.16.1](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.16.1)** | 修复更新时手机后台占用文件，增加两个网关的独立重启和“停止网关并退出”；包含 0.16.0 配置优化。 |
+| Android · Lovest Code | **[0.2.2](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.2)** / versionCode 5 | 保持原版本：文字输入区保持展开，保留聊天／电脑／我的导航、上次聊天、草稿及独立设置。 |
 
-GitHub Actions 从同一提交自动构建 Windows **0.16.1** 与 Android **0.2.2**，完成 Windows 安装验证、安卓签名与源码校验后，提供安装包、源码和 SHA-256 清单。手动运行默认只打包，在成功运行的 **Artifacts** 中下载 `windows-release` 与 `android-release`；发布标签或明确选择公开发布时，才将双端附件放入同一个稳定 Release。公开版本以 [Release 页面](https://github.com/Lovest20018/Codex-Dock/releases) 为准，维护方式见 [自动发布说明](docs/github-releases.md)。
+**Windows 与 Android 独立更新、独立发布，不需要同时升级。** Windows Release 只放 EXE、便携包和对应源码；Android Release 只放 APK 和对应源码，各自附带校验清单与验证记录。Windows 使用 `vX.Y.Z` 标签，Android 使用 `android-vX.Y.Z` 标签。历史合并版保留，新版本按平台发布，维护方式见 [发布说明](docs/github-releases.md)。
+
+本次更新 Windows 至 **0.16.1** 即可，已经安装 Android **0.2.2** 的用户无需重装。Web 页面、手机后台与模型网关随 Windows 更新；只有安卓原生客户端改动时才升级 APK。
 
 Web / 手机工作台复用固定的 Codex Mobile Bridge 2.1.7 快照，并通过显式覆盖和自有适配提供 Codex 范围的功能。上游来源、许可与维护方式见 [UPSTREAM](src/CodexMobile/UPSTREAM.md)。
 
@@ -36,7 +37,7 @@ Web / 手机工作台复用固定的 Codex Mobile Bridge 2.1.7 快照，并通�
 
 模型目录可按需获取，保存本地配置不要求服务在线。保存成功只确认本机写入；模型能力、订阅资格和远端连通性仍取决于实际服务。
 
-## 安装
+## Windows 安装与更新
 
 Windows 支持 **Windows 10 1809 及以上 x64**。完整安装包包含 .NET 与手机后台运行时；请另外安装所需的 Codex 客户端。
 
@@ -44,14 +45,17 @@ Windows 支持 **Windows 10 1809 及以上 x64**。完整安装包包含 .NET �
 | --- | --- |
 | `CodexDock-<版本>-Setup-win-x64.exe` | 运行安装向导。 |
 | `CodexDock-<版本>-win-x64.zip` | 完整解压，运行 `CodexDock.exe`；保留旁边的整个 `mobile` 目录。 |
-| `LovestCode-Android-<版本>.apk` | Android 8 / API 26 及以上安装使用。 |
-| `SHA256SUMS-<版本>.txt` / `SHA256SUMS-Android-<版本>.txt` | 核对对应交付文件的 SHA-256。 |
+| `SHA256SUMS-<版本>.txt` | 核对 Windows 交付文件的 SHA-256。 |
 
-Lovest Code 沿用本项目安卓包名、签名与 Logo，可覆盖升级已交付的旧版。它与旧上游 App 是不同应用，首次迁移需重新添加电脑并登录。电脑上的聊天记录不受影响。
+从 [Windows 发布页](https://github.com/Lovest20018/Codex-Dock/releases/latest) 下载安装器或便携包。Windows 0.16.1 起，可在应用设置或托盘选择 **停止网关并退出**；软件内安装更新会停止当前配置的手机与模型网关，并等待进程退出。旧版升级前先停止两个网关并退出。更新后重新启动手机服务并检测 HTTPS 入口。
 
-已公开版本从稳定版下载页取得；构建中的新版本可从 Actions 的成功运行页面下载对应 Artifacts。Windows 选 `Setup-win-x64.exe` 或便携 ZIP，安卓选 APK；安卓需要允许浏览器或文件管理器安装此 APK。
+## Android 安装与更新
 
-Windows 0.16.1 起，可在应用设置或托盘选择 **停止网关并退出**；软件内安装更新会停止当前配置的手机与模型网关，并等待进程退出。旧版升级前先停止两个网关并退出。更新后重新启动手机服务并检测 HTTPS 入口。安卓 0.2.2 可直接覆盖安装 0.2.1，保留连接和登录。
+从 [Android 0.2.2 发布页](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.2) 下载 `LovestCode-Android-0.2.2.apk`，适用于 Android 8 / API 26 及以上。核对 `SHA256SUMS-Android-0.2.2.txt` 后安装，需要允许浏览器或文件管理器安装此 APK。
+
+Lovest Code 沿用本项目安卓包名、签名与 Logo，0.2.2 可直接覆盖安装 0.2.1，保留连接和登录。它与旧上游 App 是不同应用，首次迁移需重新添加电脑并登录。电脑上的聊天记录不受影响。已安装 0.2.2 时，本次 Windows 修复不要求重新安装 APK。
+
+尚未公开的构建可从 Actions 成功运行的 Artifacts 下载所选平台的 `windows-release` 或 `android-release`。
 
 ## 配置电脑端
 

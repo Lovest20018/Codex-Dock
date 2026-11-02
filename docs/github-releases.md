@@ -1,50 +1,64 @@
-# GitHub 双端自动打包与发布
+# GitHub 按平台发布
 
-仓库：[Lovest20018/Codex-Dock](https://github.com/Lovest20018/Codex-Dock)。工作流位于 [release.yml](../.github/workflows/release.yml)，Windows 与 Android 从同一提交构建，版本分别读取 WPF csproj 和 `src/CodexAndroid/android.json`。
+仓库：[Lovest20018/Codex-Dock](https://github.com/Lovest20018/Codex-Dock)。Windows Codex Dock 与 Android Lovest Code 独立更新、独立构建、独立 Release，无需同时升级。历史合并版本保留。
+
+## 选择平台
+
+| 平台 | 版本来源 | 发布标签 | 附件 |
+| --- | --- | --- | --- |
+| Windows | `src/CodexConfig.App/CodexConfig.App.csproj` | `vX.Y.Z`，例如 `v0.16.1` | 安装器 EXE、便携 ZIP、源码、SHA-256、安装验证报告、release manifest。 |
+| Android | `src/CodexAndroid/android.json` | `android-vX.Y.Z`，例如 `android-v0.2.2` | APK、源码、签名 manifest、SHA-256、release manifest。 |
+
+Web 页面、手机后台和模型网关属于 Windows 包。只有安卓原生客户端改动时才递增 Android 的 versionName 与 versionCode，保留原包名及证书。Windows 0.16.1 的网关修复不要求已经使用 Android 0.2.2 的用户重装 APK。
+
+Windows 的 [稳定版入口](https://github.com/Lovest20018/Codex-Dock/releases/latest) 指向 Windows Release；Android 从 README 中独立的 [Android 发布页](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.2) 下载。Android 发布不会替换 Windows 的 latest，已有 Windows 自更新继续可用。
 
 ## 触发
 
-完成测试与提交后，在 Actions 的 **Windows and Android release → Run workflow** 手动触发，默认只生成双端构建产物，不创建或公开 Release。从成功运行的 Artifacts 下载 `windows-release` 和 `android-release`。
-
-需要公开发布时，明确勾选 `publish`，或推送与 Windows 版本一致的 `vX.Y.Z` 发布标签。例如当前 Windows 0.16.1 / Android 0.2.2 使用 `v0.16.1`。普通 main 推送只更新源码；发布标签或勾选公开发布的手动运行才生成稳定 Release。
+工作流为 [Platform release](../.github/workflows/release.yml)。完成所选平台的测试、版本说明与提交后，推送对应标签：
 
 ```powershell
+# 仅发布 Windows
 git push origin HEAD:main
 git tag v0.16.1
 git push origin v0.16.1
+
+# Android 有原生更新时，独立提交版本后，仅发布 Android
+git tag android-v0.2.2
+git push origin android-v0.2.2
 ```
 
-版本与标签不匹配会直接失败。已公开版本不覆盖；再次发布须递增 Windows 版本并同步发布说明。Android 有实际客户端更新时同时递增 versionName 和 versionCode，保留原包名及证书。
+两个示例是各自的入口，不要求一起执行。Windows 标签跳过 Android 构建；Android 标签跳过 Windows 构建。
 
-## 构建与验证
+手动运行时选择 `platform = windows` 或 `android`，默认仅打包所选平台，不公开 Release。产物在成功运行的 Artifacts 中，名称为 `windows-release` 或 `android-release`。需要公开时明确勾选 `publish`；对应版本标签必须已经指向本次源码提交，否则拒绝上传。
 
-- Windows：.NET 核心、网关与前端状态回归；锁定 Python 3.12 构建工具；冻结手机后台；生成自包含 WPF 便携包及 Inno Setup 安装器；对实际发布 EXE 执行隔离 UI 检查，再运行隔离安装、文件比较及卸载检查。
-- Android：Java 17、SDK 35 / build-tools 35.0.0；校验固定 ZXing 依赖与上游完整性；签名构建实际 APK，要求 v2 / v3、固定证书指纹和非调试包；逐项核对源码包与构建输入。
-- 发布：等待双端成功，核对同一源提交与各文件 SHA-256，建立临时草稿并上传明确列出的附件；核对 GitHub 返回的每个附件大小及 SHA-256 后，才转为最新稳定版本。
+标签与所选平台版本不匹配会在构建前失败。已公开的 Release 不覆盖；再次发布应递增发生更新的平台版本并维护其说明。另一个平台无需改版本或重新发布。
 
-失败的构建不会公开为稳定版；发布阶段失败可能保留当前提交的临时草稿，再次运行同一提交可重新上传。工作流仅删除和替换其当前版本草稿内的附件，不清理其他版本。历史废弃草稿需要另行明确清理。
+## 独立验证与附件
 
-正式 Release 包含 Windows 安装器、便携包、源码、SHA-256 与安装验证 JSON，以及 Android APK、源码、manifest 和独立 SHA-256；另附 `release-manifest.json` 汇总版本、源提交、文件大小与散列。Actions 构建产物保留 14 天，稳定 Release 附件持续保留。
+- Windows：核心与网关回归、锁定 Python 构建工具、冻结手机后台、自包含 WPF 发布、实际 EXE 界面检查，以及运行中手机网关的覆盖安装、不同安装目录隔离、逐文件比较、卸载和用户设置保持。
+- Android：固定 SDK 和依赖、既有密钥签名，校验非调试 APK 的 v2 / v3 签名、固定证书及对应源码输入。
+- 发布：只下载所选平台产物，核对其源码提交、校验和与验证报告。单独生成 `release-manifest.json`，包含 `platform`、`version`、`sourceCommit` 以及该平台附件的大小和 SHA-256。
+
+Windows Release 共 6 个附件，Android Release 共 5 个附件。上传后核对 GitHub 返回的附件大小与摘要、文件清单，才公开。一个平台的发布不等待另一个平台，也不会附上另一个平台的旧包。
+
+构建失败不会公开稳定版；发布失败可能保留该版本临时草稿。同一提交可重跑，只有当前版本草稿中的附件会被替换，不清理其他版本。Actions 产物保留 14 天，稳定 Release 附件持续保留。
 
 ## 安卓签名
 
-仓库 Actions Secrets 使用：
-
-| 名称 | 内容 |
+| Actions Secret | 内容 |
 | --- | --- |
 | `ANDROID_KEYSTORE_BASE64` | 既有 `codex-dock.p12` 的 Base64。 |
 | `ANDROID_KEYSTORE_PASSWORD` | 同一签名库与 alias 的密码。 |
 
-alias 固定为 `codex-dock`，证书 SHA-256 固定在 `android.json`。不能在 CI 生成新签名替换旧签名。密钥只恢复到 runner 临时目录，构建结束无论成功失败均清理，不上传到构建产物或源码。请在仓库外妥善保存原签名备份；仓库 Secret 不替代备份。
+alias 为 `codex-dock`，证书 SHA-256 固定在 `android.json`。CI 不生成新签名，私钥只恢复到 runner 临时目录，构建结束清理，不进入产物或源码。Windows 构建不读取安卓签名秘密。
 
-普通构建仅需 `contents: read`，最终发布 job 单独使用 `contents: write`。使用 GitHub 提供的工作流令牌上传 Release，无须在仓库配置个人 GitHub Token。
+普通构建使用 `contents: read`，最终发布 job 单独使用 `contents: write`，使用 GitHub 工作流令牌，无需个人 Token。
 
 ## Windows 自更新
 
-Windows“检查更新”读取 GitHub REST `/releases/latest`，只接受 `v主版本.次版本.修订号` 正式版本；同版与旧版不提示升级。双端采用 Windows 标签共用一个 Release，安卓自己的版本不干扰 Windows 更新判断。
+Windows“检查更新”读取 `/releases/latest`，只接受 `v主版本.次版本.修订号` 正式版本。Windows 发布设置为 latest；Android 使用独立 `android-v` 标签，发布时不改 latest，因此不会干扰旧版 Windows 的更新检查。
 
-REST 403/429 时改读同一仓库的 `/releases/latest` 页面跳转，再验证安装器地址及校验清单。安装器与 `SHA256SUMS-X.Y.Z.txt` 缺失时不会下载。下载只允许 GitHub 及 Release 资源域名，下载后和安装前分别核对 SHA-256。
+REST 403/429 时改读同仓库 `/releases/latest` 跳转。只接受受支持的 GitHub 下载域名，检查安装器与 `SHA256SUMS-X.Y.Z.txt`，下载后和安装前分别核对 SHA-256。
 
-本地打包入口仍为 `scripts/package.ps1`、`scripts/verify-package.ps1` 和 `scripts/build-android.py`。禁止从脏工作区制作正式包；隐私扫描排除个人配置、认证、备份、签名、测试运行目录与缓存。不要上传整个 artifacts 目录。
-
-接口契约见 [GitHub Release API](https://docs.github.com/en/rest/releases/releases) 与 [Actions Secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets)。
+本地入口仍为 `scripts/package.ps1`、`scripts/verify-package.ps1` 和 `scripts/build-android.py`。禁止从脏工作区制作正式包；隐私扫描排除个人配置、认证、备份、签名、测试运行目录与缓存。不要上传整个 artifacts 目录。

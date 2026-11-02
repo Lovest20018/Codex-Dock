@@ -8,6 +8,8 @@
 
 安卓客户端仍为 Lovest Code **0.2.2**，本次无需更新安卓。
 
+本页只发布 Windows 安装器、便携包及其源码、校验和与验证报告。Android 使用独立的 [0.2.2 发布页](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.2)，以后按各自更新分别发布。
+
 ## 更新
 
 等待正在执行的任务结束。备份程序目录、Codex 配置目录及 `%LOCALAPPDATA%\CodexConfig\mobile`，核对 `SHA256SUMS-0.16.1.txt` 后运行安装包。

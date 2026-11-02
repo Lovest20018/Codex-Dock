@@ -1,5 +1,7 @@
 # Lovest Code Android 0.2.2
 
+本页为 Android 独立发布，提供 APK、源码、签名信息与 SHA-256 清单。0.2.2 的功能、包名、证书及 versionCode 保持原有版本；已经安装 0.2.2 的用户无需重装。Windows 的更新另见 [Windows 发布页](https://github.com/Lovest20018/Codex-Dock/releases/latest)，不会要求同步升级 APK。
+
 修正手机上文字输入区折叠后只剩模型栏和高级选项的问题。安卓端移除文字输入区的折叠箭头，保留独立的“选项”展开与收起；旧折叠状态会恢复为展开。发送前后可以继续输入，键盘仍按系统规则弹出或收起。
 
 修改仅在 APK 自有页面适配中生效，兼容 Windows Dock 0.15.1。发送、草稿、账号与服务端协议继续使用原有实现。包名、签名与 Logo 沿用旧版，versionName 0.2.2 / versionCode 5，可从 0.2.1 覆盖升级。

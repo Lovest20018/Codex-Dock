@@ -1,12 +1,18 @@
-name: Windows and Android release
+name: Platform release
 
 on:
   push:
-    tags: ['v*']
+    tags: ['v*', 'android-v*']
   workflow_dispatch:
     inputs:
+      platform:
+        description: Build or publish only this platform
+        type: choice
+        options: [windows, android]
+        default: windows
+        required: true
       publish:
-        description: Publish verified packages as a public stable Release
+        description: Publish the selected platform as a public stable Release
         type: boolean
         default: false
 
@@ -14,13 +20,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.ref }}-${{ inputs.platform || 'tag' }}
   cancel-in-progress: false
 
 jobs:
   versions:
     runs-on: ubuntu-24.04
     outputs:
+      platform: ${{ steps.versions.outputs.platform }}
       windows: ${{ steps.versions.outputs.windows }}
       android: ${{ steps.versions.outputs.android }}
       tag: ${{ steps.versions.outputs.tag }}
@@ -30,10 +37,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - id: versions
+        env:
+          RELEASE_PLATFORM: ${{ inputs.platform }}
         run: python3 -B scripts/release-ci.py metadata
 
   windows:
     needs: versions
+    if: needs.versions.outputs.platform == 'windows'
     runs-on: windows-2022
     timeout-minutes: 45
     defaults:
@@ -106,6 +116,7 @@ jobs:
 
   android:
     needs: versions
+    if: needs.versions.outputs.platform == 'android'
     runs-on: windows-2022
     timeout-minutes: 25
     defaults:
@@ -171,22 +182,27 @@ jobs:
             artifacts/SHA256SUMS-Android-${{ needs.versions.outputs.android }}.txt
 
   publish:
-    if: github.ref_type == 'tag' || inputs.publish
+    if: >-
+      always() && needs.versions.result == 'success' &&
+      (github.ref_type == 'tag' || inputs.publish) &&
+      ((needs.versions.outputs.platform == 'windows' && needs.windows.result == 'success') ||
+       (needs.versions.outputs.platform == 'android' && needs.android.result == 'success'))
     needs: [versions, windows, android]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: write
+    env:
+      RELEASE_PLATFORM: ${{ needs.versions.outputs.platform }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: '*-release'
+          name: ${{ needs.versions.outputs.platform }}-release
           path: artifacts/release
-          merge-multiple: true
-      - name: Verify both packages before publishing
+      - name: Verify selected platform before publishing
         run: python3 -B scripts/release-ci.py verify --directory artifacts/release
       - name: Upload, verify remote digests and publish
         env:
