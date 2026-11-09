@@ -24,13 +24,13 @@ public sealed class TemplateBrowser : UserControl
     private readonly TextBlock error = HelpContent.Note("");
     internal readonly TextBox NameInput = new() { MaxLength = 60 };
     internal readonly TextBox DescriptionInput = new() { MaxLength = 240 };
-    internal readonly Button SaveTemplateButton = new() { Content = "保存模板" };
+    internal readonly Button SaveTemplateButton = new() { Content = "保存方案" };
     internal readonly Button CancelEditButton = new() { Content = "取消" };
     internal readonly Button NewTemplateButton = new() { Content = "新增模板" };
     internal readonly Button CaptureTemplateButton = new() { Content = "保存当前设置为模板" };
     internal readonly Button AddRowButton = new() { Content = "添加设置" };
     internal readonly Dictionary<string, CheckBox> Choices = new(StringComparer.Ordinal);
-    internal readonly Button StageButton = new() { Content = "应用所选项" };
+    internal readonly Button StageButton = new() { Content = "查看并确认修改" };
     public event Action<ConfigTemplate, string[]>? StageRequested;
     public event Action<string, bool>? StatusChanged;
     internal ConfigTemplate? Current => current;
@@ -96,7 +96,7 @@ public sealed class TemplateBrowser : UserControl
     internal void ShowList()
     {
         editing = null; current = null; ResetView();
-        selectedCount.Text = "应用模板后，可继续编辑并保存配置。";
+        selectedCount.Text = "选择方案 → 核对差异 → 确认写入本地配置";
         if (NewTemplateButton.Parent is Panel oldNew) oldNew.Children.Remove(NewTemplateButton);
         if (CaptureTemplateButton.Parent is Panel oldCapture) oldCapture.Children.Remove(CaptureTemplateButton);
         var actions = new WrapPanel { Margin = new(0, 0, 0, 18) };
@@ -111,11 +111,13 @@ public sealed class TemplateBrowser : UserControl
                 var row = new Grid(); row.ColumnDefinitions.Add(new()); row.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
                 var title = new StackPanel { Margin = new(0, 0, 18, 0) };
                 title.Children.Add(new TextBlock { Text = template.Name, FontSize = 15, FontWeight = FontWeights.Medium });
-                title.Children.Add(HelpContent.Note($"{template.Settings.Count} 项设置 · " + (TemplateRepository.IsBuiltIn(template.Id) ? "内置模板" : "我的模板")));
+                var builtIn = BuiltInTemplates.All.FirstOrDefault(item => item.Id == template.Id);
+                var origin = builtIn is null ? "我的方案" : template.Name != builtIn.Name || template.Description != builtIn.Description || !template.Settings.SequenceEqual(builtIn.Settings) ? "内置推荐 · 本地已编辑" : "内置推荐";
+                title.Children.Add(HelpContent.Note($"{template.Settings.Count} 项设置 · " + origin));
                 if (!string.IsNullOrWhiteSpace(template.Description)) title.Children.Add(HelpContent.Note(template.Description));
                 row.Children.Add(title);
                 var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-                buttons.Children.Add(Action("查看", () => ShowTemplate(template))); buttons.Children.Add(Action("编辑", () => BeginEdit(template), true));
+                buttons.Children.Add(Action("选择方案", () => ShowTemplate(template))); buttons.Children.Add(Action("编辑方案", () => BeginEdit(template), true));
                 var more = Action("更多", () => { }, true); var menu = new ContextMenu();
                 var copy = new MenuItem { Header = "复制模板" }; copy.Click += (_, _) => CopyTemplate(template);
                 var delete = new MenuItem { Header = "删除模板" }; delete.Click += (_, _) => DeleteTemplate(template);
@@ -136,14 +138,14 @@ public sealed class TemplateBrowser : UserControl
         current = template; editing = null; ResetView(); footerActions.Children.Add(StageButton);
         var top = new DockPanel { Margin = new(0, 0, 0, 12) };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal }; DockPanel.SetDock(buttons, Dock.Right);
-        buttons.Children.Add(Action("编辑", () => BeginEdit(template), true)); buttons.Children.Add(Action("复制", () => CopyTemplate(template), true));
+        buttons.Children.Add(Action("编辑方案", () => BeginEdit(template), true)); buttons.Children.Add(Action("复制", () => CopyTemplate(template), true));
         var back = Action("‹ 模板列表", ShowList, true); back.HorizontalAlignment = HorizontalAlignment.Left;
         top.Children.Add(buttons); top.Children.Add(back); body.Children.Add(top);
         body.Children.Add(new TextBlock { Text = template.Name, FontSize = 18, FontWeight = FontWeights.SemiBold });
         if (!string.IsNullOrWhiteSpace(template.Description)) body.Children.Add(HelpContent.Note(template.Description));
         if (Uri.TryCreate(template.SourceUrl, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)
             body.Children.Add(new Expander { Header = "来源", Content = HelpContent.SourceLink(template.SourceName, template.SourceUrl), Margin = new(0, 8, 0, 0) });
-        body.Children.Add(HelpContent.Note("勾选要应用的设置。已有修改默认保留。", new(0, 14, 0, 12)));
+        body.Children.Add(HelpContent.Note("勾选本次要修改的项目，再查看差异并确认写入。已有未保存修改默认保留；编辑方案只修改推荐内容。", new(0, 14, 0, 12)));
         foreach (var diff in template.BuildDiff(original, draft))
         {
             var shell = new StackPanel();
@@ -154,7 +156,9 @@ public sealed class TemplateBrowser : UserControl
             var help = ConfigHelp.Find(diff.Setting.Path);
             if (help is not null) label.Children.Add(HelpContent.Note(help.Summary));
             row.Children.Add(label);
-            var values = HelpContent.Note(DisplayValue(diff.CurrentValue) + "  →  " + DisplayValue(diff.Setting.Value), new(0)); values.VerticalAlignment = VerticalAlignment.Center;
+            var valueText = "本地：" + DisplayValue(diff.FileValue);
+            if (diff.HasDraft) valueText += "\n待写入：" + (diff.CurrentValue is null ? "移除本地覆盖" : DisplayValue(diff.CurrentValue));
+            var values = HelpContent.Note(valueText + "\n推荐：" + DisplayValue(diff.Setting.Value), new(0)); values.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(values, 1); row.Children.Add(values);
             var details = new Expander { Header = "了解更多", Content = HelpContent.Details(diff.Setting.Path, ConfigSchema.Instance.Find(diff.Setting.Path)), Visibility = Visibility.Collapsed, Margin = new(22, 12, 0, 0) };
             var info = Action("了解更多", () => { details.Visibility = details.IsVisible ? Visibility.Collapsed : Visibility.Visible; details.IsExpanded = details.Visibility == Visibility.Visible; }, true);
@@ -171,18 +175,18 @@ public sealed class TemplateBrowser : UserControl
 
     private static string DisplayValue(string? value)
     {
-        var text = value ?? "默认"; if (text.Length > 80) text = text[..80] + "…"; return text;
+        var text = value ?? "本地未设置（跟随 Codex 配置）"; if (text.Length > 80) text = text[..80] + "…"; return text;
     }
     private void UpdateCount()
     {
         var count = Choices.Values.Count(box => box.IsEnabled && box.IsChecked == true);
-        StageButton.Content = $"应用所选 {count} 项"; StageButton.IsEnabled = count > 0; selectedCount.Text = $"已选 {count} 项 · 应用后还需保存配置";
+        StageButton.Content = $"查看并确认 {count} 项修改"; StageButton.IsEnabled = count > 0; selectedCount.Text = $"已选 {count} 项 · 尚未写入本地配置";
     }
 
     internal void BeginEdit(ConfigTemplate template, bool isNew = false)
     {
         editing = template; creating = isNew; current = null; ResetView(); editRows.Clear();
-        selectedCount.Text = "模板保存在本机。"; footerActions.Children.Add(CancelEditButton); footerActions.Children.Add(SaveTemplateButton);
+        selectedCount.Text = "仅保存方案，不修改 config.toml。"; footerActions.Children.Add(CancelEditButton); footerActions.Children.Add(SaveTemplateButton);
         body.Children.Add(new TextBlock { Text = isNew ? "新增模板" : "编辑模板", FontSize = 18, FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 0, 18) });
         body.Children.Add(HelpContent.Note("名称", new(0, 0, 0, 6))); NameInput.Text = template.Name; body.Children.Add(NameInput);
         body.Children.Add(HelpContent.Note("简介（选填）", new(0, 12, 0, 6))); DescriptionInput.Text = template.Description; body.Children.Add(DescriptionInput);
@@ -235,7 +239,7 @@ public sealed class TemplateBrowser : UserControl
     }
     internal void RestoreBuiltIns()
     {
-        if (repository is null || !testMode && MessageBox.Show(Window.GetWindow(this), "恢复内置模板？对内置模板的编辑也会还原。", "恢复内置模板", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        if (repository is null || !testMode && MessageBox.Show(Window.GetWindow(this), "恢复内置推荐方案？对内置方案的编辑也会还原。\n\n只修改本机方案库，不会修改 config.toml。", "恢复内置方案", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         try { repository.RestoreBuiltIns(); ShowList(); StatusChanged?.Invoke("内置模板已恢复。", false); }
         catch (Exception ex) { StatusChanged?.Invoke(ex.Message, true); }
     }

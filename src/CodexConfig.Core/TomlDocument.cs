@@ -193,24 +193,27 @@ public sealed class TomlDocument
             Validate();
             return;
         }
-        var parentPath = path[..^1];
-        var parent = entries.FirstOrDefault(x => x.Path.SequenceEqual(parentPath));
+        // New nested settings must be added inside their nearest existing table.
+        // A dotted root key would redefine an explicit ancestor such as [features].
+        bool Ancestor(string[] candidate) => candidate.Length < path.Length && path.Take(candidate.Length).SequenceEqual(candidate);
+        var parent = entries.Where(x => Ancestor(x.Path)).OrderByDescending(x => x.Path.Length).FirstOrDefault();
         if (parent is not null)
         {
             if (parent.Syntax.Value is not InlineTableSyntax inline)
-                throw new InvalidDataException($"配置中的 {string.Join('.', parentPath)} 必须是 TOML 表。");
+                throw new InvalidDataException($"配置中的 {FormatPath(parent.Path)} 必须是 TOML 表。");
             var prefix = !inline.Items.Any() ? " " : ", ";
-            Replace(inline.CloseBrace!.Span.Start.Offset, 0, $"{prefix}{Key(path[^1])} = {value} ");
+            Replace(inline.CloseBrace!.Span.Start.Offset, 0, $"{prefix}{FormatPath(path[parent.Path.Length..])} = {value} ");
         }
         else
         {
-            var table = syntax.Tables.OfType<TableSyntax>().FirstOrDefault(x => Parts(x.Name!).SequenceEqual(parentPath));
+            var table = syntax.Tables.OfType<TableSyntax>().Where(x => Ancestor(Parts(x.Name!)))
+                .OrderByDescending(x => Parts(x.Name!).Length).FirstOrDefault();
             if (table is not null)
             {
                 var end = table.EndOfLineToken?.Span.End.Offset + 1 ?? table.CloseBracket!.Span.End.Offset + 1;
                 end = Math.Min(end, source.Length);
                 var separator = end == 0 || source[end - 1] == '\n' ? "" : newline;
-                Replace(end, 0, separator + $"{Key(path[^1])} = {value}" + newline);
+                Replace(end, 0, separator + $"{FormatPath(path[Parts(table.Name!).Length..])} = {value}" + newline);
             }
             else
             {

@@ -28,7 +28,6 @@ public partial class MainWindow : Window
     private string baselineFields = "";
     private string currentPage = "connection";
     private string currentTab = "changes";
-    private TemplateApplication? lastTemplate;
     private ConnectionSettings loadedSettings = new("", "", "gpt-6.1-sol");
     private ConfigSnapshot? snapshot;
     private ConfigPlan? preview;
@@ -138,7 +137,6 @@ public partial class MainWindow : Window
             RefreshMixedUi();
             SynchronizeLinePreset();
             detailedChanges.Clear();
-            lastTemplate = null;
             Editor.Configure(snapshot.Config, detailedChanges);
             Editor.SetContext(home, ModelBox.Text);
             configurationTools.Configure(home, snapshot.Config, ModelBox.Text);
@@ -200,7 +198,7 @@ public partial class MainWindow : Window
         LibraryBackupTab.SetResourceReference(ForegroundProperty, page == "backup" ? "Accent" : "Muted");
         BackupPage.Visibility = page == "backup" ? Visibility.Visible : Visibility.Collapsed;
         TemplateEditor.Visibility = page == "templates" ? Visibility.Visible : Visibility.Collapsed;
-        GlobalSaveBar.Visibility = page != "mobile" && !(page == "templates" && TemplateEditor.IsEditing) ? Visibility.Visible : Visibility.Collapsed;
+        UpdateSaveBarVisibility();
         if (page == "preferences" && previousPage != page) { Editor.Search.Text = ""; Editor.SetMode(true); }
         if (page == "catalog" && previousPage != page && Editor.Scope == "common") Editor.SetMode(false);
         RefreshOverview();
@@ -221,15 +219,14 @@ public partial class MainWindow : Window
     {
         var usable = snapshot is not null && !store.HasPending(home);
         SaveButton.IsEnabled = usable && Dirty && !closing && !loginInProgress;
+        PreviewButton.Visibility = Dirty ? Visibility.Collapsed : Visibility.Visible;
         UndoButton.IsEnabled = usable && Dirty && !closing && !loginInProgress;
         ProbeButton.IsEnabled = usable && !busy;
         TemplatesNav.IsEnabled = usable && !closing;
         ServiceTemplateButton.IsEnabled = usable && !closing;
-        UndoTemplateButton.Visibility = lastTemplate is { Count: > 0 } ? Visibility.Visible : Visibility.Collapsed;
-        UndoTemplateButton.IsEnabled = usable && !closing;
         Editor.IsEnabled = usable && !closing; TemplateEditor.IsEnabled = usable && !closing;
         DraftCountText.Text = snapshot is null ? "配置尚未读取，暂时无法保存" : store.HasPending(home) ? "请先恢复未完成的保存" : Dirty ? $"有 {DraftCount()} 项未保存" : "所有修改已保存";
-        GlobalSaveBar.Visibility = currentPage != "mobile" && !(currentPage == "templates" && TemplateEditor.IsEditing) ? Visibility.Visible : Visibility.Collapsed;
+        UpdateSaveBarVisibility();
         RefreshOverview();
     }
     private void MarkDirty()
@@ -250,19 +247,14 @@ public partial class MainWindow : Window
         if (snapshot is null || store.HasPending(home) || closing) return;
         try
         {
+            reviewHadDraft = Dirty;
             var applied = template.StageSelected(new TomlDocument(snapshot.Config).Model, detailedChanges, paths);
             if (applied.Count == 0) { SetStatus("所选设置与当前值相同。"); return; }
-            lastTemplate = applied; Editor.Configure(snapshot.Config, detailedChanges); ShowPage("catalog"); Editor.ShowChanged(); MarkDirty();
-            SetStatus($"已应用 {applied.Count} 项，保存配置后生效。");
+            reviewTemplate = applied; reviewSource = template.Name;
+            Editor.Configure(snapshot.Config, detailedChanges); MarkDirty();
+            OpenConfigurationReview();
         }
         catch (Exception error) { ShowError(error); }
-    }
-    private void UndoTemplateClicked(object sender, RoutedEventArgs e)
-    {
-        if (lastTemplate is null || snapshot is null || closing || store.HasPending(home)) return;
-        var result = lastTemplate.Undo(detailedChanges); lastTemplate = null;
-        Editor.Configure(snapshot.Config, detailedChanges); MarkDirty();
-        SetStatus($"已撤销 {result.Restored} 项模板设置。" + (result.Preserved > 0 ? $"保留 {result.Preserved} 项后续修改。" : ""));
     }
     private int DraftCount() => detailedChanges.Count + (DetailsChanged ? 1 : 0) +
         (ConnectionModeBox.SelectedIndex != (int)loadedSettings.Mode || stagedOfficialAuth is not null ? 1 : 0) +
@@ -346,13 +338,18 @@ public partial class MainWindow : Window
 
     private void UpdatePreview()
     {
-        if (snapshot is null) { PreviewBox.Text = "请先读取有效的配置目录。"; return; }
-        try { preview = store.Plan(snapshot, Settings(placeholder: true), detailedChanges, updateConnection: ConnectionChanged, updateModel: ModelBox.Text != loadedSettings.Model, updateDetails: DetailsChanged, officialAuth: stagedOfficialAuth); RenderPreview(); }
-        catch (Exception error) { preview = null; PreviewBox.Text = error is ArgumentException ? error.Message : "配置预览暂不可用，请检查字段格式与未保存的设置。"; }
+        if (snapshot is null) { preview = null; PreviewBox.Text = "请先读取有效的配置目录。"; RenderReviewError(PreviewBox.Text); return; }
+        try
+        {
+            preview = reviewPlan ?? store.Plan(snapshot, Settings(), detailedChanges, updateConnection: ConnectionChanged, updateModel: ModelBox.Text != loadedSettings.Model, updateDetails: DetailsChanged, officialAuth: stagedOfficialAuth);
+            RenderPreview();
+        }
+        catch (Exception error) { preview = null; PreviewBox.Text = error is ArgumentException or InvalidDataException ? error.Message : "配置预览暂不可用，请检查字段格式与未保存的设置。"; RenderReviewError(PreviewBox.Text); }
     }
     private void RenderPreview()
     {
         if (preview is null) return;
+        RenderConfigurationReview();
         PreviewBox.Text = currentTab switch
         {
             "changes" => RenderChanges(),
@@ -370,9 +367,9 @@ public partial class MainWindow : Window
     private string RenderChanges()
     {
         if (snapshot is null || preview is null) return "请先读取有效配置。";
-        var before = new TomlDocument(snapshot.Config).Model; var after = new TomlDocument(preview.Config).Model;
+        var before = new TomlDocument(preview.Before.Config).Model; var after = new TomlDocument(preview.Config).Model;
         var lines = new List<string>();
-        string Display(string path, object? value) => value is null ? "未设置 / 继承其他层" : ConfigReadClient.SafeValue(path, JsonSerializer.SerializeToElement(value));
+        string Display(string path, object? value) => value is null ? "本地未设置 · 跟随其他配置层或 Codex 默认" : ConfigReadClient.SafeValue(path, JsonSerializer.SerializeToElement(value));
         foreach (var path in TomlDocument.ValuePaths(before).Concat(TomlDocument.ValuePaths(after)).Distinct(StringComparer.Ordinal).OrderBy(path => path, StringComparer.Ordinal))
         {
             var previous = TomlDocument.ValueAt(before, path); var next = TomlDocument.ValueAt(after, path);
@@ -386,7 +383,7 @@ public partial class MainWindow : Window
         return lines.Count == 0 ? "没有需要保存的更改。" : string.Join("\n\n", lines) + "\n\n" + string.Join("\n", preview.Notes) + "\n\n保存后，重新打开 Codex 读取配置。";
     }
     private void PreviewTabClicked(object sender, RoutedEventArgs e) { currentTab = (string)((Button)sender).Tag; UpdatePreview(); }
-    private void PreviewClicked(object sender, RoutedEventArgs e) { currentTab = "changes"; UpdatePreview(); OpenOverlay(PreviewOverlay, ClosePreviewButton); }
+    private void PreviewClicked(object sender, RoutedEventArgs e) => OpenConfigurationReview();
     private void LocationClicked(object sender, RoutedEventArgs e) { HomePath.Text = home; OpenOverlay(LocationOverlay, CloseLocationButton); }
     private void OpenOverlay(Grid overlay, Control focus)
     {
@@ -395,12 +392,14 @@ public partial class MainWindow : Window
     private void CloseOverlayClicked(object sender, RoutedEventArgs e) => CloseOverlay();
     private void CloseOverlay()
     {
+        CancelTemplateReview();
+        reviewPlan = null; reviewSource = null; reviewSaved = false;
         PreviewOverlay.Visibility = LocationOverlay.Visibility = Visibility.Collapsed; MainShell.IsEnabled = true;
         if (overlayFocus is not null) Keyboard.Focus(overlayFocus);
     }
 
-    private void SaveClicked(object sender, RoutedEventArgs e) => SaveCurrent();
-    private bool SaveCurrent()
+    private void SaveClicked(object sender, RoutedEventArgs e) => OpenConfigurationReview();
+    private bool SaveCurrent(ConfigPlan? confirmedPlan = null)
     {
         if (closing) return false;
         if (loginInProgress) { ShowError(new InvalidOperationException("请先完成或取消当前登录。")); return false; }
@@ -414,9 +413,13 @@ public partial class MainWindow : Window
                 var first = Editor.Errors.First(); ShowPage("catalog"); Editor.Filter(ConfigSchema.Instance.Find(first.Key)?.Path ?? first.Key);
                 throw new ArgumentException("有配置项尚未填写正确，请检查行内提示。");
             }
-            var plan = store.Plan(snapshot, Settings(), detailedChanges, updateConnection: ConnectionChanged, updateModel: ModelBox.Text != loadedSettings.Model, updateDetails: DetailsChanged, officialAuth: stagedOfficialAuth);
+            if (confirmedPlan is not null && !ReferenceEquals(confirmedPlan.Before, snapshot)) throw new IOException("配置已重新读取，请返回调整后重新确认。");
+            var plan = confirmedPlan ?? store.Plan(snapshot, Settings(), detailedChanges, updateConnection: ConnectionChanged, updateModel: ModelBox.Text != loadedSettings.Model, updateDetails: DetailsChanged, officialAuth: stagedOfficialAuth);
             store.Apply(plan);
-            if (!Reload()) return false;
+            var saved = store.Load(home);
+            var expected = new ConfigSnapshot(plan.Before.Home, plan.Config, plan.Auth, plan.AuthApiBaseUrl) { Bridge = plan.Bridge, Details = plan.Details };
+            if (!saved.SameContents(expected)) throw new IOException("文件在保存后再次被其他程序修改，请重新读取并核对；当前修改已保留。");
+            if (!Reload(saved)) return false;
             var note = plan.Notes.FirstOrDefault(n => n.StartsWith("保留现有", StringComparison.Ordinal));
             SetStatus("已保存，重新打开 Codex 后生效。" + (note is null ? "" : " " + note));
             _ = RefreshGatewayAsync();
@@ -507,9 +510,9 @@ public partial class MainWindow : Window
     }
     private void HelpClicked(object sender, RoutedEventArgs e) => MessageBox.Show(this,
         "1. 调整设置，或在模板中选择一组设置。\n\n" +
-        "2. 点击“保存配置”，重新打开 Codex 后生效。\n\n" +
+        "2. 点击“查看并确认修改”，核对目标文件与前后值，再点击“确认写入”。重新打开 Codex 后生效。\n\n" +
         "3. 保存前会自动备份，可在“备份恢复”中还原。\n\n" +
-        "Ctrl+S 保存 · Ctrl+F 搜索 · Esc 关闭面板\n\n" +
+        "Ctrl+S 查看并确认修改 · Ctrl+F 搜索 · Esc 返回调整\n\n" +
         "配置目录可在“配置位置”查看或更换。模板单独保存在本机。",
         "使用说明", MessageBoxButton.OK, MessageBoxImage.Information);
     private void SetStatus(string text, bool error = false)
@@ -522,7 +525,16 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Escape && (PreviewOverlay.IsVisible || LocationOverlay.IsVisible)) { CloseOverlay(); e.Handled = true; }
         if (Keyboard.Modifiers != ModifierKeys.Control) return;
-        if (e.Key == Key.S && MainShell.IsEnabled && SaveButton.IsEnabled) { SaveCurrent(); e.Handled = true; }
+        if (e.Key == Key.S && MainShell.IsEnabled)
+        {
+            if (TemplateEditor.IsEditing) { TemplateEditor.SaveEdit(); e.Handled = true; }
+            else if (currentPage == "templates" && TemplateEditor.Current is not null)
+            {
+                if (TemplateEditor.StageButton.IsEnabled) TemplateEditor.StageButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                e.Handled = true;
+            }
+            else if (SaveButton.IsEnabled) { OpenConfigurationReview(); e.Handled = true; }
+        }
         if (e.Key == Key.F && MainShell.IsEnabled) { ShowPage("catalog"); Editor.FocusSearch(); e.Handled = true; }
     }
     private void SystemPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
@@ -674,10 +686,10 @@ public partial class MainWindow : Window
         foreach (var box in TemplateEditor.Choices.Values) box.IsChecked = box.IsEnabled;
         await Settle(); Capture(output, "template-details.png");
         TemplateEditor.StageButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Assert(lastTemplate?.Count == 7 && detailedChanges.Count == 8, "Selected template stages all seven");
-        Editor.Filter("web_search"); SelectValue("web_search", "\"disabled\"");
-        UndoTemplateClicked(UndoTemplateButton, new());
-        Assert(detailedChanges.Count == 2 && detailedChanges["web_search"] == "\"disabled\"" && detailedChanges["future_config.other"] == "true", "Undo template preserves later and unrelated edits");
+        Assert(reviewTemplate?.Count == 7 && detailedChanges.Count == 8, "Selected template stages all seven");
+        Assert(PreviewOverlay.IsVisible && currentPage == "templates" && !GlobalSaveBar.IsVisible, "Template goes directly to confirmation without a second save bar");
+        ClosePreviewButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert(detailedChanges.Count == 2 && detailedChanges["web_search"] == "\"cached\"" && detailedChanges["future_config.other"] == "true", "Returning from template confirmation preserves the preceding draft");
         UndoClicked(UndoButton, new());
         TemplatesClicked(TemplatesNav, new()); TemplateEditor.ShowTemplate(BuiltInTemplates.KrillCommunity);
         Assert(TemplateEditor.Choices.Values.Count(box => box.IsChecked == true) == 3, "Default template selects three supported non-conflicting options");
@@ -695,15 +707,17 @@ public partial class MainWindow : Window
         foreach (var box in TemplateEditor.Choices.Values) box.IsChecked = box.IsEnabled;
         TemplateEditor.StageButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Assert(File.ReadAllBytes(Path.Combine(home, "config.toml")).SequenceEqual(current.Config!), "Template only stages a draft");
-        PreviewClicked(PreviewButton, new()); Assert(currentTab == "changes" && PreviewBox.Text.Contains("web_search") && !PreviewBox.Text.Contains("ah-fake"), "Masked field differences");
-        await Settle(); Capture(output, "changes-preview.png"); CloseOverlay();
-        Assert(SaveCurrent(), "Template save");
+        Assert(currentTab == "changes" && PreviewBox.Text.Contains("web_search") && !PreviewBox.Text.Contains("ah-fake"), "Masked field differences");
+        await Settle(); Capture(output, "changes-preview.png");
+        ConfirmWriteButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert(reviewSaved && ReviewSuccess.IsVisible && !Dirty, "Template confirmation writes and rereads the saved configuration");
+        CloseOverlay();
         document = new TomlDocument(store.Load(home).Config);
         foreach (var setting in BuiltInTemplates.KrillCommunity.Settings) Assert(ConfigSchema.Literal(document.Get(setting.Path)) == setting.Value, "Template saved " + setting.Path);
         Assert(store.Load(home).Auth!.SequenceEqual(current.Auth!), "Template preserves authentication");
         TemplatesClicked(TemplatesNav, new()); TemplateEditor.ShowTemplate(BuiltInTemplates.KrillCommunity);
         Assert(!TemplateEditor.StageButton.IsEnabled && TemplateEditor.Choices.Values.All(box => !box.IsEnabled) && detailedChanges.Count == 0, "Repeated template creates no draft");
-        checks.AddRange(["All seven template settings explicitly selected and persisted", "Template preview and cancel have no side effects", "Template conflicts and historical options opt in", "Undo template preserves later and unrelated edits", "Repeated template skips equal values", "Masked field differences", "Template preserves authentication", "Minimum 960x640 common and template layout", "Dark template details"]);
+        checks.AddRange(["All seven template settings explicitly selected and persisted", "Template preview and cancel have no side effects", "Template conflicts and historical options opt in", "Template confirmation returns to the preceding draft", "Repeated template skips equal values", "Masked field differences", "Template preserves authentication", "Minimum 960x640 common and template layout", "Dark template details"]);
         // Exercise the actual template editor controls and local persistence in the isolated smoke home.
         var library = new TemplateRepository(Path.Combine(home, "editor-templates"));
         var configBeforeLibrary = File.ReadAllBytes(Path.Combine(home, "config.toml"));
@@ -815,6 +829,7 @@ public partial class MainWindow : Window
         await RunMobileSmokeAsync(output, checks);
         await RunGatewayLifecycleSmokeAsync(output, checks);
         await RunConfigurationOptimizationSmokeAsync(output, checks);
+        await RunConfigurationReviewSmokeAsync(output, checks);
         await RunLayoutReviewAsync(output, checks);
         Assert(Environment.GetEnvironmentVariable(WindowsUserEnvironment.Variable, EnvironmentVariableTarget.User) == originalEnvironment, "Real environment changed");
         checks.AddRange(["External change conflict protection", "Reload after invalid source repair", "Real user environment unchanged"]);

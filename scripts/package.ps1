@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.16.2',
+    [string]$Version = '0.16.3',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
@@ -61,9 +61,9 @@ Copy-Item -LiteralPath $taskUiReport -Destination (Join-Path $taskRelease 'verif
     ''
     '运行 Setup EXE 安装；也可解压便携包并打开 CodexDock.exe。无需安装 .NET。'
     '常用设置、服务连接、配置模板、备份恢复在同一窗口。保存配置后重新打开 Codex。'
-    'Ctrl+S 保存；Ctrl+F 搜索；Esc 关闭面板。'
+    'Ctrl+S 查看并确认修改；Ctrl+F 搜索；Esc 返回调整。'
     '模型目录获取为可选操作，不会改变所选认证方式。'
-    '模板支持新增、编辑、复制和删除；应用所选设置后，再保存配置。'
+    '选择模板或手动修改后，核对目标文件与修改明细，再点击确认写入。编辑方案只修改本机方案库。'
     '设置默认显示一句用途，点击“了解更多”查看说明。'
     '保存前自动加密备份，可在备份与恢复页恢复上次配置。'
     '手机连接使用已有 HTTPS 根域名；默认 HTTP 端口 13090，可在手机连接页修改。保留外部 Host（含非默认端口）。'

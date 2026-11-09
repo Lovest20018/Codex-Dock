@@ -347,7 +347,7 @@ public sealed partial class SettingsEditor : UserControl
             var key = Path(); var value = OriginalValue(key);
             title.Text = displayName + (changes.ContainsKey(key) ? " · 未保存" : "");
             current.Text = "本文件：" + (value is null ? "未设置 · 继承值待检测" : Sensitive(key) ? "••••••••（已隐藏）" : entry.Kind is "table" or "map" or "recursive" ? "已设置（查看子项）" : ConfigSchema.Literal(value));
-            if (changes.TryGetValue(key, out var repr)) current.Text += repr is null ? "\n未保存：取消本文件覆盖" : "\n未保存：" + (Sensitive(key) ? "••••••••" : repr);
+            if (changes.TryGetValue(key, out var repr)) current.Text += repr is null ? "\n待写入：移除此项本地覆盖，跟随其他配置层或 Codex 默认" : "\n待写入：" + (Sensitive(key) ? "••••••••" : repr);
             errorText.Text = Errors.GetValueOrDefault(key) ?? ""; errorText.Visibility = errorText.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
         void Change(string? repr)
@@ -378,7 +378,7 @@ public sealed partial class SettingsEditor : UserControl
         }
         else if (entry.Kind is "boolean" or "enum" or "bool_or_table" || entry.Path is "model_reasoning_effort" or "service_tier")
         {
-            var choices = new List<ValueChoice> { new("跟随默认", null) };
+            var choices = new List<ValueChoice> { new("跟随 Codex 配置（移除本地覆盖）", null) };
             if (entry.Kind is "boolean" or "bool_or_table") { choices.Add(new("开启", "true")); choices.Add(new("关闭", "false")); }
             else
             {

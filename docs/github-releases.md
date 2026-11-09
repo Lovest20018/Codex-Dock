@@ -6,10 +6,10 @@
 
 | 平台 | 版本来源 | 发布标签 | 附件 |
 | --- | --- | --- | --- |
-| Windows | `src/CodexConfig.App/CodexConfig.App.csproj` | `vX.Y.Z`，例如 `v0.16.2` | 安装器 EXE、便携 ZIP、源码、SHA-256、安装验证报告、release manifest。 |
+| Windows | `src/CodexConfig.App/CodexConfig.App.csproj` | `vX.Y.Z`，例如 `v0.16.3` | 安装器 EXE、便携 ZIP、源码、SHA-256、安装验证报告、release manifest。 |
 | Android | `src/CodexAndroid/android.json` | `android-vX.Y.Z`，例如 `android-v0.2.4` | APK、源码、签名 manifest、SHA-256、release manifest。 |
 
-Web 页面、手机后台和模型网关属于 Windows 包。只有安卓原生客户端改动时才递增 Android 的 versionName 与 versionCode，保留原包名及证书。本轮应用内更新仅发布 Android 0.2.4；Windows 保持 0.16.2。
+Web 页面、手机后台和模型网关属于 Windows 包。只有安卓原生客户端改动时才递增 Android 的 versionName 与 versionCode，保留原包名及证书。本轮配置确认流程与写入修复仅发布 Windows 0.16.3；Android 保持 0.2.4。
 
 Windows 的 [稳定版入口](https://github.com/Lovest20018/Codex-Dock/releases/latest) 指向 Windows Release；Android 从 README 中独立的 [Android 发布页](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.4) 下载。Android 0.2.4 起在应用内检查仓库的 `android-v*` 正式发布，按完全匹配的 APK 附件下载并校验后交给系统安装器。旧 APK 首次需要手动覆盖升级。Android 发布不会替换 Windows 的 latest，已有 Windows 自更新继续可用。
 
@@ -20,8 +20,8 @@ Windows 的 [稳定版入口](https://github.com/Lovest20018/Codex-Dock/releases
 ```powershell
 # 仅发布 Windows
 git push origin HEAD:main
-git tag v0.16.2
-git push origin v0.16.2
+git tag v0.16.3
+git push origin v0.16.3
 
 # Android 有原生更新时，独立提交版本后，仅发布 Android
 git tag android-v0.2.4

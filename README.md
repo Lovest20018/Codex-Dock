@@ -14,12 +14,12 @@
 
 | 应用 | 版本与下载 | 本版更新 |
 | --- | --- | --- |
-| Windows · Codex Dock | **[0.16.2](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.16.2)** | 手机网页保留阅读位置、首次复制修复、图片原图保存，以及 Unicode 模型 ID 与思考内容兼容。 |
+| Windows · Codex Dock | **[0.16.3](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.16.3)** | 模板与手动修改统一确认写入，明确目标文件、前后值与恢复默认含义；修复嵌套配置保存。 |
 | Android · Lovest Code | **[0.2.4](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.4)** / versionCode 7 | 应用内检查更新、校验下载并打开系统安装器；保留通知、原图下载、草稿和三页导航。 |
 
 **Windows 与 Android 独立更新、独立发布。** Windows Release 只放 EXE、便携包和对应源码；Android Release 只放 APK 和对应源码，各自附带校验清单与验证记录。Windows 使用 `vX.Y.Z` 标签，Android 使用 `android-vX.Y.Z` 标签。历史合并版保留，新版本按平台发布，维护方式见 [发布说明](docs/github-releases.md)。
 
-完整使用本轮功能，请配套使用 Windows **0.16.2** 与 Android **0.2.4**。Web 页面、手机后台与模型兼容性随 Windows 更新；应用内更新、独立通知、原生冷启动和图片下载支持随 APK 更新。
+完整使用本轮功能，请配套使用 Windows **0.16.3** 与 Android **0.2.4**。Web 页面、手机后台与模型兼容性随 Windows 更新；应用内更新、独立通知、原生冷启动和图片下载支持随 APK 更新。
 
 Web / 手机工作台复用固定的 Codex Mobile Bridge 2.1.7 快照，选择性移植上游 2.2.0 修复，并通过显式覆盖和自有适配提供 Codex 范围的功能。上游来源、许可与维护方式见 [UPSTREAM](src/CodexMobile/UPSTREAM.md) 和 [本轮移植记录](docs/mobile-upstream-backport-2026-11-09.md)。
 
@@ -61,7 +61,7 @@ Lovest Code 沿用本项目安卓包名、签名与 Logo，0.2.4 可直接覆盖
 
 1. 打开 **连接与账号**，确认正在编辑的 Codex 配置目录。
 2. 选择服务类型，填写地址、PAT / API Key 与模型 ID；普通 Responses 服务在更多连接选项中选择对应类型。
-3. 点击 **保存配置** 或按 `Ctrl+S`。修改普通设置时，无须重新填写凭据。
+3. 点击 **查看并确认修改** 或按 `Ctrl+S`，核对目标文件与修改前后值，再点击 **确认写入**。修改普通设置时，无须重新填写凭据。
 4. 完全退出并重新打开 Codex，读取新配置。
 
 选择 **官方账号 + 独立模型入口** 时，先检测已有文件凭据或使用 **ChatGPT 登录**，再保存模型入口。登录结果先暂存，保存后才写入当前目录并启动模型网关。该模式保留原生官方身份，为模型请求替换独立凭据；服务失败时不会自动使用官方额度。
@@ -73,6 +73,8 @@ Lovest Code 沿用本项目安卓包名、签名与 Logo，0.2.4 可直接覆盖
 新增配置功能位于 **全部配置**：选择 **已配置** 可直接编辑实际 MCP / 供应商名称；**更多选项** 可添加结构化实例。展开 **来源与 profile**，选择本机执行端和项目目录后读取文件值、执行端值及配置层；此快照不包含现有聊天参数和未保存草稿。**管理 Profile 文件** 独立保存 `<名称>.config.toml`，通过 `codex --profile <名称>` 选择。当前核查内核的 app-server 不支持读取指定 profile 的来源，界面会明确显示未确认。
 
 **配置模板** 提供日常 high / 复杂任务 xhigh，只修改所选推理强度。混合连接的模型网关状态区分别显示压缩请求、返回条目和确认完成次数，并提供队列与传输耗时；指标只覆盖经该网关的当前进程流量。
+
+在 **模板与备份 → 配置模板** 选择推荐方案，勾选本次修改后直接进入同一个确认页，无需跳到全部配置再次保存。**编辑方案 / 保存方案** 只修改本机方案库。确认页同时列出此前未保存的修改；返回调整保留原有草稿，确认成功后显示实际写入结果与备份入口。**跟随 Codex 配置** 表示移除该项本地覆盖，执行时仍可能继承其他配置层，并不等于套用 Krill 推荐值。
 
 ## 连接手机
 
@@ -108,7 +110,7 @@ Lovest Code 切换聊天、电脑和我的页面时保留当前 WebView 与草�
 
 安卓发送回归使用生产页面和真实触摸，验证连续发送、键盘变化、长回复、输入区保持展开和覆盖升级。补充任务专项另外经过生产 HTTP 与 IPC 链路，由隔离原生 owner 夹具接收；验证三次补充仍归属同一任务、重复提交保护和结束后保留草稿。测试资产仅打入独立测试 APK，不进入正式应用。
 
-模拟器与自动化结果不能覆盖所有厂商键盘、相机扫码、系统缩放、省电策略、公网链路或真实 Codex / WSL / SSH 任务。功能随执行端能力显示，阅读历史不会自动启动或接管原会话；结果未知的写入不会自动重放。具体证据见 [Windows 0.16.2 审查](docs/review-0.16.2.md) 和 [Android 0.2.4 审查](docs/review-android-0.2.4.md)。
+模拟器与自动化结果不能覆盖所有厂商键盘、相机扫码、系统缩放、省电策略、公网链路或真实 Codex / WSL / SSH 任务。功能随执行端能力显示，阅读历史不会自动启动或接管原会话；结果未知的写入不会自动重放。具体证据见 [Windows 0.16.3 审查](docs/review-0.16.3.md) 和 [Android 0.2.4 审查](docs/review-android-0.2.4.md)。
 
 ## 开发与文档
 
@@ -121,6 +123,6 @@ Windows 使用 C# / .NET 8 / WPF；手机服务使用 Python 3.12；安卓壳使
 | `src/CodexAndroid` | Lovest Code 自有原生壳、资源和页面适配。 |
 | `tests`、`scripts` | 隔离回归、构建、完整性检查与发布包验证。 |
 
-[Windows 0.16.2](docs/release-0.16.2.md) · [Android 0.2.4](docs/release-android-0.2.4.md) · [手机功能对照](docs/mobile-upstream-comparison.md) · [GitHub 发布约定](docs/github-releases.md)
+[Windows 0.16.3](docs/release-0.16.3.md) · [Android 0.2.4](docs/release-android-0.2.4.md) · [手机功能对照](docs/mobile-upstream-comparison.md) · [GitHub 发布约定](docs/github-releases.md)
 
 [MIT 许可证](LICENSE) · [第三方许可](THIRD-PARTY-NOTICES.md)

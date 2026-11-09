@@ -87,6 +87,34 @@ Test("quoted/dotted/inline TOML keys and multiline values", () =>
         Assert((bool)features["fast_mode"] && (bool)features["context_management"]);
     }
 });
+Test("add nested template settings inside existing tables without redefining ancestors", () =>
+{
+    foreach (var original in new[] {
+        "[features]\nfast_mode = true # retained\n[unrelated]\nflag = true\n",
+        "[\"features\"]\r\nfast_mode = true # retained\r\n[unrelated]\r\nflag = true\r\n",
+        "features = { fast_mode = true } # retained\n[unrelated]\nflag = true\n",
+        "[features.multi_agent_v2]\nenabled = false # retained\n[unrelated]\nflag = true\n",
+        "features.multi_agent_v2.enabled = false # retained\n[unrelated]\nflag = true\n"
+    })
+    {
+        var doc = new TomlDocument(Bytes(original));
+        doc.SetRaw("agents.max_concurrent_threads_per_session", "9");
+        doc.SetRaw("agents.max_depth", "1");
+        doc.SetRaw("features.multi_agent_v2.max_concurrent_threads_per_session", "9");
+        Assert(doc.Get("agents.max_concurrent_threads_per_session") is 9L && doc.Get("agents.max_depth") is 1L);
+        Assert(doc.Get("features.multi_agent_v2.max_concurrent_threads_per_session") is 9L);
+        Assert(doc.Get("unrelated.flag") is true && doc.Text.Contains("# retained"));
+        if (original.Contains("enabled")) Assert(doc.Get("features.multi_agent_v2.enabled") is false);
+        if (original.Contains("\r\n")) Assert(!doc.Text.Replace("\r\n", "").Contains('\n'));
+    }
+    var inline = new TomlDocument(Bytes("features = { multi_agent_v2 = { enabled = false } }\n"));
+    inline.SetRaw("features.multi_agent_v2.extra.limit", "9");
+    Assert(inline.Get("features.multi_agent_v2.enabled") is false && inline.Get("features.multi_agent_v2.extra.limit") is 9L);
+    var scalar = new TomlDocument(Bytes("[features]\nmulti_agent_v2 = false\n"));
+    var before = scalar.Text;
+    Throws<InvalidDataException>(() => scalar.SetRaw("features.multi_agent_v2.max_concurrent_threads_per_session", "9"));
+    Assert(scalar.Text == before);
+});
 Test("do not mistake multiline string content for assignments", () =>
 {
     var sample = "developer_instructions = '''\n[features]\nmodel = 'literal content'\n'''\nmodel = 'old'\n";
