@@ -51,7 +51,7 @@ final class SettingsPage extends Dialog implements SharedPreferences.OnSharedPre
   systemHost=ui.column();systemHost.setPadding(0,ui.dp(16),0,0);notificationHost.addView(systemHost);buildNotifications();
   LinearLayout app=ui.section(body,"应用");themeRow(app);
   ui.action(app,"当前版本",owner.appVersion(),()->new AlertDialog.Builder(getContext()).setTitle("Lovest Code").setMessage(ui.L("独立安卓客户端")+" · "+owner.appVersion()+"\n"+ui.L("连接 Windows Dock，继续使用 Codex 聊天、文件与终端。")).setPositiveButton(ui.L("关闭"),null).show());
-  ui.action(app,"版本与更新","Lovest Code",owner::openDockReleases);
+  ui.action(app,"版本与更新","检查更新，下载并安装",owner::showAppUpdates);
   ui.action(app,"语言",prefs.getString("language",java.util.Locale.getDefault().getLanguage()).startsWith("en")?"English":"简体中文",owner::languagePicker);
   ui.action(app,"外观与阅读","",()->owner.webSettings("appearance"));
   ui.action(app,"当前电脑的聊天提醒规则",owner.currentComputerName(),()->owner.webSettings("notifications"));

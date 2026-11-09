@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 import zipfile
 
@@ -15,12 +16,12 @@ parser.add_argument('--jdk', type=Path, required=True)
 parser.add_argument('--sdk', type=Path, required=True)
 parser.add_argument('--apk', type=Path, required=True)
 parser.add_argument('--device', default='emulator-5562')
-parser.add_argument('--mode', choices=('full', 'send', 'steer'), default='full')
+parser.add_argument('--mode', choices=('full', 'send', 'steer', 'update'), default='full')
 parser.add_argument('--signing-home', type=Path, default=Path(os.environ['LOCALAPPDATA']) / 'CodexDock/android-signing')
 args = parser.parse_args()
 if not args.device.startswith('emulator-'):
     parser.error('This automated test is limited to an isolated emulator.')
-out = ROOT / ('artifacts/android-steering-smoke' if args.mode == 'steer' else 'artifacts/android-smoke')
+out = ROOT / ('artifacts/android-steering-smoke' if args.mode == 'steer' else 'artifacts/android-update-smoke' if args.mode == 'update' else 'artifacts/android-smoke')
 out.mkdir(parents=True, exist_ok=True)
 tools = args.sdk / 'build-tools/35.0.0'
 android = args.sdk / 'platforms/android-35/android.jar'
@@ -42,19 +43,42 @@ with zipfile.ZipFile(args.apk) as archive:
     names = archive.namelist()
     assert not any('Smoke' in n or n.endswith(('.p12', '.jks')) for n in names)
     assert not {'assets/composer.js', 'assets/presentation.js', 'assets/steering.js'}.intersection(names)
+    assert not {'assets/update-fixture.apk', 'assets/bad-update-fixture.apk'}.intersection(names)
     for name in ('assets/mobile-ui.js', 'assets/mobile-clipboard.js', 'assets/mobile-system-bars.js', 'assets/mobile-session.js'):
         assert name in names
     assert 'assets/codex.png' in names and 'assets/claude.png' not in names and 'assets/deepseek.png' not in names
 manifest = out / 'AndroidManifest.xml'
-manifest.write_text('''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="io.github.lovest20018.codexdock.test"><uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35"/><application android:label="Dock test"/><instrumentation android:name="io.github.lovest20018.codexdock.test.AndroidSmoke" android:targetPackage="io.github.lovest20018.codexdock"/></manifest>''')
+instrumentation = 'UpdateSmoke' if args.mode == 'update' else 'AndroidSmoke'
+manifest.write_text('''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="io.github.lovest20018.codexdock.test"><uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35"/><application android:label="Dock test"/><instrumentation android:name="io.github.lovest20018.codexdock.test.''' + instrumentation + '''" android:targetPackage="io.github.lovest20018.codexdock"/></manifest>''')
 (out / 'classes').mkdir(exist_ok=True)
 (out / 'dex').mkdir(exist_ok=True)
 run(tools / 'aapt2.exe', 'link', '-I', android, '--manifest', manifest, '-o', out / 'base.apk')
-run(args.jdk / 'bin/javac.exe', '-encoding', 'UTF-8', '--release', '8', '-classpath', android, '-d', out / 'classes', ROOT / 'tests/android/AndroidSmoke.java')
+run(args.jdk / 'bin/javac.exe', '-encoding', 'UTF-8', '--release', '8', '-classpath', android, '-d', out / 'classes', ROOT / ('tests/android/' + instrumentation + '.java'))
 with zipfile.ZipFile(out / 'classes.jar', 'w') as archive:
     for p in (out / 'classes').rglob('*.class'):
         archive.write(p, p.relative_to(out / 'classes').as_posix())
 run(tools / 'd8.bat', '--lib', android, '--min-api', '26', '--output', out / 'dex', out / 'classes.jar')
+if args.mode == 'update':
+    meta = json.loads((ROOT / 'src/CodexAndroid/android.json').read_text(encoding='utf-8'))
+    parts = list(map(int, meta['versionName'].split('.')))
+    parts[2] += 1
+    next_version = '.'.join(map(str, parts))
+    fixture_manifest = out / 'fixture-manifest.xml'
+    fixture_manifest.write_text(f'''<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="{meta['applicationId']}" android:versionCode="{meta['versionCode'] + 1}" android:versionName="{next_version}"><uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35"/><application android:label="Update fixture"/></manifest>''')
+    run(tools / 'aapt2.exe', 'link', '-I', android, '--manifest', fixture_manifest, '-o', out / 'fixture-base.apk')
+    with zipfile.ZipFile(out / 'fixture-base.apk') as source, zipfile.ZipFile(out / 'fixture-unsigned.apk', 'w') as dest:
+        for item in source.infolist():
+            dest.writestr(item, source.read(item))
+        dest.write(out / 'dex/classes.dex', 'classes.dex')
+    run(tools / 'zipalign.exe', '-f', '4', out / 'fixture-unsigned.apk', out / 'fixture-aligned.apk')
+    run(tools / 'apksigner.bat', 'sign', '--ks', args.signing_home / 'codex-dock.p12', '--ks-key-alias', 'codex-dock', '--ks-pass', 'env:CODEX_DOCK_ANDROID_STORE_PASSWORD', '--out', out / 'update-fixture.apk', out / 'fixture-aligned.apk')
+    with tempfile.TemporaryDirectory(prefix='wrong-signer-', dir=out) as wrong_signer:
+        key = Path(wrong_signer) / 'fixture.p12'
+        run(args.jdk / 'bin/keytool.exe', '-genkeypair', '-alias', 'fixture', '-keystore', key,
+            '-storetype', 'PKCS12', '-storepass', 'fixture-password', '-keypass', 'fixture-password',
+            '-keyalg', 'RSA', '-keysize', '2048', '-validity', '2', '-dname', 'CN=Wrong signer fixture')
+        run(tools / 'apksigner.bat', 'sign', '--ks', key, '--ks-key-alias', 'fixture', '--ks-pass', 'pass:fixture-password',
+            '--out', out / 'bad-update-fixture.apk', out / 'fixture-aligned.apk')
 with zipfile.ZipFile(out / 'base.apk') as source, zipfile.ZipFile(out / 'unsigned.apk', 'w') as dest:
     for item in source.infolist():
         dest.writestr(item, source.read(item))
@@ -62,6 +86,9 @@ with zipfile.ZipFile(out / 'base.apk') as source, zipfile.ZipFile(out / 'unsigne
     dest.write(ROOT / 'tests/android/presentation.js', 'assets/presentation.js')
     dest.write(ROOT / 'tests/android/composer.js', 'assets/composer.js')
     dest.write(ROOT / 'tests/android/steering.js', 'assets/steering.js')
+    if args.mode == 'update':
+        dest.write(out / 'update-fixture.apk', 'assets/update-fixture.apk')
+        dest.write(out / 'bad-update-fixture.apk', 'assets/bad-update-fixture.apk')
 run(tools / 'zipalign.exe', '-f', '4', out / 'unsigned.apk', out / 'aligned.apk')
 run(tools / 'apksigner.bat', 'sign', '--ks', args.signing_home / 'codex-dock.p12', '--ks-key-alias', 'codex-dock', '--ks-pass', 'env:CODEX_DOCK_ANDROID_STORE_PASSWORD', '--out', out / 'test.apk', out / 'aligned.apk')
 fixture = subprocess.Popen([sys.executable, '-B', ROOT / 'tests/android/gateway_fixture.py'] + (['--steer'] if args.mode == 'steer' else []), cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=(out / 'fixture-errors.log').open('w'), text=True)
@@ -101,7 +128,10 @@ try:
         assert 'UPGRADE_PASS' in upgraded
 
     adb('shell', 'pm', 'grant', 'io.github.lovest20018.codexdock', 'android.permission.POST_NOTIFICATIONS')
-    result = adb('shell', 'am', 'instrument', '-w', '-r', '-e', 'base', endpoint['url'], '-e', 'mode', args.mode, 'io.github.lovest20018.codexdock.test/io.github.lovest20018.codexdock.test.AndroidSmoke', capture=True)
+    if args.mode == 'update':
+        # Android may terminate the app when install permission is revoked; reset before instrumentation starts.
+        adb('shell', 'appops', 'set', 'io.github.lovest20018.codexdock', 'REQUEST_INSTALL_PACKAGES', 'default')
+    result = adb('shell', 'am', 'instrument', '-w', '-r', '-e', 'base', endpoint['url'], '-e', 'mode', args.mode, 'io.github.lovest20018.codexdock.test/io.github.lovest20018.codexdock.test.' + instrumentation, capture=True)
     (out / 'instrumentation.txt').write_text(result, encoding='utf-8')
     print(result)
     adb('pull', '/sdcard/Android/data/io.github.lovest20018.codexdock/files', out / 'screenshots')

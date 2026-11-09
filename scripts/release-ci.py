@@ -90,7 +90,8 @@ def package_android():
                 raise ValueError('Android source archive input mismatch: ' + name)
     with zipfile.ZipFile(out / manifest['apk']) as archive:
         if any('Smoke' in name or name.endswith(('.p12', '.jks')) or name in (
-                'assets/steering.js', 'assets/composer.js', 'assets/presentation.js') for name in archive.namelist()):
+                  'assets/steering.js', 'assets/composer.js', 'assets/presentation.js',
+                  'assets/update-fixture.apk', 'assets/bad-update-fixture.apk') for name in archive.namelist()):
             raise ValueError('Test assets or signing keys found in production APK.')
     names = [stem + '.apk', source.name, manifest_path.name]
     (out / ('SHA256SUMS-Android-' + android + '.txt')).write_text(

@@ -31,6 +31,8 @@ public final class MainActivity extends Activity implements SharedPreferences.On
  private long homeBackAt;private Toast exitToast;
  private final ExecutorService downloads=Executors.newSingleThreadExecutor();
  private FrameLayout screen;private DownloadCard downloadCard;private ArtifactDownload.Task downloadTask,choosingDownload;private boolean savingDownload,openingDownload;
+ private UpdateInstallSession updateSession;private boolean restoringUpdate,autoInstallUpdate,checkingUpdate;private AlertDialog updateDialog;
+ private final ExecutorService updateChecks=Executors.newSingleThreadExecutor();
  private ServiceConnection monitor;private ValueCallback<Uri[]> files;private WebView fileView;private int fileGeneration;private int generation;private int navigationRequest;private boolean authLossAttempted;
  private SettingsPage settingsPage;private SettingsUi ui;private ImageButton chatMenu;
  private FrameLayout body,nativeHost,webViewport;private LinearLayout tabs;
@@ -197,6 +199,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
   if(Build.VERSION.SDK_INT>=33)getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,this::handleBack);
   bar=new LinearLayout(ui.context);bar.setGravity(Gravity.CENTER_VERTICAL);bar.setPadding(dp(20),dp(4),dp(12),dp(4));root.addView(bar);header(false);
   downloadCard=new DownloadCard(this,screen,this::downloadAction,this::openDownload,this::cancelDownload);
+  restoreUpdate();
   status=text("",12);status.setTextColor(mutedColor());status.setGravity(Gravity.CENTER);root.addView(status);
   body=new FrameLayout(this);root.addView(body,new LinearLayout.LayoutParams(-1,0,1));nativeHost=new FrameLayout(this);body.addView(nativeHost,new FrameLayout.LayoutParams(-1,-1));tabs=new LinearLayout(ui.context);root.addView(tabs);
   if(!openIntent(getIntent())){String active=prefs.getString("active","");if(saved().contains(active))connect(resumeUrl(active));else showChat();}monitor();root.post(this::requestStartupNotifications);
@@ -363,30 +366,37 @@ public final class MainActivity extends Activity implements SharedPreferences.On
   web.setDownloadListener((target,agent,disposition,mime,length)->downloadArtifact(target));
   showChat();watchConnection(url,web,generation);loadWithRecovery(base,url,web,generation);monitor();
  }catch(Exception e){message(e.getMessage());}}
- void renderDownload(){downloadCard.render(downloadTask,savingDownload||choosingDownload!=null,openingDownload,false);}
+ void renderDownload(){downloadCard.render(downloadTask,savingDownload||choosingDownload!=null,openingDownload,updateSession!=null);}
  void downloadArtifact(String target){
   if(downloadTask!=null){downloadCard.showTask();renderDownload();message(L("已有下载任务，请先完成或取消"));return;}
   if(web==null||!GatewayURL.sameOrigin(web.getUrl(),origin)||!GatewayURL.sameOrigin(target,origin)||!ArtifactDownload.accepts(target,origin)){message(L("此下载不是当前电脑的附件，请在浏览器中打开"));return;}
   startDownload(target,origin);
  }
  void startDownload(String target,String base){
+  if(restoringUpdate){message(L("正在恢复更新，请稍候"));return;}
   try{downloadTask=new ArtifactDownload.Task(target,base,getCacheDir());downloadCard.showTask();renderDownload();runDownload(downloadTask);}catch(java.io.IOException e){message(e.getMessage());}
  }
  void runDownload(ArtifactDownload.Task task){
-  task.state=ArtifactDownload.State.READY;renderDownload();
-  downloads.execute(()->task.run(()->CookieManager.getInstance().getCookie(task.url),value->runOnUiThread(()->{if(downloadTask==value&&!isFinishing()&&!isDestroyed())renderDownload();})));
+  final UpdateInstallSession session=updateSession;task.state=ArtifactDownload.State.READY;renderDownload();
+  downloads.execute(()->task.run(()->CookieManager.getInstance().getCookie(task.url),value->{
+   boolean complete=value.state==ArtifactDownload.State.COMPLETE;
+   if(complete&&session!=null)try{session.save();}catch(java.io.IOException e){complete=false;if(value.state!=ArtifactDownload.State.CANCELLED){value.state=ArtifactDownload.State.FAILED;value.restartRequired=true;value.error="无法保存待安装更新，请重新下载";}}
+   final boolean finished=complete;
+   runOnUiThread(()->{if(downloadTask!=value||isFinishing()||isDestroyed())return;renderDownload();if(finished&&session!=null&&session==updateSession&&session.completed()){autoInstallUpdate=true;resumeUpdateInstall();}});
+  }));
  }
  void downloadAction(){
   ArtifactDownload.Task task=downloadTask;if(task==null||savingDownload||choosingDownload!=null||openingDownload)return;
   if(task.state==ArtifactDownload.State.RUNNING){task.pause();renderDownload();}
   else if(task.state==ArtifactDownload.State.PAUSED||task.state==ArtifactDownload.State.FAILED){
-   if(task.resumable()){runDownload(task);}else{String target=task.url,base=task.origin;cancelDownload();startDownload(target,base);}
+   if(task.resumable()){runDownload(task);}else{MobileRelease release=updateSession==null?null:updateSession.release;String target=task.url,base=task.origin;cancelDownload();if(release!=null)startUpdateDownload(release);else startDownload(target,base);}
   }else if(task.state==ArtifactDownload.State.COMPLETE){
    Intent save=new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE,task.name);
    try{choosingDownload=task;renderDownload();startActivityForResult(save,32);}catch(Exception e){choosingDownload=null;renderDownload();message(L("没有可用的文件保存器"));}
   }
  }
  void openDownload(){
+  if(updateSession!=null){if(downloadTask!=null&&downloadTask.state==ArtifactDownload.State.FAILED)openDockReleases();else installDownloadedUpdate();return;}
   ArtifactDownload.Task task=downloadTask;if(task==null||task.state!=ArtifactDownload.State.COMPLETE||savingDownload||choosingDownload!=null||openingDownload)return;
   openingDownload=true;renderDownload();downloads.execute(()->{
    Uri uri=null;try{uri=DownloadProvider.prepare(this,task.result());}catch(java.io.IOException ignored){}
@@ -399,7 +409,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
    });
   });
  }
- void cancelDownload(){if(downloadTask!=null)downloadTask.cancel();downloadTask=null;renderDownload();}
+ void cancelDownload(){autoInstallUpdate=false;if(updateSession!=null)updateSession.cancel();else if(downloadTask!=null)downloadTask.cancel();updateSession=null;downloadTask=null;renderDownload();}
  void saveDownload(int result,Intent data){
   ArtifactDownload.Task task=choosingDownload;choosingDownload=null;
   if(result!=RESULT_OK||data==null||data.getData()==null){renderDownload();return;}
@@ -463,8 +473,72 @@ public final class MainActivity extends Activity implements SharedPreferences.On
  void settings(){if(settingsPage==null||!settingsPage.isShowing()){settingsPage=new SettingsPage(this,0);settingsPage.show();}}
  void reopenSettings(SettingsPage previous){if(previous!=settingsPage||!previous.isShowing()||previous.isClosing())return;SettingsPage replacement=previous.replacement();previous.dismiss();settingsPage=replacement;settingsPage.show();}
  String currentComputerName(){return origin.isEmpty()?L("尚未连接"):computerName(origin);}
- String appVersion(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception e){return "0.2.3";}}
- void openDockReleases(){try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/Lovest20018/Codex-Dock/releases")));}catch(ActivityNotFoundException e){message(L("没有可用的浏览器，请在电脑上打开 Lovest Code 发布页。"));}}
+ String appVersion(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception e){return "0.2.4";}}
+ void openDockReleases(){openUpdateUrl(MobileRelease.REPO+"/releases?q=android-v");}
+ void openUpdateUrl(String url){try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)));}catch(ActivityNotFoundException e){message(L("没有可用的浏览器，请在电脑上打开 Lovest Code 发布页。"));}}
+ void showAppUpdates(){
+  if(updateDialog!=null&&updateDialog.isShowing())return;
+  LinearLayout content=column();content.setPadding(dp(24),dp(8),dp(24),dp(8));
+  TextView detail=text(L("当前版本")+" "+appVersion()+"\n\n"+L("手动检查更新，确认后下载并安装"),15);add(detail,content,0);
+  AlertDialog dialog=new AlertDialog.Builder(ui.context).setTitle(L("应用更新")).setView(content).setNegativeButton(L("关闭"),null).setNeutralButton(L("版本页面"),(d,w)->openDockReleases()).setPositiveButton(L("检查更新"),null).create();
+  updateDialog=dialog;dialog.setOnDismissListener(d->{if(updateDialog==dialog)updateDialog=null;});dialog.show();
+  dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->checkUpdate(dialog,detail));
+ }
+ void checkUpdate(AlertDialog dialog,TextView detail){
+  if(checkingUpdate)return;checkingUpdate=true;dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);detail.setText(L("正在检查更新…"));
+  updateChecks.execute(()->{
+   MobileRelease candidate=null;String failure=null;
+   try{candidate=AppUpdates.check(appVersion());}catch(Exception e){failure=e.getMessage()==null?"检查失败，请检查网络后重试。也可以打开版本页面。":e.getMessage();}
+   final MobileRelease release=candidate;final String error=failure;
+   runOnUiThread(()->{checkingUpdate=false;if(isFinishing()||isDestroyed()||!dialog.isShowing())return;dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+    if(error!=null){detail.setText(L(error));return;}
+    if(release==null){detail.setText(L("当前版本")+" "+appVersion()+"\n\n"+L("当前已是此通道最新版本。"));return;}
+    detail.setText(L("发现新版本")+" "+release.version);
+    new AlertDialog.Builder(ui.context).setTitle(L("发现新版本")+" "+release.version).setMessage(L("App 会在本机下载并打开系统安装器，已保存的电脑与登录状态会保留。")+"\n\n"+release.notes)
+     .setNegativeButton(L("稍后"),null).setNeutralButton(L("更新说明"),(d,w)->openUpdateUrl(release.page())).setPositiveButton(L("下载并安装"),(d,w)->{if(startUpdateDownload(release))dialog.dismiss();}).show();
+   });
+  });
+ }
+ java.io.File updateDirectory(){return new java.io.File(getFilesDir(),"pending-update");}
+ void updateProblem(String text,MobileRelease release){new AlertDialog.Builder(ui.context).setMessage(L(text)).setNegativeButton(L("关闭"),null).setPositiveButton(L("版本页面"),(d,w)->openUpdateUrl(release.page())).show();}
+ boolean startUpdateDownload(MobileRelease release){
+  if(restoringUpdate){message(L("正在恢复更新，请稍候"));return false;}
+  if(downloadTask!=null){downloadCard.showTask();renderDownload();message(L("已有下载任务，请先完成或取消"));return false;}
+  try{java.io.File directory=updateDirectory();if(!directory.isDirectory()&&!directory.mkdirs())throw new java.io.IOException("无法保存待安装更新，请重新下载");
+   downloadTask=new ArtifactDownload.Task(release.download,MobileRelease.REPO,directory,release.size,release.sha256,MobileRelease.asset(release.version));updateSession=new UpdateInstallSession(release,downloadTask,directory);downloadCard.showTask();renderDownload();runDownload(downloadTask);return true;
+  }catch(java.io.IOException e){updateSession=null;downloadTask=null;updateProblem(e.getMessage(),release);return false;}
+ }
+ void restoreUpdate(){
+  restoringUpdate=true;final String current=appVersion();downloads.execute(()->{
+   UpdateInstallSession saved=null;boolean invalid=false;try{saved=UpdateInstallSession.restore(updateDirectory(),current);}catch(java.io.InterruptedIOException e){return;}catch(java.io.IOException e){if(Thread.currentThread().isInterrupted())return;invalid=true;UpdateInstallSession.discard(updateDirectory());}
+   final UpdateInstallSession recovered=saved;final boolean failed=invalid;
+   runOnUiThread(()->{if(isFinishing()||isDestroyed())return;restoringUpdate=false;if(recovered!=null){updateSession=recovered;downloadTask=recovered.task;downloadCard.showTask();renderDownload();}else if(failed)message(L("待安装更新已失效，请重新检查更新"));resumeUpdateInstall();});
+  });
+ }
+ void resumeUpdateInstall(){
+  if(!resumed||updateSession==null||savingDownload||choosingDownload!=null)return;
+  if(updateSession.waitingPermission()){
+   try{updateSession.permissionReturned();}catch(java.io.IOException e){updateProblem("无法保存待安装更新，请重新下载",updateSession.release);return;}
+   if(!getPackageManager().canRequestPackageInstalls()){updateProblem("请在系统设置中允许此应用安装未知来源应用。",updateSession.release);return;}installDownloadedUpdate();
+  }else if(autoInstallUpdate){autoInstallUpdate=false;installDownloadedUpdate();}
+ }
+ void installDownloadedUpdate(){
+  final ArtifactDownload.Task task=downloadTask;final UpdateInstallSession session=updateSession;
+  if(!resumed||task==null||session==null||task.state!=ArtifactDownload.State.COMPLETE||openingDownload||savingDownload||choosingDownload!=null||!session.beginInstall())return;
+  openingDownload=true;renderDownload();downloads.execute(()->{
+   Uri uri=null;String failure=null;
+   try{task.verifyCompletedUpdate();AppUpdates.verifyPackage(this,task.result().file,session.release);uri=DownloadProvider.prepare(this,task.result());}catch(Exception e){failure=e.getMessage()==null?"安装包准备失败，请重新下载":e.getMessage();}
+   final Uri target=uri;final String error=failure;
+   runOnUiThread(()->{openingDownload=false;session.finishInstall();if(isFinishing()||isDestroyed()||task!=downloadTask||session!=updateSession)return;renderDownload();
+    if(error!=null){updateProblem(error,session.release);return;}if(!resumed)return;
+    if(!getPackageManager().canRequestPackageInstalls()){
+     try{session.awaitPermission();startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:"+getPackageName())));}catch(Exception e){try{session.permissionReturned();}catch(java.io.IOException ignored){}updateProblem("无法打开安装权限设置，请在系统设置中允许此应用安装未知来源应用。",session.release);}return;
+    }
+    Intent install=new Intent(Intent.ACTION_VIEW).setDataAndType(target,"application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);install.setClipData(ClipData.newRawUri("Lovest Code",target));
+    try{startActivity(install);}catch(ActivityNotFoundException e){updateProblem("系统没有可用的安装器，请保存 APK 后手动安装",session.release);}catch(Exception e){updateProblem("打开安装器失败，请重试",session.release);}
+   });
+  });
+ }
  void toggleBackgroundNotifications(){
   if(prefs.getBoolean("backgroundNotifications",false)){prefs.edit().putBoolean("backgroundNotifications",false).apply();MonitorService.refresh();return;}
   if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},26);return;}
@@ -503,7 +577,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
  }
  @Override protected void onActivityResult(int code,int result,Intent data){super.onActivityResult(code,result,data);if(code==32){saveDownload(result,data);return;}if(code==20&&result==RESULT_OK&&data!=null)choose(data.getStringExtra("code"));if(code==31)selectedFiles(result,data);}
  @Override protected void onSaveInstanceState(Bundle state){if(settingsPage!=null&&settingsPage.isShowing()&&!settingsPage.isClosing()){state.putBoolean("settingsOpen",true);state.putInt("settingsScroll",settingsPage.scrollPosition());}super.onSaveInstanceState(state);}
- @Override protected void onResume(){super.onResume();resumed=true;if(ui.dark!=new SettingsUi(SettingsUi.themed(this)).dark)applyTheme();ComputerNotifications.onChange=()->runOnUiThread(this::renderComputerNotifications);checkComputers();MonitorService.setVisible(true);if(!MonitorService.startBackground(this))message(L("后台通知启动失败，请重新打开 App 后再试。"));if(web!=null)web.onResume();if(settingsPage!=null&&settingsPage.isShowing())settingsPage.refresh();}
+ @Override protected void onResume(){super.onResume();resumed=true;if(ui.dark!=new SettingsUi(SettingsUi.themed(this)).dark)applyTheme();ComputerNotifications.onChange=()->runOnUiThread(this::renderComputerNotifications);checkComputers();MonitorService.setVisible(true);if(!MonitorService.startBackground(this))message(L("后台通知启动失败，请重新打开 App 后再试。"));if(web!=null)web.onResume();if(settingsPage!=null&&settingsPage.isShowing())settingsPage.refresh();resumeUpdateInstall();}
  // Keep the live WebView and its drafts/tabs when rotating or resizing the window.
  @Override public void onConfigurationChanged(android.content.res.Configuration config){super.onConfigurationChanged(config);dismissGatewayMenu();if("system".equals(SettingsUi.theme(this))&&ui.dark!=new SettingsUi(SettingsUi.themed(this)).dark)applyTheme();screen.requestApplyInsets();downloadCard.post(downloadCard::place);if(web!=null){web.getSettings().setTextZoom(Math.round(config.fontScale*100));web.requestLayout();web.invalidate();}if(settingsPage!=null&&"system".equals(SettingsUi.theme(this)))reopenSettings(settingsPage);}
  @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(focused&&systemBars!=null){systemBars.update(barTop,barBottom);final WebView current=web;final int ticket=generation;if(current!=null)current.post(()->{if(web==current&&ticket==generation&&current.hasWindowFocus()&&GatewayURL.sameOrigin(current.getUrl(),origin))current.evaluateJavascript("window.dispatchEvent(new Event('focus'));",null);});}}
@@ -516,5 +590,5 @@ public final class MainActivity extends Activity implements SharedPreferences.On
   if(web==null||!GatewayURL.sameOrigin(web.getUrl(),origin)){moveTaskToBack(true);return;}
   final int ticket=generation;web.evaluateJavascript("(()=>{const dialog=[...document.querySelectorAll('dialog[open]')].at(-1);if(dialog){if(dialog.dispatchEvent(new Event('cancel',{cancelable:true})))dialog.close();return true;}return window.BridgeNavigation?.back()||false;})()",result->{if(ticket==generation&&!"true".equals(result))moveTaskToBack(true);});
  }
- @Override public void onDestroy(){prefs.unregisterOnSharedPreferenceChangeListener(this);if(embeddedSettings!=null)embeddedSettings.stopEmbedded();if(settingsPage!=null)settingsPage.dismiss();if(downloadTask!=null)downloadTask.cancel();downloads.shutdownNow();clear();probes.shutdownNow();worker.shutdownNow();if(monitor!=null)getApplicationContext().unbindService(monitor);super.onDestroy();}
+ @Override public void onDestroy(){prefs.unregisterOnSharedPreferenceChangeListener(this);if(embeddedSettings!=null)embeddedSettings.stopEmbedded();if(settingsPage!=null)settingsPage.dismiss();if(updateDialog!=null)updateDialog.dismiss();if(downloadTask!=null&&(updateSession==null||downloadTask.state!=ArtifactDownload.State.COMPLETE))downloadTask.cancel();downloads.shutdownNow();updateChecks.shutdownNow();clear();probes.shutdownNow();worker.shutdownNow();if(monitor!=null)getApplicationContext().unbindService(monitor);super.onDestroy();}
 }

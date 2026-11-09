@@ -142,6 +142,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Android SDK installation failed.' }
           python -B scripts/release-ci.py prepare-android
           if ($LASTEXITCODE -ne 0) { throw 'Pinned Android dependency check failed.' }
+          python -B tests/android/update-regression.py --jdk $env:JAVA_HOME
+          if ($LASTEXITCODE -ne 0) { throw 'Android update regression checks failed.' }
           node --test src/CodexMobile/upstream/mobile/tests/*.test.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Mobile host tests failed.' }
       - name: Restore existing signing key

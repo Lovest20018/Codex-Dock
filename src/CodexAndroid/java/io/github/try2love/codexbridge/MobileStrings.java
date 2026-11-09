@@ -318,6 +318,9 @@ values.put("请填写完整的 HTTPS 网关地址，或局域网 HTTP 地址，�
   values.put("请输入 Codex Dock 的完整网关地址，或从 Windows Dock 手机连接页扫码。","Enter a complete Codex Dock gateway URL or scan its QR code in Windows Dock.");
   values.put("当前版本","Current version");
   values.put("版本与更新","Versions and updates");
+  values.put("检查更新，下载并安装","Check for updates, download and install");
+  values.put("安装包身份或版本不匹配，请重新下载","The package identity or version does not match. Download it again.");
+  values.put("安装包签名不匹配，请重新下载","The package signature does not match. Download it again.");
   values.put("Dock 发布页","Dock releases");
   values.put("独立安卓客户端","Android companion");
   values.put("连接 Windows Dock，继续使用 Codex 聊天、文件与终端。","Connect to Windows Dock for Codex chats, files and terminal.");

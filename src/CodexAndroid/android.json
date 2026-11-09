@@ -1,8 +1,8 @@
 {
   "applicationId": "io.github.lovest20018.codexdock",
   "displayName": "Lovest Code",
-  "versionName": "0.2.3",
-  "versionCode": 6,
+  "versionName": "0.2.4",
+  "versionCode": 7,
   "signingCertificateSha256": "0c31e8dc7e29b7e835343db7551df5a505498959e87d4462f1b6bd9b5e72098e",
   "minSdk": 26,
   "targetSdk": 35,
@@ -11,14 +11,14 @@
     "MainActivity.java",
     "SettingsPage.java",
     "MobileStrings.java",
-    "MobileWebScripts.java"
+    "MobileWebScripts.java",
+    "MobileRelease.java"
   ],
   "excludedJava": [
     "DshMobileActivity.java",
     "DshMobileStore.java",
     "DshMobileURL.java",
-    "GatewayUpdate.java",
-    "UpdateInstallSession.java"
+    "GatewayUpdate.java"
   ],
   "dependency": {
     "name": "com.google.zxing:core",
