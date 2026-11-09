@@ -13,7 +13,7 @@ public partial class MainWindow
     private async Task RunConfigurationOptimizationSmokeAsync(string output, List<string> checks)
     {
         static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
-        var fixture = Path.Combine(output, "configuration-fixture"); Directory.CreateDirectory(fixture);
+        var fixture = Path.Combine(output, "configuration-fixture-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(fixture);
         var catalog = Path.Combine(fixture, "models.json");
         File.WriteAllBytes(catalog, NativeModelCatalog.Convert(Encoding.UTF8.GetBytes("""
             {"models":[{"slug":"fixture-high","supported_reasoning_levels":[{"effort":"high","description":"Fixture high"},{"effort":"xhigh","description":"Fixture xhigh"}],"service_tiers":[{"id":"priority","name":"Fast","description":"Fixture only"}],"context_window":123456},{"slug":"fixture-low","supported_reasoning_levels":[{"effort":"low","description":"Fixture low"}],"service_tiers":[]}]}
