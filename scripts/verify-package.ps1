@@ -50,6 +50,7 @@ $taskUi = Join-Path $taskTestRoot 'ui'
 $taskRun = Start-Process -FilePath $taskExe -ArgumentList @('--smoke-test',$taskUi) -WindowStyle Hidden -PassThru -Wait
 if ($taskRun.ExitCode -ne 0) { throw "Installed EXE UI check failed. See $taskUi\failure.txt" }
 $taskReport = Get-Content -LiteralPath (Join-Path $taskUi 'report.json') -Raw | ConvertFrom-Json
+if ($taskReport.applicationVersion -ne $Version) { throw 'The installed application version must match the requested package version.' }
 if ($taskReport.status -ne 'PASS' -or $taskReport.executableName -ne 'CodexDock.exe' -or $taskReport.executableSha256 -ne $taskExpectedHash.ToLowerInvariant() -or $taskReport.applicationAssemblySha256 -ne (Get-FileHash -LiteralPath (Join-Path $taskInstall 'CodexDock.dll') -Algorithm SHA256).Hash.ToLowerInvariant()) { throw 'Installed application report mismatch.' }
 $taskRun = Start-Process -FilePath (Join-Path $taskInstall 'unins000.exe') -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/VERIFYONLY=1',"/LOG=$taskTestRoot\uninstall.log") -WindowStyle Hidden -PassThru -Wait
 if ($taskRun.ExitCode -ne 0 -or (Test-Path -LiteralPath $taskExe) -or -not (Test-Path -LiteralPath $taskSentinel)) { throw 'Uninstall did not remove application cleanly or removed a user file.' }

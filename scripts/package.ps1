@@ -51,6 +51,7 @@ if (-not (Test-Path -LiteralPath $taskUiReport) -or (Get-Content -LiteralPath $t
 $taskExeHash = (Get-FileHash -LiteralPath $taskExe -Algorithm SHA256).Hash.ToLowerInvariant()
 $taskAssemblyHash = (Get-FileHash -LiteralPath (Join-Path $taskRelease 'CodexDock.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
 $taskReport = Get-Content -LiteralPath $taskUiReport -Raw | ConvertFrom-Json
+if ($taskReport.applicationVersion -ne $Version) { throw 'The running application version must match the requested package version.' }
 if ($taskReport.executableName -ne 'CodexDock.exe' -or $taskReport.executableSha256 -ne $taskExeHash -or $taskReport.applicationAssemblySha256 -ne $taskAssemblyHash) { throw 'The UI report must match this published executable and application assembly.' }
 New-Item -ItemType Directory -Path (Join-Path $taskRelease 'verification') -Force | Out-Null
 Copy-Item -LiteralPath $taskUiReport -Destination (Join-Path $taskRelease 'verification\ui-report.json') -Force

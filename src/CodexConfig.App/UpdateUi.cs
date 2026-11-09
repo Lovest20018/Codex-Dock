@@ -79,8 +79,14 @@ public partial class MainWindow
 
     private async Task RunUpdateSmokeAsync(string output, List<string> checks)
     {
+        ShowPage("app"); await Settle();
+        var version = CurrentVersion.ToString(3);
+        if (SidebarVersionText.Text != "v" + version || AppVersionText.Text != "当前版本 " + version)
+            throw new InvalidOperationException("Sidebar and update settings must show the running application version.");
+        Capture(output, "application-version.png");
+        checks.Add("Sidebar and update settings match running application version " + version);
         using var latest = new GitHubUpdates(new UpdateFixtureHandler(false));
-        ShowPage("app"); await CheckForUpdatesAsync(latest);
+        await CheckForUpdatesAsync(latest);
         if (availableUpdate is not null || DownloadUpdateButton.Visibility != Visibility.Collapsed || !CheckUpdateButton.IsEnabled)
             throw new InvalidOperationException("No-release update UI state is incorrect.");
         using var newer = new GitHubUpdates(new UpdateFixtureHandler(true));

@@ -821,6 +821,7 @@ public partial class MainWindow : Window
         await File.WriteAllTextAsync(Path.Combine(output, "report.json"), JsonSerializer.Serialize(new
         {
             status = "PASS", executableName = Path.GetFileName(Environment.ProcessPath!),
+            applicationVersion = CurrentVersion.ToString(3), sidebarVersionText = SidebarVersionText.Text, settingsVersionText = AppVersionText.Text,
             applicationAssemblySha256 = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(typeof(App).Assembly.Location))).ToLowerInvariant(),
             executableSha256 = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(Environment.ProcessPath!))).ToLowerInvariant(), tests = checks.Prepend("CodexDock process and assembly identity"),
             advancedToggleMilliseconds = toggleTimes
