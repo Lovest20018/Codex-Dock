@@ -1,9 +1,16 @@
 /* APK-owned presentation and navigation. No network requests or task mutations. */
-(() => {
+(function mountLovestShell() {
   if (window !== window.top || window.LovestShell) return;
   const app = document.getElementById('app');
   const sheet = [...document.styleSheets].find(s => s.href && new URL(s.href).origin === location.origin);
-  if (!app || !sheet || !window.BridgeNavigation) return; // Keep legacy entrances on unsupported pages.
+  let stylesReady = false;
+  try { stylesReady = !!sheet && Number.isInteger(sheet.cssRules.length); } catch {}
+  if (!app || !stylesReady || !window.BridgeNavigation) {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountLovestShell, {once:true});
+    document.addEventListener('load', mountLovestShell, true);
+    return;
+  }
+  document.removeEventListener('load', mountLovestShell, true);
   const en = () => document.documentElement.lang.startsWith('en');
   const label = (zh, english) => en() ? english : zh;
   const native = data => window.prompt('lovest-shell:__BRIDGE_CLIPBOARD_TOKEN__', JSON.stringify({version:1, ...data}));

@@ -2,8 +2,14 @@
 
 The source snapshot is from `try2love/codex-mobile-bridge` 2.1.7, commit
 `0721aa7dafa6177751ba7e568e0ad0efee05655b`, MIT. The complete Codex backend
-and Web UI are reused. The upstream Android app (build 40) remains the mobile host.
-No Electron or Android executable is rebuilt or bundled by Dock.
+and Web UI are reused. Dock builds its Android host from `src/CodexAndroid` and
+the pinned upstream helpers; the application identity and signing remain Dock-owned.
+
+On 2026-11-09, selected fixes from upstream v2.2.0 (build 58), commit
+`76acf47b91ab3ae41f57fc7a8664da1c9224d206`, were backported. The base snapshot
+remains 2.1.7. Each adapted upstream file records its reviewed digest and source
+provenance in `upstream-overlay.json`. Scope, decisions and verification are in
+[`docs/mobile-upstream-backport-2026-11-09.md`](../../docs/mobile-upstream-backport-2026-11-09.md).
 
 `upstream-manifest.json` records original SHA-256 digests. `upstream-overlay.json`
 enumerates every intentional modification and omitted file. Run

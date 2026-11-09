@@ -2,8 +2,12 @@
   "commit": "0721aa7dafa6177751ba7e568e0ad0efee05655b",
   "files": {
     "bridge/api/httpd.py": {
-      "sha256": "2afcef112f0846bbd16439f5449fc42cd2a0d3d87a5918a1ae1943d0e52bf9bb",
-      "reason": "Optional desktop session manager factory; upstream default remains unchanged."
+      "sha256": "9ff810cb58041340359b6c286e3abf29563450ce2b0feaf22aa302e5cba59554",
+      "reason": "Optional desktop session manager factory; upstream default remains unchanged. Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "aea140757f19e71fee0244c2961efb9736d8df08ddb95943c106226b89d3cf25"
+      }
     },
     "bridge/clients/manager.py": {
       "sha256": "8b8c16399c160799208f79e8415808cf6c599a077ae0a6f3ddebd24885cb9c50",
@@ -28,6 +32,150 @@
     "web/features/settings/presentation.js": {
       "sha256": "c1e50982371fcbb2b2ee7801b83aaa4e63d70242d6641bb3662e84058e8b029f",
       "reason": "Expose existing browser appearance reset and optional Dock chat-open presentation cleanup; upstream default remains unchanged."
+    },
+    "bridge/features/accounts/models.py": {
+      "sha256": "30cc9bfc0738e73f2e8aaf2edde84db790bc4a3bb4fa4e962f2dd90ef5047d95",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "46058800e9acfb595d416277b65b79ddaff70568adc5db63a44c14ecf6635395"
+      }
+    },
+    "bridge/features/sessions/model.py": {
+      "sha256": "5c53ed701f02f3b4e2966309cbbe4f5f3a81be6158b84cd06cacc4b5cb11da4e",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "234cf8053843e265c6a9431473be9d406be1b342094a4affe4834c182edc6bff"
+      }
+    },
+    "web/features/chat/activity.js": {
+      "sha256": "51e03ac9f85bfa54bb02a13caaf1f51975938edd7f92584f48f6fcb16fb30d73",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "f8f9da9f6b518c1bb1f4f9053808983f46be54cf95dcf4049c1771d52e6a08c6"
+      }
+    },
+    "web/features/chat/timeline.js": {
+      "sha256": "88014ba0f46db0cec5eda72175ff0f2271b6ef1d08f28a68cb119aef4be5be01",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "871f1cc42a839e87ad6c347c3633ec08d2fdd5184d21cba771b47b137390c2ef"
+      }
+    },
+    "web/shared/image-viewer.js": {
+      "sha256": "e93551c4fd3ee4529a8833ed8ae140da05652e31a3db2bed49fc255130d824ea",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "082056e868da5948781bfbe04d66ce97ec57cf07cf532ae762d39c1de5107ec0"
+      }
+    },
+    "web/features/workspace/downloads.js": {
+      "sha256": "56ae0283ad8acde608a78b78f05238b1eb5f4839461e0a07dc875b0590c630d0",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "343206f080dcc82f148b2d245e39a1e9175f76eb6740cd875f1ed148d627f4a6"
+      }
+    },
+    "mobile/android/src/io/github/try2love/codexbridge/ArtifactDownload.java": {
+      "sha256": "44b78f0b2fdca49ade58f38d85745bfa2bfa5c4f6f8d6cd9e1f8405194fb2d39",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md. Reject encoded or valueless duplicate download flags consistently with the JS gate and HTTP query semantics.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "1de28aaf854e2bdfa01438fbbf26eb7cbeef239ff868351c89e18eb0df6c26e9"
+      }
+    },
+    "bridge/clients/codex/cli_session.py": {
+      "sha256": "3b247e2ffd7edde47a26add9d5804950eea757e8636f209cd21d5421e45bd1d9",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "35eff5d1eb86356f70c457d13dbe5b312c864b5dcd1ca04a7c75e3cdcc984372"
+      }
+    },
+    "bridge/app/service.py": {
+      "sha256": "7c7b4055cafdc5f4ec807a46001a549a17b900b8edcbd39aab5469e9e79c0024",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "47815a792349c2b8da39ac8f73e53ee6bfb2c738587816ef06cd6bd98f2b8a06"
+      }
+    },
+    "bridge/features/accounts/accounts.py": {
+      "sha256": "0f557fe27aad5d24a31f61d068975ddd578a74d0a6eb916964db0b2097087b9c",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "e7aeaa2512e85771f5bbcd07aacdb67bae7416f24686a0bd1bbe5bd8f36a5e27"
+      }
+    },
+    "bridge/features/sessions/side_chat.py": {
+      "sha256": "6b0da1554e89624265fcb08e1702c84ecf2aa730368ff0a549b6c80e04e4fc09",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "8a6855509d0df6d2d7dc1eb4bfdd9338ab3257995ba1cdf2cd5d2b4db255e9ef"
+      }
+    },
+    "mobile/shared/web/mobile-ui.js": {
+      "sha256": "09c3335c6c95378964ac127bfcb74b7a1b7f980365a6ab2faf824abad8b7f091",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "f3b89da07abf70e5ba7680d296d4b2d4bd91b88d45cca394e6a38af25fcf28f7"
+      }
+    },
+    "mobile/android/src/io/github/try2love/codexbridge/TaskNotifications.java": {
+      "sha256": "4e7c360fec21fdf961eca1daa2ccdffa4a439335efff4b33feb573432eceb843",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "d4daa65f8aa5710fced14fd5ce1a16eba2ea1d586fa0e518a04471a7248b28cf"
+      }
+    },
+    "web/features/chat/session-menu.js": {
+      "sha256": "b2b2297340eb960c146c1cfefe8f725583bbf4e7a49d3797c6f6ad553947ca48",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "2d7511d6ee1d107c26d6d6a5ec6111d4d9610f1d26cc2fbaf7dd90d62be85992"
+      }
+    },
+    "web/shared/presentation-controls.css": {
+      "sha256": "6aef8ed51d98b1ded0f99929ed747d2f79129ecdf614199770707c073a1b59e1",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "845d1e171c9a7f2a03b9ace1b4af2a4770a90bed9fac5e781e5eca066d8c51bd"
+      }
+    },
+    "web/features/workspace/workbench.js": {
+      "sha256": "fca10dd74cdb1df377c1a073cfaac6b4770cf869e5b0fc88a64fbd1a1743f326",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "cc6d23d5b1d382a36464928a353b0d50cc27cfb5ad0dc226d8c5ae4628003421"
+      }
+    },
+    "web/shared/i18n.js": {
+      "sha256": "f95ad1eb5c33af28db8061c27f754690a797378f4047b0a5194530987347d81a",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "d4fc3379688e14c8e765d0fc4c6b15e068f31408a182169a07763b99b51ec43a"
+      }
+    },
+    "tests/timeline-pagination.test.cjs": {
+      "sha256": "f98ac7fe17f9d79acf410a306dad05002b57ec1b4d3673f40091272335aee365",
+      "reason": "Load the real shared activity helpers and expose DOM children in the existing timeline readiness fixture; all original assertions retained. See docs/mobile-upstream-backport-2026-11-09.md.",
+      "backport": {
+        "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
+        "sourceSha256": "5e881849fdd3a4a0f9c706c65ce57797c2ec24769e6345a7553e2aacda3aaf96"
+      }
     }
   },
   "omitted": {

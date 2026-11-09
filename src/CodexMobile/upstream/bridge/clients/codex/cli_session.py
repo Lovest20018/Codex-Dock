@@ -21,6 +21,8 @@ from bridge.features.sessions.goal import GoalError, GoalUnavailable, GoalUnsupp
 from bridge.features.sessions import linux_permissions
 from bridge.features.sessions.store import SessionStore, StoreUnavailable
 
+MAX_REASONING_PARTS = 1024
+
 
 def _managed_cli(home):
     """Mirror the 0.162 daemon's selected package without installing one."""
@@ -964,6 +966,10 @@ class CliSessions:
                     items = turn['items']
                     for index, existing in enumerate(items):
                         if existing.get('id') == item.get('id'):
+                            if method == 'item/started' and item.get('type') == existing.get('type') == 'reasoning':
+                                # A late start must not erase deltas already received.
+                                item = {**item, **{field: existing[field] for field in ('summary', 'content')
+                                                  if not item.get(field) and isinstance(existing.get(field), list)}}
                             items[index] = item
                             break
                     else:
@@ -983,6 +989,31 @@ class CliSessions:
                     item = next((item for item in turn['items'] if item.get('id') == params.get('itemId')), None)
                     if item is not None and isinstance(params.get('delta'), str):
                         item['aggregatedOutput'] = item.get('aggregatedOutput', '') + params['delta']
+            elif method in ('item/reasoning/textDelta', 'item/reasoning/summaryTextDelta'):
+                # Third-party Responses backends stream raw chain of thought and
+                # never fill `summary`; keep both streams so the phone can show
+                # progress before `item/completed` replaces the item wholesale.
+                turn = next((item for item in state['turns'] if item['turnId'] == params.get('turnId')), None)
+                delta = params.get('delta')
+                if turn and isinstance(delta, str):
+                    summary = method.endswith('summaryTextDelta')
+                    field = 'summary' if summary else 'content'
+                    slot = params.get('summaryIndex' if summary else 'contentIndex', 0)
+                    if type(slot) is not int or not 0 <= slot < MAX_REASONING_PARTS or not isinstance(params.get('itemId'), str) or not params['itemId']:
+                        return  # Untrusted sparse indices must not allocate an unbounded list.
+                    item = next((item for item in turn['items'] if item.get('id') == params.get('itemId')), None)
+                    if item is None:
+                        item = {'id': params.get('itemId'), 'type': 'reasoning', 'summary': [], 'content': []}
+                        turn['items'].append(item)
+                    if item.get('type') != 'reasoning':
+                        return
+                    parts = item.get(field)
+                    if not isinstance(parts, list):
+                        parts = []
+                        item[field] = parts
+                    while len(parts) <= slot:
+                        parts.append('')
+                    parts[slot] = (parts[slot] if isinstance(parts[slot], str) else '') + delta
             else:
                 return
             snapshot = copy.deepcopy(state)

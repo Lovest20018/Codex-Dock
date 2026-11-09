@@ -88,7 +88,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Core tests failed.' }
           python -B -m unittest discover -s tests/mobile -p 'test_*.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Gateway tests failed.' }
-          node --test tests/mobile/dock-drafts.test.cjs tests/mobile/client-status.test.cjs
+          node --test tests/mobile/dock-drafts.test.cjs tests/mobile/client-status.test.cjs tests/mobile/backports.test.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Web state tests failed.' }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

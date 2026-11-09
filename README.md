@@ -6,22 +6,22 @@
 
 项目包含 Windows 应用 **Codex Dock**、由 Windows 托管的 **Web / 手机网关**，以及独立安卓客户端 **Lovest Code**。手机端连接自己的电脑和原生执行环境，聊天能力由所选 Codex Desktop、CLI 或已登记的 WSL / SSH 提供。
 
-[Windows 下载](https://github.com/Lovest20018/Codex-Dock/releases/latest) · [Android 下载](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.2) · [全部版本](https://github.com/Lovest20018/Codex-Dock/releases) · [构建流程](https://github.com/Lovest20018/Codex-Dock/actions/workflows/release.yml) · [反馈问题](https://github.com/Lovest20018/Codex-Dock/issues)
+[Windows 下载](https://github.com/Lovest20018/Codex-Dock/releases/latest) · [Android 下载](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.3) · [全部版本](https://github.com/Lovest20018/Codex-Dock/releases) · [构建流程](https://github.com/Lovest20018/Codex-Dock/actions/workflows/release.yml) · [反馈问题](https://github.com/Lovest20018/Codex-Dock/issues)
 
 ## 当前状态
 
-截至 2026-11-02，本仓库的版本为：
+截至 2026-11-09，本仓库的版本为：
 
 | 应用 | 版本与下载 | 本版更新 |
 | --- | --- | --- |
-| Windows · Codex Dock | **[0.16.1](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.16.1)** | 修复更新时手机后台占用文件，增加两个网关的独立重启和“停止网关并退出”；包含 0.16.0 配置优化。 |
-| Android · Lovest Code | **[0.2.2](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.2)** / versionCode 5 | 保持原版本：文字输入区保持展开，保留聊天／电脑／我的导航、上次聊天、草稿及独立设置。 |
+| Windows · Codex Dock | **[0.16.2](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.16.2)** | 手机网页保留阅读位置、首次复制修复、图片原图保存，以及 Unicode 模型 ID 与思考内容兼容。 |
+| Android · Lovest Code | **[0.2.3](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.3)** / versionCode 6 | 通知按事件独立保留、冷启动布局修复、原图下载支持，保留常驻输入区和三页导航。 |
 
-**Windows 与 Android 独立更新、独立发布，不需要同时升级。** Windows Release 只放 EXE、便携包和对应源码；Android Release 只放 APK 和对应源码，各自附带校验清单与验证记录。Windows 使用 `vX.Y.Z` 标签，Android 使用 `android-vX.Y.Z` 标签。历史合并版保留，新版本按平台发布，维护方式见 [发布说明](docs/github-releases.md)。
+**Windows 与 Android 独立更新、独立发布。** Windows Release 只放 EXE、便携包和对应源码；Android Release 只放 APK 和对应源码，各自附带校验清单与验证记录。Windows 使用 `vX.Y.Z` 标签，Android 使用 `android-vX.Y.Z` 标签。历史合并版保留，新版本按平台发布，维护方式见 [发布说明](docs/github-releases.md)。
 
-本次更新 Windows 至 **0.16.1** 即可，已经安装 Android **0.2.2** 的用户无需重装。Web 页面、手机后台与模型网关随 Windows 更新；只有安卓原生客户端改动时才升级 APK。
+完整使用本轮功能，请配套更新 Windows **0.16.2** 与 Android **0.2.3**。Web 页面、手机后台与模型兼容性随 Windows 更新；独立通知、原生冷启动和图片下载支持随 APK 更新。
 
-Web / 手机工作台复用固定的 Codex Mobile Bridge 2.1.7 快照，并通过显式覆盖和自有适配提供 Codex 范围的功能。上游来源、许可与维护方式见 [UPSTREAM](src/CodexMobile/UPSTREAM.md)。
+Web / 手机工作台复用固定的 Codex Mobile Bridge 2.1.7 快照，选择性移植上游 2.2.0 修复，并通过显式覆盖和自有适配提供 Codex 范围的功能。上游来源、许可与维护方式见 [UPSTREAM](src/CodexMobile/UPSTREAM.md) 和 [本轮移植记录](docs/mobile-upstream-backport-2026-11-09.md)。
 
 0.16.0 完成三批配置优化：配置目录更新、组合校验、已配置实例、配置来源、独立 profile，以及压缩与连接耗时诊断。使用入口和验证边界见 [实施记录](docs/configuration-implementation-2026-11-02.md)。
 
@@ -51,9 +51,9 @@ Windows 支持 **Windows 10 1809 及以上 x64**。完整安装包包含 .NET �
 
 ## Android 安装与更新
 
-从 [Android 0.2.2 发布页](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.2) 下载 `LovestCode-Android-0.2.2.apk`，适用于 Android 8 / API 26 及以上。核对 `SHA256SUMS-Android-0.2.2.txt` 后安装，需要允许浏览器或文件管理器安装此 APK。
+从 [Android 0.2.3 发布页](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.3) 下载 `LovestCode-Android-0.2.3.apk`，适用于 Android 8 / API 26 及以上。核对 `SHA256SUMS-Android-0.2.3.txt` 后安装，需要允许浏览器或文件管理器安装此 APK。
 
-Lovest Code 沿用本项目安卓包名、签名与 Logo，0.2.2 可直接覆盖安装 0.2.1，保留连接和登录。它与旧上游 App 是不同应用，首次迁移需重新添加电脑并登录。电脑上的聊天记录不受影响。已安装 0.2.2 时，本次 Windows 修复不要求重新安装 APK。
+Lovest Code 沿用本项目安卓包名、签名与 Logo，0.2.3 可直接覆盖安装 0.2.2，保留连接和登录。它与旧上游 App 是不同应用，首次迁移需重新添加电脑并登录。电脑上的聊天记录不受影响。
 
 尚未公开的构建可从 Actions 成功运行的 Artifacts 下载所选平台的 `windows-release` 或 `android-release`。
 
@@ -108,7 +108,7 @@ Lovest Code 切换聊天、电脑和我的页面时保留当前 WebView 与草�
 
 安卓发送回归使用生产页面和真实触摸，验证连续发送、键盘变化、长回复、输入区保持展开和覆盖升级。补充任务专项另外经过生产 HTTP 与 IPC 链路，由隔离原生 owner 夹具接收；验证三次补充仍归属同一任务、重复提交保护和结束后保留草稿。测试资产仅打入独立测试 APK，不进入正式应用。
 
-模拟器与自动化结果不能覆盖所有厂商键盘、相机扫码、系统缩放、省电策略、公网链路或真实 Codex / WSL / SSH 任务。功能随执行端能力显示，阅读历史不会自动启动或接管原会话；结果未知的写入不会自动重放。具体证据见 [本次整体审查](docs/review-project-2026-10-31.md) 和 [Android 0.2.2 审查](docs/review-android-0.2.2.md)。
+模拟器与自动化结果不能覆盖所有厂商键盘、相机扫码、系统缩放、省电策略、公网链路或真实 Codex / WSL / SSH 任务。功能随执行端能力显示，阅读历史不会自动启动或接管原会话；结果未知的写入不会自动重放。具体证据见 [Windows 0.16.2 审查](docs/review-0.16.2.md) 和 [Android 0.2.3 审查](docs/review-android-0.2.3.md)。
 
 ## 开发与文档
 
@@ -121,6 +121,6 @@ Windows 使用 C# / .NET 8 / WPF；手机服务使用 Python 3.12；安卓壳使
 | `src/CodexAndroid` | Lovest Code 自有原生壳、资源和页面适配。 |
 | `tests`、`scripts` | 隔离回归、构建、完整性检查与发布包验证。 |
 
-[Windows 0.16.1](docs/release-0.16.1.md) · [Android 0.2.2](docs/release-android-0.2.2.md) · [手机功能对照](docs/mobile-upstream-comparison.md) · [GitHub 发布约定](docs/github-releases.md)
+[Windows 0.16.2](docs/release-0.16.2.md) · [Android 0.2.3](docs/release-android-0.2.3.md) · [手机功能对照](docs/mobile-upstream-comparison.md) · [GitHub 发布约定](docs/github-releases.md)
 
 [MIT 许可证](LICENSE) · [第三方许可](THIRD-PARTY-NOTICES.md)

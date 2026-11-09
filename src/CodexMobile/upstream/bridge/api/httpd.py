@@ -578,7 +578,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.output(503, {'error': '桌面会话接入不可用'})
                 provider, identifier = desktop_image.groups()
                 artifact, variant = manager.image_preview(provider, query.get('sessionId', [None])[0], identifier)
-                return self.attachment_preview(artifact, variant, private=True)
+                return self.attachment_preview(artifact, variant, private=True, download=query.get('download') == ['1'])
             desktop_upload = re.fullmatch(r'/api/desktop-sessions/(deepseek|claude)/uploads(?:/([0-9a-f-]{36})/(thumb|preview))?', path)
             if desktop_upload:
                 manager, uploads = self.server.desktop_sessions, self.server.desktop_uploads
@@ -593,8 +593,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not detail.get('session'):
                     raise ValueError('会话标识无效')
                 if not write and operation == 'preview':
-                    artifact, variant = uploads.store.preview(scope, identifier, query.get('variant', ['thumb'])[0])
-                    return self.attachment_preview(artifact, variant)
+                    download = query.get('download') == ['1']
+                    artifact, variant = uploads.store.preview(scope, identifier, 'original' if download else query.get('variant', ['thumb'])[0])
+                    return self.attachment_preview(artifact, variant, download=download)
                 if not write or operation == 'preview':
                     return self.output(405, {'error': '请求方式无效'})
                 maximum = 1024 * 1024 if operation == 'thumb' else MAX_FILE
@@ -1186,10 +1187,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.download(bridge, *file_match.groups(), info=query.get('info') == ['1'])
             preview_match = UPLOAD_PREVIEW_ROUTE.fullmatch(path)
             if not write and preview_match:
-                return self.upload_preview(bridge, *preview_match.groups(), variant=query.get('variant', ['thumb'])[0], side=side)
+                return self.upload_preview(bridge, *preview_match.groups(), variant=query.get('variant', ['thumb'])[0], side=side, download=query.get('download') == ['1'])
             desktop_image_match = DESKTOP_IMAGE_ROUTE.fullmatch(path)
             if not write and desktop_image_match:
-                return self.desktop_image_preview(bridge, *desktop_image_match.groups())
+                return self.desktop_image_preview(bridge, *desktop_image_match.groups(), download=query.get('download') == ['1'])
             thumb_match = UPLOAD_THUMB_ROUTE.fullmatch(path)
             if write and thumb_match:
                 sizes = self.headers.get_all('Content-Length', [])
@@ -1410,14 +1411,16 @@ class Handler(BaseHTTPRequestHandler):
             # Never append a JSON error to an already-started binary response.
             self.close_connection = True
 
-    def upload_preview(self, bridge, thread_id, upload_id, variant='thumb', side=None):
+    def upload_preview(self, bridge, thread_id, upload_id, variant='thumb', side=None, download=False):
+        if download:
+            variant = 'original'
         artifact, served_variant = bridge.side_attachment(thread_id, side, 'preview', upload_id, variant) if side is not None else bridge.upload_preview(thread_id, upload_id, variant)
-        return self.attachment_preview(artifact, served_variant, private=side is not None)
+        return self.attachment_preview(artifact, served_variant, private=side is not None, download=download)
 
-    def attachment_preview(self, artifact, served_variant, private=False):
+    def attachment_preview(self, artifact, served_variant, private=False, download=False):
         data = artifact['previewBytes'] if 'previewBytes' in artifact else Path(artifact["previewPath"]).read_bytes()
         etag = '"' + artifact["previewSha256"] + '"'
-        cache_control = 'private, no-store' if private or served_variant == 'fallback-original' else 'private, max-age=31536000, immutable'
+        cache_control = 'private, no-store' if private or download or served_variant == 'fallback-original' else 'private, max-age=31536000, immutable'
         if self.headers.get("If-None-Match") == etag:
             self.send_response(304)
             self.headers_common(cache_control)
@@ -1431,12 +1434,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("ETag", etag)
         self.send_header("X-Preview-Variant", served_variant)
-        self.send_header("Content-Disposition", "inline; filename*=UTF-8''" + quote(artifact["name"], safe=""))
+        self.send_header("Content-Disposition", ("attachment" if download else "inline") + "; filename*=UTF-8''" + quote(artifact["name"], safe=""))
         self.end_headers()
         self.wfile.write(data)
 
-    def desktop_image_preview(self, bridge, thread_id, image_id):
+    def desktop_image_preview(self, bridge, thread_id, image_id, download=False):
         artifact, served_variant = bridge.desktop_image_preview(thread_id, image_id)
+        if download:
+            return self.attachment_preview(artifact, served_variant, download=True)
         data = artifact['previewBytes'] if 'previewBytes' in artifact else Path(artifact["previewPath"]).read_bytes()
         etag = '"' + artifact["previewSha256"] + '"'
         if self.headers.get("If-None-Match") == etag:

@@ -29,6 +29,41 @@ public final class AndroidSmoke extends Instrumentation {
  private String text(View view){if(view.getVisibility()!=View.VISIBLE)return "";StringBuilder result=new StringBuilder();if(view instanceof TextView)result.append(((TextView)view).getText()).append('\n');if(view instanceof ViewGroup)for(int n=0;n<((ViewGroup)view).getChildCount();n++)result.append(text(((ViewGroup)view).getChildAt(n)));return result.toString();}
  // Active chat progress animates continuously; a UI barrier avoids waiting forever for idle.
  private void shot(String name)throws Exception{ui(()->{});Thread.sleep(600);ui(()->{});Bitmap b=getUiAutomation().takeScreenshot();File dir=getTargetContext().getExternalFilesDir(null);if(dir==null)throw new IOException("Missing target external files directory");try(FileOutputStream out=new FileOutputStream(new File(dir,name+".png"))){b.compress(Bitmap.CompressFormat.PNG,100,out);}b.recycle();}
+ private void notificationEvents(Context target,NotificationManager manager)throws Exception{
+  Class<?> type=activity.getClass().getClassLoader().loadClass("io.github.try2love.codexbridge.TaskNotifications");
+  Method show=type.getDeclaredMethod("show",Context.class,String.class,String.class,JSONObject.class,String.class);show.setAccessible(true);
+  Method clear=type.getDeclaredMethod("clearChat",Context.class,String.class,String.class,String.class);clear.setAccessible(true);
+  String origin=(String)field("origin"),stream="backport-qa",thread="notification-fixture";
+  java.util.function.Supplier<java.util.List<android.service.notification.StatusBarNotification>> cards=()->{
+   java.util.List<android.service.notification.StatusBarNotification> result=new java.util.ArrayList<>();
+   for(android.service.notification.StatusBarNotification note:manager.getActiveNotifications())if(note.getNotification().extras.getString("bridgeEvent","").contains(stream))result.add(note);
+   return result;
+  };
+  try{
+   for(int n=1;n<=3;n++)show.invoke(null,target,origin,stream,new JSONObject().put("id","qa-"+n).put("sequence",900+n).put("threadId",thread).put("host","local").put("title","QA event "+n).put("body","Synthetic notification regression"),"foreground-tasks");
+   until(()->cards.get().size()==3,"Independent notification cards delivered");
+   check(cards.get().size()==3,"Three events in one chat retain three system notification cards");
+   java.util.Set<PendingIntent> taps=new java.util.HashSet<>();for(android.service.notification.StatusBarNotification note:cards.get())taps.add(note.getNotification().contentIntent);
+   check(taps.size()==3,"Each event has an independent immutable tap intent");
+   show.invoke(null,target,origin,stream,new JSONObject().put("id","qa-2").put("sequence",902).put("threadId",thread).put("host","local").put("title","QA repeated event").put("body","Retry"),"foreground-tasks");
+   until(()->cards.get().stream().anyMatch(note->"QA repeated event".equals(note.getNotification().extras.getString(Notification.EXTRA_TITLE))),"Retried event updated");
+   check(cards.get().size()==3,"Retrying the same event updates its card without duplication");
+   for(android.service.notification.StatusBarNotification note:cards.get())if(note.getNotification().extras.getLong("bridgeSequence")==902)check((note.getNotification().flags&Notification.FLAG_ONLY_ALERT_ONCE)!=0,"Retried event does not alert again");
+   clear.invoke(null,target,origin,thread,"local");Thread.sleep(250);
+   check(cards.get().size()==3,"Opening the chat leaves independent event notifications intact");
+   target.getSharedPreferences("bridge",0).edit().putBoolean("notificationsMuted:"+origin,true).commit();
+   show.invoke(null,target,origin,stream,new JSONObject().put("id","muted").put("sequence",904).put("title","Muted event").put("body","Must stay muted"),"foreground-tasks");Thread.sleep(250);
+   check(cards.get().size()==3,"Saved per-computer mute still blocks new notifications");
+  }finally{
+   target.getSharedPreferences("bridge",0).edit().remove("notificationsMuted:"+origin).commit();
+   for(android.service.notification.StatusBarNotification note:cards.get())manager.cancel(note.getTag(),note.getId());
+  }
+  Class<?> downloads=activity.getClass().getClassLoader().loadClass("io.github.try2love.codexbridge.ArtifactDownload");
+  Method accepts=downloads.getMethod("accepts",String.class,String.class);
+  String path="/api/sessions/12345678-1234-4234-9234-123456789012/uploads/12345678-1234-4234-9234-123456789013/preview";
+  check(Boolean.TRUE.equals(accepts.invoke(null,origin+path+"?download=1&variant=original",origin)),"Native download accepts explicit same-origin original images");
+  for(String url:new String[]{origin+path,origin+path+"?download=0",origin+path+"?download=1&download=1",origin+path+"?download=1&%64ownload=0",origin+path+"?download=1&download",origin+path+"?download=1#fragment","https://external.invalid"+path+"?download=1"})check(Boolean.FALSE.equals(accepts.invoke(null,url,origin)),"Native image download rejects unapproved URL: "+url.substring(url.indexOf("/api/")));
+ }
  @Override public void onStart(){Bundle result=new Bundle();try{
   base=options.getString("base");Context target=getTargetContext();
   if("seed".equals(options.getString("mode"))){target.getSharedPreferences("bridge",0).edit().putString("upgrade-marker","keep").putString("settingsTheme","dark").putStringSet("origins",new java.util.HashSet<>(java.util.Arrays.asList("https://upgrade.invalid"))).commit();result.putString("report","SEEDED");finish(Activity.RESULT_OK,result);return;}
@@ -47,6 +82,17 @@ target.getSharedPreferences("bridge",0).edit().clear().putBoolean("alerts",true)
   check(Boolean.TRUE.equals(js("prompt('codexbridge-copy:wrong-token','rejected')===null&&prompt('codexbridge-theme:wrong-token','light')===null")),"Forged native bridge tokens are rejected");
   final boolean[] blocked={false};ui(()->{WebView v=(WebView)field("web");blocked[0]=v.getWebViewClient().shouldOverrideUrlLoading(v,new WebResourceRequest(){public Uri getUrl(){return Uri.parse("https://untrusted.invalid/");}public boolean isForMainFrame(){return true;}public boolean isRedirect(){return false;}public boolean hasGesture(){return false;}public String getMethod(){return "GET";}public java.util.Map<String,String> getRequestHeaders(){return java.util.Collections.emptyMap();}});});check(blocked[0],"External navigation without a user gesture is blocked");
   until(()->Boolean.TRUE.equals(js("window.LovestShell?.version===1&&document.documentElement.classList.contains('lovest-shell')")),"Versioned owned adapter acknowledged");
+  if("full".equals(options.getString("mode","full"))){
+   js("BridgeFeatures.load('chat');true");until(()->Boolean.TRUE.equals(js("typeof SessionMenu==='function'")),"Production session menu loaded");
+   js("window.qaCopyMessage=null;window.qaCopyMenu=new SessionMenu({notify:message=>window.qaCopyMessage=message});qaCopyMenu.show({title:'Copy regression',link:'codex://threads/12345678-1234-4234-9234-123456789012',pin:async()=>{}},{element:document.getElementById('clients-button')});document.querySelector('dialog.session-menu .message-copy').id='qa-first-copy';true");
+   Thread.sleep(350);
+   // The list may resize while native chrome settles after login.
+   until(()->Boolean.TRUE.equals(js("(()=>{const r=document.getElementById('qa-first-copy').getBoundingClientRect();return r.top>=visualViewport.offsetTop&&r.bottom<=visualViewport.offsetTop+visualViewport.height})()")),"Copy row is inside the visible WebView");
+   tapElement("qa-first-copy");
+   until(()->Boolean.TRUE.equals(js("qaCopyMessage==='已复制'&&!qaCopyMenu.box&&!document.querySelector('dialog.session-menu[open]')")),"First native link copy acknowledges and closes the menu");
+   final String[] copied={null};ui(()->{android.content.ClipboardManager clipboard=(android.content.ClipboardManager)target.getSystemService(Context.CLIPBOARD_SERVICE);copied[0]=clipboard.getPrimaryClip().getItemAt(0).coerceToText(target).toString();});
+   check("codex://threads/12345678-1234-4234-9234-123456789012".equals(copied[0]),"First trusted menu tap writes the native clipboard and closes only after success");
+  }
   if("steer".equals(options.getString("mode"))){steering(target);result.putString("report",new JSONObject().put("status","PASS").put("checks",checks).toString());finish(Activity.RESULT_OK,result);return;}
   if("send".equals(options.getString("mode"))){composerSend(target);result.putString("report",new JSONObject().put("status","PASS").put("checks",checks).toString());finish(Activity.RESULT_OK,result);return;}
   js("localStorage.setItem('android-fixture-draft','retained');true");WebView original=(WebView)field("web");
@@ -121,6 +167,7 @@ target.getSharedPreferences("bridge",0).edit().clear().putBoolean("alerts",true)
   ui(()->call("testNotification"));Thread.sleep(10500);
   boolean test=false;for(android.service.notification.StatusBarNotification n:nm.getActiveNotifications())if("手机通知测试".equals(n.getNotification().extras.getString(Notification.EXTRA_TITLE)))test=true;
   check(test,"Native local test notification is delivered");
+  notificationEvents(target,nm);
   ui(()->call("toggleBackgroundNotifications"));
   ui(()->activity.finish());activity=startActivitySync(intent);waitForIdleSync();
   until(()->Boolean.TRUE.equals(js("window.LovestShell?.version===1")),"Adapter initializes after Activity restart");

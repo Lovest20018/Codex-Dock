@@ -20,10 +20,10 @@ final class TaskNotifications {
   if (!manager.areNotificationsEnabled()) throw new java.io.IOException("Notifications disabled");
   createChannel(context, channel);
   String thread = event.optString("threadId"), host = event.optString("host", "local");
-  String tag = thread.isEmpty() ? "inbox|" + origin + "|" + stream + "|" + event.getString("id")
-      : chatTag(origin, host, thread);
-  String eventKey = new org.json.JSONArray().put(stream)
-      .put(event.optString("sequence", event.getString("id"))).toString();
+  // Dock has one authenticated HTTPS origin per saved gateway.
+  String eventId = event.optString("sequence", event.getString("id"));
+  String eventKey = new org.json.JSONArray().put(stream).put(eventId).toString();
+  String tag = "event|" + new org.json.JSONArray().put(origin).put(stream).put(eventId);
   boolean repeated = false;
   // A new event may alert again; retrying the same event only updates its existing card.
   for (android.service.notification.StatusBarNotification note : manager.getActiveNotifications()) {
@@ -67,6 +67,7 @@ final class TaskNotifications {
  }
 
  static void clearChat(Context context, String origin, String thread, String host) {
+  // Migrate legacy per-chat cards only; new event cards survive viewing a chat.
   String tag = chatTag(origin, host, thread);
   ((NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE)).cancel(tag, tag.hashCode() & 0x7fffffff);
  }

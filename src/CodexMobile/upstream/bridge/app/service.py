@@ -49,6 +49,7 @@ from bridge.features.sessions.projects import Projects
 from bridge.features.sessions.timeline import Timeline
 from bridge.features.sessions.tool_images import TOOL_IMAGE_CACHE, public_turns
 from bridge.features.accounts.account import Account
+from bridge.features.accounts.models import valid_model_id
 from bridge.features.accounts.accounts import Accounts, operation
 from bridge.features.accounts.draft_identity import codex_account_identity, draft_identity
 from bridge.features.accounts.cli_access import CliAccess
@@ -2955,7 +2956,7 @@ class Bridge:
 
     @operation
     def settings(self, thread_id, model, effort, *, fast_mode=None):
-        if not isinstance(model, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./:@+-]{0,199}", model):
+        if not valid_model_id(model):
             raise ValueError("模型 ID 格式不正确")
         if effort not in ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"):
             raise ValueError("请选择有效的推理强度")

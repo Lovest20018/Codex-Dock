@@ -541,7 +541,7 @@ class Workbench {
       if (result.kind === 'pdf') {
         tab.pdf = BridgePdfPreview.create({url:downloadUrl, info:result});
         content.classList.add('wb-pdf-content'); content.append(tab.pdf.element);
-      } else if (result.kind === 'image') { const image = this.node('img'); image.src = 'data:' + result.mime + ';base64,' + result.data; image.alt = result.name; window.BridgeImageViewer?.registerWorkspaceImage(image, result, imageContext, imageComposerScope); content.append(image); }
+      } else if (result.kind === 'image') { const image = this.node('img'); image.src = 'data:' + result.mime + ';base64,' + result.data; image.alt = result.name; window.BridgeImageViewer?.registerWorkspaceImage(image, result, imageContext, imageComposerScope, downloadUrl); content.append(image); }
       else if (result.kind === 'text') {
         tab.fileFont=FileFont.control(this);actions.append(tab.fileFont.element);
         if (/\.md$/i.test(result.name)) { const markdown=this.markdownPreview(session,tab,content,result);modes=markdown.modes;copyAction=markdown.copy; }

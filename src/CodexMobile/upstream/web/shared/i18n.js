@@ -1048,6 +1048,7 @@ const en={
 "客户端尚未连接，无法确认任务状态；可选择“仅停用手机接入”，或在电脑端退出 App 后重试":"The client is not connected, so task status cannot be verified. Choose “Disable phone access only”, or quit the app on your computer and try again.",
 "放大图片":"Zoom in",
 "缩小图片":"Zoom out",
+"保存到本地":"Save locally",
 "适应屏幕":"Fit to screen",
 "图片缩放比例":"Image zoom level",
 "查看图片":"View image",

@@ -1,17 +1,17 @@
 # GitHub 按平台发布
 
-仓库：[Lovest20018/Codex-Dock](https://github.com/Lovest20018/Codex-Dock)。Windows Codex Dock 与 Android Lovest Code 独立更新、独立构建、独立 Release，无需同时升级。历史合并版本保留。
+仓库：[Lovest20018/Codex-Dock](https://github.com/Lovest20018/Codex-Dock)。Windows Codex Dock 与 Android Lovest Code 独立更新、独立构建、独立 Release。某次功能需要两端配合时，在各自版本说明中明确对应版本。历史合并版本保留。
 
 ## 选择平台
 
 | 平台 | 版本来源 | 发布标签 | 附件 |
 | --- | --- | --- | --- |
-| Windows | `src/CodexConfig.App/CodexConfig.App.csproj` | `vX.Y.Z`，例如 `v0.16.1` | 安装器 EXE、便携 ZIP、源码、SHA-256、安装验证报告、release manifest。 |
-| Android | `src/CodexAndroid/android.json` | `android-vX.Y.Z`，例如 `android-v0.2.2` | APK、源码、签名 manifest、SHA-256、release manifest。 |
+| Windows | `src/CodexConfig.App/CodexConfig.App.csproj` | `vX.Y.Z`，例如 `v0.16.2` | 安装器 EXE、便携 ZIP、源码、SHA-256、安装验证报告、release manifest。 |
+| Android | `src/CodexAndroid/android.json` | `android-vX.Y.Z`，例如 `android-v0.2.3` | APK、源码、签名 manifest、SHA-256、release manifest。 |
 
-Web 页面、手机后台和模型网关属于 Windows 包。只有安卓原生客户端改动时才递增 Android 的 versionName 与 versionCode，保留原包名及证书。Windows 0.16.1 的网关修复不要求已经使用 Android 0.2.2 的用户重装 APK。
+Web 页面、手机后台和模型网关属于 Windows 包。只有安卓原生客户端改动时才递增 Android 的 versionName 与 versionCode，保留原包名及证书。本轮两端均有修改，完整使用原图保存、独立通知及模型兼容性需要 Windows 0.16.2 与 Android 0.2.3。
 
-Windows 的 [稳定版入口](https://github.com/Lovest20018/Codex-Dock/releases/latest) 指向 Windows Release；Android 从 README 中独立的 [Android 发布页](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.2) 下载。Android 发布不会替换 Windows 的 latest，已有 Windows 自更新继续可用。
+Windows 的 [稳定版入口](https://github.com/Lovest20018/Codex-Dock/releases/latest) 指向 Windows Release；Android 从 README 中独立的 [Android 发布页](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.3) 下载。Android 发布不会替换 Windows 的 latest，已有 Windows 自更新继续可用。
 
 ## 触发
 
@@ -20,12 +20,12 @@ Windows 的 [稳定版入口](https://github.com/Lovest20018/Codex-Dock/releases
 ```powershell
 # 仅发布 Windows
 git push origin HEAD:main
-git tag v0.16.1
-git push origin v0.16.1
+git tag v0.16.2
+git push origin v0.16.2
 
 # Android 有原生更新时，独立提交版本后，仅发布 Android
-git tag android-v0.2.2
-git push origin android-v0.2.2
+git tag android-v0.2.3
+git push origin android-v0.2.3
 ```
 
 两个示例是各自的入口，不要求一起执行。Windows 标签跳过 Android 构建；Android 标签跳过 Windows 构建。
