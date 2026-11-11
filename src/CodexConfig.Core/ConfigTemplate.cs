@@ -77,12 +77,12 @@ public static class BuiltInTemplates
     // Preserve provenance of the historical community recipe; no upstream or backend request.
     public static ConfigTemplate KrillCommunity { get; } = new(
         "krill-community", "Krill 社区方案", "Krill / Superba",
-        "https://github.com/krill-lab/superba/blob/f78d77a2849aceb8dffc1f27a83869ffceab7e90/crates/superba-core/src/codex.rs",
-        "7 项社区设置，含 3 项旧实验功能，按需选择。",
+        "https://github.com/krill-lab/superba/blob/v0.1.1-alpha.15/crates/superba-core/src/codex.rs",
+        "7 项社区设置；关闭统计与旧实验功能默认不选。保留已保存的自定义方案。",
         Array.AsReadOnly(new[] {
             new TemplateSetting("web_search", "\"live\""),
             new TemplateSetting("features.fast_mode", "true"),
-            new TemplateSetting("analytics.enabled", "false"),
+            new TemplateSetting("analytics.enabled", "false", false),
             new TemplateSetting("features.context_management", "true", false),
             new TemplateSetting("features.token_budget.enabled", "true", false),
             new TemplateSetting("features.token_budget.use_history_notes_extension", "true", false),

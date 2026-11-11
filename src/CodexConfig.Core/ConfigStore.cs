@@ -101,7 +101,10 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         var doc = new TomlDocument(before.Config);
         if (before.Auth is not null) using (ParseAuth(before.Auth)) { }
         var notes = new List<string>();
-        var details = updateDetails ? settings.Details.Normalize().Protect() : before.Details;
+        var savedDetails = ConnectionDetails.Read(before.Details);
+        var desiredDetails = updateDetails ? settings.Details.Normalize() : savedDetails;
+        if (updateConnection) desiredDetails = desiredDetails with { HttpOrigin = settings.Details.Normalize().HttpOrigin };
+        var details = desiredDetails == savedDetails ? before.Details : desiredDetails.Protect();
         if (edits is not null)
             foreach (var (path, repr) in edits)
             {
@@ -124,11 +127,15 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
                     !savedConnection.OwnsRoute(doc) || doc.String("forced_login_method") is { } forced && forced != "chatgpt")
                     throw new InvalidOperationException("这些设置会覆盖混合连接的登录或传输方式，请先切换到直连，或保留文件凭据和未压缩请求。");
             }
+            var bridge = before.Bridge;
+            if (updateDetails && bridge is not null && MixedConnection.Read(bridge) is { } connection && connection.OwnsRoute(new TomlDocument(before.Config)))
+                if (connection.HttpOrigin != desiredDetails.HttpOrigin) bridge = (connection with { HttpOrigin = desiredDetails.HttpOrigin }).Protect();
             return new(before, doc.Bytes, before.Auth, before.AuthApiBaseUrl, doc.Masked(),
                 before.Auth is null ? "尚无认证文件。" : "认证配置保持现值（内容已隐藏）。", ["仅保存配置项，认证配置保持现值。"])
-            { Bridge = before.Bridge, Details = details };
+            { Bridge = bridge, Details = details };
         }
         settings = settings.Normalize();
+        HttpConnectionPolicy.RequireAuthorization(settings.BaseUrl, settings.Details.HttpOrigin);
         if (settings.Mode == ConnectionMode.OfficialWithApi)
             return PlanMixed(before, settings, doc, officialAuth) with { Details = details };
         RestoreMixedPreferences(before, doc);
@@ -178,8 +185,7 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         {
             foreach (var path in new[] { "chatgpt_base_url", "cli_auth_credentials_store", "features.enable_request_compression" })
                 connection.OriginalValues[path] = doc.Get(path) is { } value ? ConfigSchema.Literal(value) : null;
-            connection = new MixedConnection { BaseUrl = connection.BaseUrl, ApiKey = connection.ApiKey, Kind = connection.Kind, Port = connection.Port, LocalToken = connection.LocalToken,
-                UseSystemProxy = connection.UseSystemProxy, NativeRoute = true, OriginalValues = connection.OriginalValues, OriginalAuthApiBaseUrl = before.AuthApiBaseUrl };
+            connection = connection with { OriginalAuthApiBaseUrl = before.AuthApiBaseUrl };
         }
         doc.Set("model", settings.Model); doc.Set("model_provider", "openai");
         doc.Set("openai_base_url", connection.NativeBaseUrl);

@@ -13,6 +13,8 @@ public sealed record CatalogEntry
     public string Category { get; init; } = "";
     public string Kind { get; init; } = "";
     public string Stage { get; init; } = "";
+    public string VerifiedSince { get; init; } = "";
+    public string UpdatedIn { get; init; } = "";
     public bool Common { get; init; }
     public bool Deprecated { get; init; }
     public string[] Platforms { get; init; } = [];
@@ -26,6 +28,8 @@ public sealed record CatalogEntry
     public JsonElement Default { get; init; }
     public double? Minimum { get; init; }
     public double? Maximum { get; init; }
+    public double? ItemMinimum { get; init; }
+    public double? ItemMaximum { get; init; }
     public int? MinLength { get; init; }
     public int? MaxLength { get; init; }
     public bool Dynamic => Path.Contains('<');
@@ -72,7 +76,7 @@ public sealed class ConfigSchema
         double? N(string name) => entry.TryGetProperty(name, out var value) && value.TryGetDouble(out var n) ? n : null;
         return new()
         {
-            Path = S("path"), Name = S("name"), Chinese = S("chinese"), Description = S("description"), Category = S("category"), Kind = S("kind"), Stage = S("stage"),
+            Path = S("path"), Name = S("name"), Chinese = S("chinese"), Description = S("description"), Category = S("category"), Kind = S("kind"), Stage = S("stage"), VerifiedSince = S("verified_since"), UpdatedIn = S("updated_in"),
             Common = entry.TryGetProperty("common", out var common) && common.GetBoolean(),
             Deprecated = entry.TryGetProperty("deprecated_hint", out var deprecated) && deprecated.GetBoolean(),
             Platforms = entry.GetProperty("platforms").EnumerateArray().Select(x => x.GetString()!).ToArray(),
@@ -82,7 +86,7 @@ public sealed class ConfigSchema
             ItemEnumValues = entry.TryGetProperty("item_enum_values", out var itemValues) ? itemValues.EnumerateArray().Select(x => x.GetString()!).ToArray() : [],
             RequiredProperties = entry.TryGetProperty("required_properties", out var required) ? required.EnumerateArray().Select(x => x.GetString()!).ToArray() : [],
             Default = entry.TryGetProperty("default", out var fallback) ? fallback.Clone() : default,
-            Minimum = N("minimum"), Maximum = N("maximum"), MinLength = (int?)N("min_length"), MaxLength = (int?)N("max_length")
+            Minimum = N("minimum"), Maximum = N("maximum"), ItemMinimum = N("item_minimum"), ItemMaximum = N("item_maximum"), MinLength = (int?)N("min_length"), MaxLength = (int?)N("max_length")
         };
     }
 
@@ -178,6 +182,12 @@ public sealed class ConfigSchema
                     throw new ArgumentException($"{path} 的列表元素类型必须为 {string.Join(" / ", entry.ItemTypes)}。");
                 if (entry.ItemEnumValues.Length > 0 && (item is not string textItem || !entry.ItemEnumValues.Contains(textItem, StringComparer.Ordinal)))
                     throw new ArgumentException($"{path} 的列表元素不在允许值中。");
+                if (item is long or double)
+                {
+                    var number = Convert.ToDouble(item, CultureInfo.InvariantCulture);
+                    if (!double.IsFinite(number) || number < (entry.ItemMinimum ?? double.NegativeInfinity) || number > (entry.ItemMaximum ?? double.PositiveInfinity))
+                        throw new ArgumentException($"{path} 的数值列表元素超出配置目录允许范围。");
+                }
             }
         }
         if (value is TomlTable table)

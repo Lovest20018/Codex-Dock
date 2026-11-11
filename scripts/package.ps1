@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.16.3',
+    [string]$Version = '0.17.0',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
@@ -33,6 +33,7 @@ foreach ($taskFolder in @('docs','third_party','brand')) { New-Item -ItemType Di
 Copy-Item -LiteralPath (Join-Path $taskRoot "docs\release-$Version.md"),(Join-Path $taskRoot 'docs\schema-maintenance.md'),(Join-Path $taskRoot 'docs\codex-dock-delivery.md'),(Join-Path $taskRoot 'docs\ui-layout-review.md'),(Join-Path $taskRoot 'docs\process-rename-review.md'),(Join-Path $taskRoot 'docs\github-releases.md'),(Join-Path $taskRoot "docs\review-$Version.md") -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\configuration-implementation-2026-11-02.md'),(Join-Path $taskRoot 'docs\configuration-audit-2026-11-02.md'),(Join-Path $taskRoot 'docs\configuration-options-2026-11-02.md'),(Join-Path $taskRoot 'docs\runtime-settings-inventory-2026-11-02.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Get-ChildItem -LiteralPath (Join-Path $taskRoot 'third_party') -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $taskRelease 'third_party') -Force }
+Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\superba-reuse-implementation-2026-11-11.md'),(Join-Path $taskRoot 'docs\superba-reuse-review-2026-11-11.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\magpie-codex-comparison.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\mobile-connection.md'),(Join-Path $taskRoot 'docs\mobile-gateway-reuse.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\mobile-upstream-comparison.md') -Destination (Join-Path $taskRelease 'docs') -Force
@@ -60,7 +61,7 @@ Copy-Item -LiteralPath $taskUiReport -Destination (Join-Path $taskRelease 'verif
     "Codex Dock $Version / Windows x64"
     ''
     '运行 Setup EXE 安装；也可解压便携包并打开 CodexDock.exe。无需安装 .NET。'
-    '常用设置、服务连接、配置模板、备份恢复在同一窗口。保存配置后重新打开 Codex。'
+    '常用设置、服务连接、配置模板、备份恢复在同一窗口。保存后可点击“重启 Codex 并应用”，再新建聊天核对。'
     'Ctrl+S 查看并确认修改；Ctrl+F 搜索；Esc 返回调整。'
     '模型目录获取为可选操作，不会改变所选认证方式。'
     '选择模板或手动修改后，核对目标文件与修改明细，再点击确认写入。编辑方案只修改本机方案库。'

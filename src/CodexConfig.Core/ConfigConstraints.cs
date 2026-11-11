@@ -87,6 +87,9 @@ public static class ConfigConstraints
         else if (Touched("approval_policy") && after.Get("approval_policy.granular") is TomlTable granular)
             foreach (var required in ConfigSchema.Instance.Find("approval_policy.granular")!.RequiredProperties)
                 if (granular.GetValueOrDefault(required) is not bool) Error("approval_policy.granular." + required, "细分审批策略的必填项需要明确选择开启或关闭。");
+        if (Touched("features.guardianv2")) issues.AddRange(GuardianBudgetConstraints.Inspect(after));
+        if (changed.Any(parts => ConfigSchema.Instance.Find(TomlDocument.FormatPath(parts)) is { } entry && (entry.VerifiedSince.Length > 0 || entry.UpdatedIn.Length > 0)))
+            Warn("", "本次修改包含按 Codex 0.168.0-alpha.4 新增或更新资料的字段；旧内核支持需按具体取值确认，请核对实际执行端版本与配置来源。");
         return issues;
     }
 

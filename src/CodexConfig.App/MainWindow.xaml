@@ -147,6 +147,13 @@
                 <StackPanel Grid.Column="1">
                   <TextBox x:Name="BaseUrlBox" TextChanged="FieldChanged" AutomationProperties.Name="服务地址" />
                   <TextBlock Text="填写服务提供的完整地址。" Style="{StaticResource Helper}" Margin="0,6,0,0" />
+                  <StackPanel x:Name="HttpConsentPanel" Visibility="Collapsed" Margin="0,8,0,0">
+                    <TextBlock x:Name="HttpOriginText" TextWrapping="Wrap" FontWeight="SemiBold" />
+                    <CheckBox x:Name="HttpConsentBox" Checked="HttpConsentChanged" Unchecked="HttpConsentChanged" Margin="0,6,0,0">
+                      <TextBlock Text="确认向此站点明文发送凭据和模型内容" TextWrapping="Wrap" />
+                    </CheckBox>
+                    <TextBlock Text="Dock 的 HTTP 请求使用直连。取消确认并保存会停止本地网关的 HTTP 转发；直连 Codex 请同时修改服务地址。" Style="{StaticResource Helper}" Margin="0,6,0,0" />
+                  </StackPanel>
                 </StackPanel>
               </Grid>
               <Grid Style="{StaticResource FormRow}">
@@ -342,11 +349,18 @@
               <StackPanel x:Name="ReviewChanges" />
             </ScrollViewer>
             <TextBox x:Name="PreviewBox" IsReadOnly="True" Background="{DynamicResource Code}" BorderThickness="0" Padding="12" VerticalContentAlignment="Top" FontFamily="Consolas" FontSize="12" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="脱敏配置预览" />
-            <StackPanel x:Name="ReviewSuccess" Visibility="Collapsed" Margin="0,8,0,0">
+            <ScrollViewer x:Name="ReviewSuccess" Visibility="Collapsed" Margin="0,8,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <StackPanel>
               <TextBlock Text="配置已保存" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12" />
               <TextBlock x:Name="ReviewSuccessMessage" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
-              <TextBlock Text="重新打开 Codex 后生效。可在“模板与备份 → 备份恢复”查看保存前的备份。" Style="{StaticResource Helper}" Margin="0,12,0,0" />
-            </StackPanel>
+              <WrapPanel Margin="0,12,0,0">
+                <Button x:Name="RestartCodexButton" Content="重启 Codex 并应用" Click="RestartCodexClicked" Style="{StaticResource PrimaryButton}" Margin="0,0,8,8" />
+                <Button x:Name="ConfigurationSourcesButton" Content="查看配置来源" Click="ViewConfigurationSourcesClicked" Margin="0,0,0,8" />
+              </WrapPanel>
+              <TextBlock x:Name="DesktopRestartStatus" TextWrapping="Wrap" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite" />
+              <TextBlock Text="可在“模板与备份 → 备份恢复”查看保存前的备份。" Style="{StaticResource Helper}" Margin="0,12,0,0" />
+              </StackPanel>
+            </ScrollViewer>
           </Grid>
           <StackPanel Grid.Row="3" Margin="0,14,0,0">
             <TextBlock x:Name="ReviewError" Foreground="{DynamicResource Error}" TextWrapping="Wrap" Visibility="Collapsed" Margin="0,0,0,10" AutomationProperties.LiveSetting="Assertive" />

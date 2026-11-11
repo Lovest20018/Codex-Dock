@@ -131,9 +131,9 @@
     "summary": "选择是否启用 Codex 使用统计。",
     "effect": "开启或关闭使用分析统计。",
     "valueHelp": "开启：允许统计；关闭：停止此项统计。",
-    "usage": "按个人偏好选择。",
-    "limitations": "关闭不代表停止所有遥测或联网；CLI 也会停用自定义 OTLP 指标导出。",
-    "defaultBehavior": "由客户端决定。",
+    "usage": "按个人偏好选择。内置社区方案不再默认关闭统计，已有文件值和自定义模板保持用户选择。",
+    "limitations": "关闭不代表停止所有遥测或联网；CLI 也会停用自定义 OTLP 指标导出。Superba alpha.15 的桌面兼容记录指出，关闭统计会影响远程功能开关的持久缓存，可能影响中文界面；这一现象未在本机复现。",
+    "defaultBehavior": "由客户端决定；本工具不自动修改现有 analytics.enabled。",
     "relatedKeys": [
       "otel.metrics_exporter"
     ],
@@ -141,10 +141,14 @@
       {
         "title": "OpenAI 配置参考",
         "url": "https://learn.chatgpt.com/docs/config-file/config-reference"
+      },
+      {
+        "title": "Superba alpha.15：社区方案兼容说明",
+        "url": "https://github.com/krill-lab/superba/blob/v0.1.1-alpha.15/crates/superba-core/src/codex.rs"
       }
     ],
-    "verifiedAt": "2026-10-28",
-    "verificationStatus": "verified"
+    "verifiedAt": "2026-11-11",
+    "verificationStatus": "mixed"
   },
   {
     "path": "suppress_unstable_features_warning",

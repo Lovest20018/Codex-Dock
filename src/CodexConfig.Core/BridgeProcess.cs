@@ -30,6 +30,7 @@ public static class BridgeProcess
     public static async Task<BridgeStatus> EnsureAsync(string home, byte[] bytes, string? executable = null, CancellationToken cancellation = default)
     {
         var connection = MixedConnection.Read(bytes);
+        HttpConnectionPolicy.RequireAuthorization(connection.BaseUrl, connection.HttpOrigin);
         if (await StatusAsync(connection, cancellation).ConfigureAwait(false) is { } existing)
         {
             if (existing.ProtocolVersion == ModelBridge.ProtocolVersion) return existing;
@@ -106,7 +107,7 @@ public static class BridgeProcess
                 {
                     var current = ReadConnection();
                     config = new TomlDocument(await File.ReadAllBytesAsync(Path.Combine(home, "config.toml"), cancellation).ConfigureAwait(false));
-                    if (!current.OwnsRoute(config)) break;
+                    if (!current.OwnsRoute(config) || !HttpConnectionPolicy.IsAuthorized(current.BaseUrl, current.HttpOrigin)) break;
                     failures = 0;
                 }
                 catch (Exception error) when (error is IOException or InvalidDataException or System.Security.Cryptography.CryptographicException)

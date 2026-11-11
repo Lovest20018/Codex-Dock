@@ -21,12 +21,16 @@ internal static class HelpContent
         var technical = new StackPanel();
         var help = ConfigHelp.Find(path);
         technical.Children.Add(new TextBlock { Text = path, FontFamily = new("Consolas"), FontSize = 12, TextWrapping = TextWrapping.Wrap });
+        if (!string.IsNullOrEmpty(entry?.VerifiedSince))
+            body.Children.Add(Note("本轮新增目录定义 · 已核查内核 " + entry.VerifiedSince + "；较旧内核的支持情况尚未确认。请升级对应 Codex 执行端后再配置。"));
+        else if (!string.IsNullOrEmpty(entry?.UpdatedIn))
+            body.Children.Add(Note("本轮更新取值或生命周期资料 · 已核查内核 " + entry.UpdatedIn + "；较旧内核是否支持，请按所选取值确认。"));
         if (help is not null)
         {
             Add(body, "怎么选", help.ValueHelp); Add(body, "建议", help.Usage); Add(body, "注意", help.Limitations);
             Add(technical, "作用", help.Effect); Add(technical, "默认值", help.DefaultBehavior);
             if (help.RelatedKeys.Length > 0) Add(technical, "相关设置", string.Join("、", help.RelatedKeys.Select(ConfigHelp.Name)));
-            var status = help.VerificationStatus switch { "verified" => "已核对官方文档", "local" => "本工具的连接规则", _ => "历史目录说明 · 当前版本待验证" };
+            var status = help.VerificationStatus switch { "verified" => "已核对官方文档", "mixed" => "官方语义与社区兼容记录 · 兼容现象未运行复现", "local" => "本工具的连接规则", _ => "历史目录说明 · 当前版本待验证" };
             Add(technical, "说明来源", status + " · " + help.VerifiedAt);
             foreach (var source in help.Sources) technical.Children.Add(SourceLink(source.Title, source.Url));
         }

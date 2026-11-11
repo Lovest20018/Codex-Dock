@@ -25,6 +25,10 @@ dotnet run --project src/CodexConfig.App/CodexConfig.App.csproj -c Release -- --
 
 设置 `CODEX_CONFIG_TEST_CLI` 为原生 `codex.exe` 的绝对路径，可加入三项原生兼容检查：内置 `openai`、旧 provider，以及 `config/read` 项目来源层和 profile 支持边界。前两项只使用本机模拟上游与虚构官方登录；来源读取不创建模型任务，不消耗真实模型额度。网关进程用例使用测试程序自身的专用入口，界面用例使用实际 CodexDock 程序。Windows 用户加密、注册表和回环子进程检查需在正常用户上下文运行。
 
+本轮配置合并的完整入口为 `pwsh -NoProfile -File scripts/verify-superba-reuse.ps1`；可用 `-CodexCli 'C:\path\to\codex.exe'` 加入原生兼容检查。该脚本构建并运行全部核心和隔离 WPF 检查，结果保存在独立的 `artifacts/superba-2026-11-11/verification-*` 目录，不操作真实 Codex 桌面。
+
+定向检查可设置 `CODEX_CONFIG_TEST_FILTER='desktop'`（多个名称片段用分号分隔）；输出会注明筛选范围，不替代完整回归。`CODEX_CONFIG_UI_TEST_FILTER='desktop-restart'` 仅验证已保存结果页的重启操作和布局，使用已存在的明文夹具及模拟生命周期，可在无法使用用户加密的环境运行；完整 WPF 检查仍负责真实加密保存链路。两种筛选默认均关闭，完整验证脚本会暂时清除并在结束时恢复它们。
+
 ## 目录与字段维护
 
 - `src/`：桌面应用与配置核心。

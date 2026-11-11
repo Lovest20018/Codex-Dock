@@ -86,7 +86,14 @@ public partial class MainWindow : Window
         }
         else
         {
-            try { await RunSmokeAsync(smokeOutput); Application.Current.Shutdown(0); }
+            try
+            {
+                var filter = Environment.GetEnvironmentVariable("CODEX_CONFIG_UI_TEST_FILTER");
+                if (string.IsNullOrEmpty(filter)) await RunSmokeAsync(smokeOutput);
+                else if (filter == "desktop-restart") await RunDesktopRestartUiSmokeAsync(smokeOutput);
+                else throw new ArgumentException("Unknown CODEX_CONFIG_UI_TEST_FILTER.");
+                Application.Current.Shutdown(0);
+            }
             catch (Exception error)
             {
                 Directory.CreateDirectory(smokeOutput);
@@ -127,12 +134,14 @@ public partial class MainWindow : Window
             HomePath.Text = home;
             CurrentDirectoryText.Text = home; CurrentDirectoryText.ToolTip = home;
             BaseUrlBox.Text = loadedSettings.BaseUrl;
+            draftHttpOrigin = loadedSettings.Details.HttpOrigin;
             ConnectionNameBox.Text = loadedSettings.Details.Name; ConnectionNoteBox.Text = loadedSettings.Details.Note;
             ConnectionNoteExpander.IsExpanded = loadedSettings.Details.Note.Length > 0;
             ApiKeyBox.Password = loadedSettings.ApiKey; VisibleKeyBox.Text = loadedSettings.ApiKey;
             ModelBox.Text = loadedSettings.Model;
             KindBox.SelectedIndex = (int)loadedSettings.Kind; AuthenticationBox.SelectedIndex = (int)loadedSettings.Authentication;
             ConnectionModeBox.SelectedIndex = (int)loadedSettings.Mode; GatewayProxyBox.IsChecked = loadedSettings.UseSystemProxy;
+            RefreshHttpUi();
             LegacyConnectionHint.Visibility = new TomlDocument(loaded.Config).String("model_provider") == MixedConnection.Provider ? Visibility.Visible : Visibility.Collapsed;
             RefreshMixedUi();
             SynchronizeLinePreset();
@@ -157,8 +166,8 @@ public partial class MainWindow : Window
         }
     }
 
-    private bool DetailsChanged => ConnectionNameBox.Text != loadedSettings.Details.Name || ConnectionNoteBox.Text.Replace("\r\n", "\n") != loadedSettings.Details.Note;
-    private string Fields() => JsonSerializer.Serialize(new { url = BaseUrlBox.Text, key = ApiKeyBox.Password, model = ModelBox.Text, kind = KindBox.SelectedIndex, auth = AuthenticationBox.SelectedIndex, mode = ConnectionModeBox.SelectedIndex, proxy = GatewayProxyBox.IsChecked == true, details = new ConnectionDetails(ConnectionNameBox.Text, ConnectionNoteBox.Text.Replace("\r\n", "\n")) });
+    private bool DetailsChanged => ConnectionNameBox.Text != loadedSettings.Details.Name || ConnectionNoteBox.Text.Replace("\r\n", "\n") != loadedSettings.Details.Note || draftHttpOrigin != loadedSettings.Details.HttpOrigin;
+    private string Fields() => JsonSerializer.Serialize(new { url = BaseUrlBox.Text, key = ApiKeyBox.Password, model = ModelBox.Text, kind = KindBox.SelectedIndex, auth = AuthenticationBox.SelectedIndex, mode = ConnectionModeBox.SelectedIndex, proxy = GatewayProxyBox.IsChecked == true, details = new ConnectionDetails(ConnectionNameBox.Text, ConnectionNoteBox.Text.Replace("\r\n", "\n"), draftHttpOrigin) });
     private ConnectionSettings Settings(bool placeholder = false) => loadedSettings with
     {
         BaseUrl = placeholder && string.IsNullOrWhiteSpace(BaseUrlBox.Text) ? "https://relay.example.com" : BaseUrlBox.Text,
@@ -166,7 +175,7 @@ public partial class MainWindow : Window
         Model = ModelBox.Text,
         Kind = (ConnectionKind)Math.Max(0, KindBox.SelectedIndex), Authentication = (AuthenticationChoice)Math.Max(0, AuthenticationBox.SelectedIndex),
         Mode = (ConnectionMode)Math.Max(0, ConnectionModeBox.SelectedIndex), UseSystemProxy = GatewayProxyBox.IsChecked == true,
-        Details = new(ConnectionNameBox.Text, ConnectionNoteBox.Text),
+        Details = new(ConnectionNameBox.Text, ConnectionNoteBox.Text, draftHttpOrigin),
         PreservePreferenceValues = true
     };
 
@@ -277,7 +286,7 @@ public partial class MainWindow : Window
     }
     private void FieldChanged(object sender, TextChangedEventArgs e)
     {
-        if (!initializing && ReferenceEquals(sender, BaseUrlBox)) SynchronizeLinePreset();
+        if (!initializing && ReferenceEquals(sender, BaseUrlBox)) { SynchronizeLinePreset(); RefreshHttpUi(); }
         if (!initializing && ReferenceEquals(sender, ModelBox)) Editor.SetContext(home, ModelBox.Text);
         MarkDirty();
     }
@@ -392,7 +401,9 @@ public partial class MainWindow : Window
     private void CloseOverlayClicked(object sender, RoutedEventArgs e) => CloseOverlay();
     private void CloseOverlay()
     {
+        if (desktopRestartBusy) return;
         CancelTemplateReview();
+        desktopRestartSnapshot = null;
         reviewPlan = null; reviewSource = null; reviewSaved = false;
         PreviewOverlay.Visibility = LocationOverlay.Visibility = Visibility.Collapsed; MainShell.IsEnabled = true;
         if (overlayFocus is not null) Keyboard.Focus(overlayFocus);
@@ -421,7 +432,7 @@ public partial class MainWindow : Window
             if (!saved.SameContents(expected)) throw new IOException("文件在保存后再次被其他程序修改，请重新读取并核对；当前修改已保留。");
             if (!Reload(saved)) return false;
             var note = plan.Notes.FirstOrDefault(n => n.StartsWith("保留现有", StringComparison.Ordinal));
-            SetStatus("已保存，重新打开 Codex 后生效。" + (note is null ? "" : " " + note));
+            SetStatus("本地配置已保存；请重新打开 Codex，并在新聊天中核对。" + (note is null ? "" : " " + note));
             _ = RefreshGatewayAsync();
             return true;
         }
@@ -510,7 +521,7 @@ public partial class MainWindow : Window
     }
     private void HelpClicked(object sender, RoutedEventArgs e) => MessageBox.Show(this,
         "1. 调整设置，或在模板中选择一组设置。\n\n" +
-        "2. 点击“查看并确认修改”，核对目标文件与前后值，再点击“确认写入”。重新打开 Codex 后生效。\n\n" +
+        "2. 点击“查看并确认修改”，核对目标文件与前后值，再点击“确认写入”。保存完成后可点击“重启 Codex 并应用”，再新建聊天核对。\n\n" +
         "3. 保存前会自动备份，可在“备份恢复”中还原。\n\n" +
         "Ctrl+S 查看并确认修改 · Ctrl+F 搜索 · Esc 返回调整\n\n" +
         "配置目录可在“配置位置”查看或更换。模板单独保存在本机。",
@@ -692,7 +703,7 @@ public partial class MainWindow : Window
         Assert(detailedChanges.Count == 2 && detailedChanges["web_search"] == "\"cached\"" && detailedChanges["future_config.other"] == "true", "Returning from template confirmation preserves the preceding draft");
         UndoClicked(UndoButton, new());
         TemplatesClicked(TemplatesNav, new()); TemplateEditor.ShowTemplate(BuiltInTemplates.KrillCommunity);
-        Assert(TemplateEditor.Choices.Values.Count(box => box.IsChecked == true) == 3, "Default template selects three supported non-conflicting options");
+        Assert(TemplateEditor.Choices.Values.Count(box => box.IsChecked == true) == 2 && TemplateEditor.Choices["analytics.enabled"].IsChecked == false, "Default template selects search and Fast without opting out of analytics");
         Width = 960; Height = 640; await Settle();
         Assert(FindVisual<TextBlock>(TemplateEditor.StageButton).All(block => block.Foreground.ToString() == TemplateEditor.StageButton.Foreground.ToString()), "Primary button text contrast in light theme");
         var stageBounds = TemplateEditor.StageButton.TransformToAncestor(RootPanel).TransformBounds(new Rect(TemplateEditor.StageButton.RenderSize));
@@ -830,6 +841,7 @@ public partial class MainWindow : Window
         await RunGatewayLifecycleSmokeAsync(output, checks);
         await RunConfigurationOptimizationSmokeAsync(output, checks);
         await RunConfigurationReviewSmokeAsync(output, checks);
+        await RunSuperbaReuseSmokeAsync(output, checks);
         await RunLayoutReviewAsync(output, checks);
         Assert(Environment.GetEnvironmentVariable(WindowsUserEnvironment.Variable, EnvironmentVariableTarget.User) == originalEnvironment, "Real environment changed");
         checks.AddRange(["External change conflict protection", "Reload after invalid source repair", "Real user environment unchanged"]);

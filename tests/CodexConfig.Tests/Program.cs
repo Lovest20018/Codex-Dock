@@ -5,6 +5,13 @@ using CodexConfig.Core;
 using Tomlyn.Model;
 
 if (args is ["--model-bridge", var workerHome]) return await BridgeProcess.RunAsync(workerHome);
+if (args is ["--desktop-restart-fixture", var fixtureOutput]) return DesktopRestartTests.RunFixture(fixtureOutput);
+if (args is ["--desktop-inventory"])
+{
+    var desktopPlatform = new WindowsCodexDesktopPlatform();
+    Console.WriteLine(JsonSerializer.Serialize(new { target = new CodexDesktop(desktopPlatform).FindTarget(), installed = desktopPlatform.Installed() }));
+    return 0;
+}
 if (args is ["--gateway-launch-once", var launcherHome])
 {
     var bytes = File.ReadAllBytes(Path.Combine(launcherHome, MixedConnection.FileName));
@@ -273,7 +280,7 @@ Test("Krill official lines and legacy origins produce current PAT endpoints", ()
 Test("detailed catalog loads local schema, Chinese and lifecycle", () =>
 {
     var catalog = ConfigSchema.Instance;
-    Assert(catalog.Entries.Count == 1003 && catalog.SchemaVersion == "local-2026-11-02");
+    Assert(catalog.Entries.Count == 1064 && catalog.SchemaVersion == "local-2026-11-11");
     Assert(catalog.Find("model_reasoning_effort")!.Chinese.Contains("推理"));
     Assert(catalog.Find("features.fast_mode")!.ManagedConnection);
     Assert(catalog.Entries.Where(e => e.Stage == "removed").All(e => !e.CanEdit));
@@ -463,8 +470,8 @@ Test("template diff respects effective draft values and default opt ins", () =>
     var draft = new Dictionary<string, string?> { ["web_search"] = "\"cached\"", ["features.fast_mode"] = "false" };
     var diff = template.BuildDiff(original, draft);
     Assert(diff.Single(x => x.Setting.Path == "web_search") is { CurrentValue: "\"cached\"", HasDraft: true, Same: false, SelectedByDefault: false });
-    Assert(diff.Count(x => x.SelectedByDefault) == 1);
-    Assert(diff.Where(x => !x.Setting.SelectByDefault).Count() == 4 && draft.Count == 2);
+    Assert(diff.Count(x => x.SelectedByDefault) == 0);
+    Assert(diff.Where(x => !x.Setting.SelectByDefault).Count() == 5 && draft.Count == 2);
 });
 Test("equal and repeated template applications produce no redundant edits", () =>
 {
@@ -578,6 +585,16 @@ UpdateTests.Register(tests, runRoot);
 CodexConfig.Tests.MobileGatewayTests.Register(tests, runRoot);
 LocalStateTests.Register(tests, runRoot);
 ConfigurationOptimizationTests.Register(tests, runRoot);
+SuperbaReuseTests.Register(tests, runRoot);
+DesktopRestartTests.Register(tests, runRoot);
+var filters = Environment.GetEnvironmentVariable("CODEX_CONFIG_TEST_FILTER")?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
+if (filters.Length > 0)
+{
+    var total = tests.Count;
+    tests = tests.Where(test => filters.Any(filter => test.Name.Contains(filter, StringComparison.OrdinalIgnoreCase))).ToList();
+    if (tests.Count == 0) throw new ArgumentException("No tests match CODEX_CONFIG_TEST_FILTER.");
+    Console.WriteLine($"Selected {tests.Count}/{total} tests using CODEX_CONFIG_TEST_FILTER.");
+}
 var failures = 0;
 foreach (var test in tests)
 {

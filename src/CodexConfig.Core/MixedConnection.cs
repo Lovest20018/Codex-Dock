@@ -8,7 +8,7 @@ using System.Text.Json.Nodes;
 namespace CodexConfig.Core;
 
 // This file is private to this tool; Codex receives only a loopback address and a local token.
-public sealed class MixedConnection
+public sealed record MixedConnection
 {
     public const string Provider = "codex_config_mixed";
     public const string FileName = "codex-config-connection.dat";
@@ -19,6 +19,7 @@ public sealed class MixedConnection
     public string LocalToken { get; init; } = "";
     public int Port { get; init; }
     public bool UseSystemProxy { get; init; }
+    public string HttpOrigin { get; init; } = "";
     public bool NativeRoute { get; init; }
     public Dictionary<string, string?> OriginalValues { get; init; } = new(StringComparer.Ordinal);
     public string? OriginalAuthApiBaseUrl { get; init; }
@@ -35,7 +36,7 @@ public sealed class MixedConnection
         settings = settings.Normalize();
         var port = previous?.Port ?? FreePort();
         var token = previous?.LocalToken ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-        return new() { BaseUrl = settings.BaseUrl, ApiKey = settings.ApiKey, Kind = settings.Kind, Port = port, LocalToken = token, UseSystemProxy = settings.UseSystemProxy,
+        return new() { BaseUrl = settings.BaseUrl, ApiKey = settings.ApiKey, Kind = settings.Kind, Port = port, LocalToken = token, UseSystemProxy = settings.UseSystemProxy, HttpOrigin = settings.Details.HttpOrigin,
             NativeRoute = true, OriginalValues = previous?.OriginalValues ?? new(StringComparer.Ordinal), OriginalAuthApiBaseUrl = previous?.OriginalAuthApiBaseUrl };
     }
 

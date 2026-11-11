@@ -47,7 +47,7 @@ public sealed record ConnectionSettings(string BaseUrl, string ApiKey, string Mo
     public string Fingerprint()
     {
         var settings = Normalize();
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{settings.Kind}\0{settings.BaseUrl}\0{settings.ApiKey}\0{settings.Mode}\0{settings.UseSystemProxy}")));
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{settings.Kind}\0{settings.BaseUrl}\0{settings.ApiKey}\0{settings.Mode}\0{settings.UseSystemProxy}\0{settings.Details.HttpOrigin}")));
     }
 
     public AuthenticationDecision Decide()

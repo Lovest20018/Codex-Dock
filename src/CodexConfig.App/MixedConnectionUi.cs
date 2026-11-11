@@ -42,8 +42,9 @@ public partial class MainWindow
                 : "尚无可用于混合连接的官方文件凭据，请先登录。";
         }
         var saved = loadedSettings.Mode == ConnectionMode.OfficialWithApi && snapshot?.Bridge is not null;
-        StartGatewayButton.IsEnabled = saved && !gatewayPolling && !closing;
-        RestartGatewayButton.IsEnabled = saved && !gatewayPolling && !closing;
+        var authorized = HttpConnectionPolicy.IsAuthorized(loadedSettings.BaseUrl, loadedSettings.Details.HttpOrigin);
+        StartGatewayButton.IsEnabled = saved && authorized && !gatewayPolling && !closing;
+        RestartGatewayButton.IsEnabled = saved && authorized && !gatewayPolling && !closing;
         StopGatewayButton.IsEnabled = saved && !gatewayPolling && gatewayStatus is not null && !closing;
         if (!saved) GatewayStatusText.Text = "保存混合连接后启动。模型入口是否可用需要单独验证。";
     }
@@ -112,6 +113,13 @@ public partial class MainWindow
         try
         {
             var connection = MixedConnection.Read(bytes);
+            if (!HttpConnectionPolicy.IsAuthorized(connection.BaseUrl, connection.HttpOrigin))
+            {
+                await BridgeProcess.StopAsync(bytes, lifetime.Token);
+                if (!closing && home == expectedHome && ReferenceEquals(snapshot, expectedSnapshot))
+                { gatewayStatus = null; GatewayStatusText.Text = "HTTP 站点未确认或确认已撤销，模型网关已停止。重新确认并保存后可启动。"; }
+                return;
+            }
             var status = await BridgeProcess.StatusAsync(connection, lifetime.Token);
             if ((status is null || status.ProtocolVersion != ModelBridge.ProtocolVersion) && (start || !stoppedGatewayHomes.Contains(home) && DateTimeOffset.UtcNow >= nextGatewayAttempt))
             {

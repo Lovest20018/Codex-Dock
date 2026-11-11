@@ -72,7 +72,7 @@ internal sealed class ConfigurationTools : Expander
             var snapshot = await new ConfigReadClient().ReadAsync(selectedExe, home, selectedCwd, selectedProfile.Length == 0 ? null : selectedProfile, compare, cancellation);
             if (home != expectedHome || cwd.Text != selectedCwd || executable.Text != selectedExe || profile.Text.Trim() != selectedProfile) return;
             result = snapshot; Filter();
-            status.Text = $"本机执行端快照 · {snapshot.ReadAt.LocalDateTime:g} · {snapshot.Rows.Count} 项\n{snapshot.Executable}\n项目：{snapshot.Cwd} · 比较文件：{(selectedProfile.Length == 0 ? "config.toml" : selectedProfile + ".config.toml")}\n当前聊天和组织强制要求可能另有覆盖；返回缺失项显示未知。";
+            status.Text = $"本机执行端快照 · {snapshot.ReadAt.LocalDateTime:g} · {snapshot.Rows.Count} 项\n{snapshot.Executable}\n执行端报告：{(snapshot.RuntimeInfo.Length > 0 ? snapshot.RuntimeInfo : "未提供版本标识")}\n项目：{snapshot.Cwd} · 比较文件：{(selectedProfile.Length == 0 ? "config.toml" : selectedProfile + ".config.toml")}\n当前聊天和组织强制要求可能另有覆盖；返回缺失项显示未知。";
             layers.Text = string.Join("\n", snapshot.Layers.Select(layer => layer.Source + " · " + layer.State));
         }
         catch (OperationCanceledException) { status.Text = "读取已取消或超时；生效来源未确认。"; }

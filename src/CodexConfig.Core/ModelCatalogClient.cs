@@ -26,6 +26,7 @@ public sealed class ModelCatalogClient : IDisposable
     public async Task<ModelCatalogResult> ReadModelsAsync(ConnectionSettings settings, CancellationToken cancellation = default)
     {
         settings = (settings with { Model = string.IsNullOrWhiteSpace(settings.Model) ? "model-catalog" : settings.Model }).Normalize();
+        HttpConnectionPolicy.RequireAuthorization(settings.BaseUrl, settings.Details.HttpOrigin);
         var clock = Stopwatch.StartNew();
         var answer = await GetAsync(settings, settings.BaseUrl + "/models", cancellation)
             ?? throw new InvalidDataException("未收到模型目录。");
@@ -58,7 +59,8 @@ public sealed class ModelCatalogClient : IDisposable
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiKey);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        var transport = settings.Mode == ConnectionMode.OfficialWithApi ? settings.UseSystemProxy ? proxyClient : directClient : client;
+        var transport = new Uri(settings.BaseUrl).Scheme == "http" ? directClient
+            : settings.Mode == ConnectionMode.OfficialWithApi ? settings.UseSystemProxy ? proxyClient : directClient : client;
         using var response = await transport.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation);
         if (!response.IsSuccessStatusCode)
         {

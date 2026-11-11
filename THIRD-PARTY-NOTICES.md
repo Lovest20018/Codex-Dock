@@ -28,6 +28,8 @@ Source: https://github.com/krill-lab/superba
 
 Reviewed revision: `f78d77a2849aceb8dffc1f27a83869ffceab7e90` (2026-10-27).
 
+Additional catalog and translation refresh: `v0.1.1-alpha.15` (2026-11-11), using its Codex `0.168.0-alpha.4` catalog and overlays. Fixed source URLs and SHA-256 digests are recorded in `config/config-schema.json` under `provenance.community_sources`. Runtime types and constraints were checked against OpenAI Codex revision `c2d5399587b96f45585f3aeac08fc5050365bc7c`. This refresh also uses the MIT option.
+
 Superba is licensed under MIT OR Apache-2.0. This project initially imported configuration metadata, curated grouping and Chinese translations from its Codex 0.164.0 catalog under the MIT option. The data is now independently maintained in `config/config-schema.json`; no upstream checkout or generator is required. Key-preserving editing, backup/rollback and PAT routing were independently implemented with its design as a reference. No Superba Rust crates or brand assets are linked or distributed. The MIT notice remains in `third_party/Superba-LICENSE.txt`.
 
 ## Tomlyn 0.19.0

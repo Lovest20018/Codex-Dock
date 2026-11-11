@@ -7,7 +7,10 @@ namespace CodexConfig.Core;
 public sealed record ConfigurationSourceRow(string Path, string FileValue, string EffectiveValue, string Source, string Scope);
 public sealed record ConfigurationLayer(string Source, string State);
 public sealed record ConfigurationReadResult(DateTimeOffset ReadAt, string Executable, string Cwd, string? Profile,
-    IReadOnlyList<ConfigurationSourceRow> Rows, IReadOnlyList<ConfigurationLayer> Layers);
+    IReadOnlyList<ConfigurationSourceRow> Rows, IReadOnlyList<ConfigurationLayer> Layers)
+{
+    public string RuntimeInfo { get; init; } = "";
+}
 
 // A separate, short-lived local app-server. Never starts a thread, turn, login or tool.
 public sealed class ConfigReadClient
@@ -52,9 +55,11 @@ public sealed class ConfigReadClient
                 throw new InvalidDataException("执行端没有返回可读取的配置快照。");
             }
             await Send(new { id = 1, method = "initialize", @params = new { clientInfo = new { name = "codex_dock_config_reader", version = "1.0" }, capabilities = new { experimentalApi = true } } });
-            await Result(1); await Send(new { method = "initialized" });
+            var initialized = await Result(1); await Send(new { method = "initialized" });
+            var runtime = initialized.TryGetProperty("userAgent", out var userAgent) && userAgent.ValueKind == JsonValueKind.String ? userAgent.GetString() ?? "" : "";
+            runtime = runtime.Length <= 300 && !runtime.Any(char.IsControl) ? runtime : "";
             await Send(new { id = 2, method = "config/read", @params = new { cwd = Path.GetFullPath(cwd), includeLayers = true } });
-            return Parse(await Result(2), localConfig, executable, Path.GetFullPath(cwd), profile);
+            return Parse(await Result(2), localConfig, executable, Path.GetFullPath(cwd), profile) with { RuntimeInfo = runtime };
         }
         catch (JsonException) { throw new InvalidDataException("执行端返回的配置快照格式不受支持。"); }
         finally

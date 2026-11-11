@@ -9,11 +9,13 @@
 3. 补充中文说明、枚举、范围或生命周期；`default` 未知时省略，不推断 Codex 的实际运行值。
 4. 更新 `schema_version` 日期及 `provenance` 中的来源 URL、获取日期、SHA-256 和核查内核，执行核心测试和界面检查。
 
-官方配置参考：<https://developers.openai.com/codex/config-reference/>。
+官方配置参考：[Configuration reference](https://developers.openai.com/codex/config-reference/)。
 
 ## 数据结构
 
-顶层为 `format`、`schema_version`、`categories`、`entries` 和 `provenance`。来源记录是核查快照，不能代表所有客户端版本或当前聊天的生效值。2026-11-02 目录共有 1003 条定义，包括父表和动态模板，不等于 1003 个独立开关。
+顶层为 `format`、`schema_version`、`categories`、`entries` 和 `provenance`。来源记录是核查快照，不能代表所有客户端版本或当前聊天的生效值。2026-11-11 目录共有 1064 条定义，相比 2026-11-02 的 1003 条新增 61 条结构路径；包括父表和动态模板，不等于 1064 个独立开关。
+
+`verified_since` 表示本轮首次收录该定义时核对的内核版本，`updated_in` 表示本轮更新已有定义的资料版本。它们均不声明字段的最早支持版本；旧内核能否支持仍需核对。`provenance.community_sources` 保留实际复用的固定社区来源及散列，官方 schema 是类型与约束的核查基准。原有历史字段仍保留，不因新目录暂未收录就删除用户配置。
 
 ```json
 {
@@ -27,7 +29,7 @@
 }
 ```
 
-示例仅说明格式，枚举以实际字段定义为准。支持的类型包括 `boolean`、`string`、`enum`、`integer`、`number`、`array`、`union`、`bool_or_table`。父表、map 容器和递归结构作为说明项，编辑其子项。数组约束可记录 `item_types` 和 `item_enum_values`，表的必填子项使用 `required_properties`，以官方 schema 为准。动态名称使用 `<name>`；实际名称包含点、空格或文件路径时使用 TOML 引号。“已配置”展开真实实例，添加 MCP、供应商和权限方案优先使用结构化表单。
+示例仅说明格式，枚举以实际字段定义为准。支持的类型包括 `boolean`、`string`、`enum`、`integer`、`number`、`array`、`union`、`bool_or_table`。父表、map 容器和递归结构作为说明项，编辑其子项。数组约束可记录 `item_types`、`item_enum_values`、`item_minimum` 和 `item_maximum`，表的必填子项使用 `required_properties`，以官方 schema 为准。动态名称使用 `<name>`；实际名称包含点、空格或文件路径时使用 TOML 引号。“已配置”展开真实实例，添加 MCP、供应商和权限方案优先使用结构化表单。
 
 未收录的文件字段会出现在“已配置”及“未收录配置”，以 TOML 值编辑；也可在“更多选项 → 添加设置”中加入新字段。未知字段只验证 TOML 语法，不保证 Codex 支持。复杂表数组保留原文，需在外部编辑器修改。
 
@@ -37,7 +39,7 @@
 
 ## 配置作用说明
 
-`config-help.json` 按字段路径关联名称、简述、实际作用、取值解释、场景、限制、默认行为、关联字段、来源、核对日期和核对状态。`verified` 表示核对官方文档，不代表运行时验证；`historical` 表示保留的旧说明，当前可用性待验证；`local` 用于本工具的连接写入规则。
+`config-help.json` 按字段路径关联名称、简述、实际作用、取值解释、场景、限制、默认行为、关联字段、来源、核对日期和核对状态。`verified` 表示核对官方文档，不代表运行时验证；`mixed` 表示同时引用官方语义和社区兼容记录，兼容现象未运行复现；`historical` 表示保留的旧说明，当前可用性待验证；`local` 用于本工具的连接写入规则。
 
 优先在官方文档确认语义。对不再收录的实验字段保留历史含义并说明差异，不根据名称猜测，也不静默更换用户的旧写法。未知默认值不推断为 true 或 false。字段表原有中文或英文与新核对结果不一致时，界面优先使用帮助表，避免同时给出相互冲突的解释。
 

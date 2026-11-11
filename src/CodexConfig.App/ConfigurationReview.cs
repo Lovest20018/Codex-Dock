@@ -69,7 +69,11 @@ public partial class MainWindow
         }
         FileChange(before.Auth, preview.Auth, "认证文件", "auth.json");
         FileChange(before.Bridge, preview.Bridge, "加密模型连接", MixedConnection.FileName);
-        FileChange(before.Details, preview.Details, "连接名称与备注", ConnectionDetails.FileName);
+        FileChange(before.Details, preview.Details, "连接资料与 HTTP 确认", ConnectionDetails.FileName);
+        var previousHttp = ConnectionDetails.Read(before.Details).HttpOrigin;
+        var nextHttp = ConnectionDetails.Read(preview.Details).HttpOrigin;
+        if (previousHttp != nextHttp)
+            Add("HTTP 明文连接确认", "Dock 站点确认", previousHttp.Length == 0 ? "未确认" : previousHttp, nextHttp.Length == 0 ? "撤销确认" : nextHttp);
         if (before.AuthApiBaseUrl != preview.AuthApiBaseUrl)
         {
             targets.Add("用户环境变量 CODEX_AUTHAPI_BASE_URL");
@@ -124,12 +128,18 @@ public partial class MainWindow
             ReviewError.Visibility = Visibility.Visible; ConfirmWriteButton.IsEnabled = false;
             return;
         }
+        RenderSavedConfigurationReview(count, targets);
+    }
+
+    private void RenderSavedConfigurationReview(int count, string targets)
+    {
         reviewTemplate = null; reviewPlan = null; reviewSaved = true;
         ReviewTitle.Text = "写入完成"; ReviewSummary.Text = $"已保存 {count} 项修改"; ReviewTargets.Text = targets;
-        ReviewSuccessMessage.Text = "本地文件已写入，并已重新读取核对。保存前的内容已自动加密备份。";
+        ReviewSuccessMessage.Text = "本地文件已写入并重新读取核对，原内容已自动加密备份。\n可在下方重启 Codex 读取这份配置，再新建聊天核对。新字段需要相应内核版本；项目、Profile 或组织配置可能覆盖本文件。";
+        PrepareDesktopRestart();
         ReviewSuccess.Visibility = Visibility.Visible;
         ReviewTabs.Visibility = ReviewScroll.Visibility = PreviewBox.Visibility = ReviewError.Visibility = Visibility.Collapsed;
         ConfirmWriteButton.Visibility = Visibility.Collapsed; ClosePreviewButton.Content = "完成";
-        ReviewHint.Text = "配置已保存 · 重新打开 Codex 后生效"; ClosePreviewButton.Focus();
+        ReviewHint.Text = "已保存本地文件 · 当前聊天是否采用尚未确认"; ClosePreviewButton.Focus();
     }
 }

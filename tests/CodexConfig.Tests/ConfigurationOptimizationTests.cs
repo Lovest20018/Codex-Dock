@@ -18,7 +18,7 @@ internal static class ConfigurationOptimizationTests
         Test("catalog provenance, removed options and array/table constraints match the verified schema", () =>
         {
             var schema = ConfigSchema.Instance;
-            Assert(schema.Entries.Count >= 1003 && schema.VerifiedRuntime == "codex-cli 0.166.0-alpha.5.1");
+            Assert(schema.Entries.Count >= 1064 && schema.VerifiedRuntime == "codex-cli 0.168.0-alpha.4");
             Assert(schema.Find("features.reasoning_effort_override") is { Stage: "stable", Default.ValueKind: JsonValueKind.True });
             Assert(schema.Find("features.secret_auth_storage")!.Default.GetBoolean());
             Assert(schema.Find("features.code_mode_tool_description_first") is { CanEdit: false, Stage: "removed" });

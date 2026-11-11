@@ -1,4 +1,5 @@
 using System.Net;
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
@@ -18,13 +19,14 @@ public sealed record BridgeStatus(long Requests, long FastRequests, long AutoRev
 // A narrow inference bridge. Account, plugin and login endpoints are intentionally absent.
 public sealed class ModelBridge : IAsyncDisposable
 {
-    public const int ProtocolVersion = 4;
+    public const int ProtocolVersion = 5;
     private readonly Func<MixedConnection> readConnection;
     private readonly Func<byte[]?> readAuth;
     private readonly HttpClient client;
     private readonly HttpClient proxyClient;
     private readonly IWebProxy proxy;
     private readonly SemaphoreSlim slots = new(16);
+    private readonly ConcurrentDictionary<HttpContext, byte> activeRequests = new();
     private WebApplication? app;
     private long requests, fastRequests, autoReviewRequests;
     private int stopRequested;
@@ -97,11 +99,25 @@ public sealed class ModelBridge : IAsyncDisposable
                 path is "/responses" or "/responses/compact" && HttpMethods.IsPost(context.Request.Method) ||
                 path == "/responses" && context.WebSockets.IsWebSocketRequest;
             if (!allowed) { context.Response.StatusCode = 404; return; }
+            if (!HttpConnectionPolicy.IsAuthorized(settings.BaseUrl, settings.HttpOrigin))
+            {
+                await WriteErrorAsync(context, 403, "http_origin_not_authorized", "此 HTTP 站点未确认或确认已撤销，请在 Dock 中重新确认并保存。", null, null);
+                return;
+            }
+            activeRequests.TryAdd(context, 0);
+            if (StopRequested) { context.Abort(); return; }
             transfer = telemetry.Begin();
             await slots.WaitAsync(context.RequestAborted);
             transfer.Enter();
             try
             {
+                // A queued request must observe a consent change before opening its upstream.
+                settings = readConnection();
+                if (!HttpConnectionPolicy.IsAuthorized(settings.BaseUrl, settings.HttpOrigin))
+                {
+                    await WriteErrorAsync(context, 403, "http_origin_not_authorized", "HTTP 站点确认已撤销，请在 Dock 中重新确认并保存。", null, null);
+                    return;
+                }
                 diagnostics = diagnostics with { LastRequestKind = path == "/responses/compact" ? "compact" : SafeValue(context.Request.Headers["x-openai-subagent"].ToString(), settings) ?? (path == "/models" ? "models" : "turn") };
                 var target = settings.BaseUrl.TrimEnd('/') + path + context.Request.QueryString;
                 if (context.WebSockets.IsWebSocketRequest) await ForwardWebSocketAsync(context, target, settings, transfer);
@@ -123,7 +139,7 @@ public sealed class ModelBridge : IAsyncDisposable
             if (context.Response.HasStarted) context.Abort();
             else await WriteErrorAsync(context, 502, "model_connection_unavailable", "无法连接模型入口，请检查地址、证书或代理。", null, null);
         }
-        finally { transfer?.Dispose(); }
+        finally { activeRequests.TryRemove(context, out _); transfer?.Dispose(); }
     }
 
     private async Task ForwardHttpAsync(HttpContext context, string target, MixedConnection settings, BridgeTelemetry.Transfer transfer)
@@ -153,7 +169,7 @@ public sealed class ModelBridge : IAsyncDisposable
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
         timeout.CancelAfter(TimeSpan.FromSeconds(60));
         transfer.Upstream();
-        using var response = await (settings.UseSystemProxy ? proxyClient : client).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        using var response = await (HttpConnectionPolicy.CanUseProxy(settings.BaseUrl, settings.UseSystemProxy) ? proxyClient : client).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         transfer.Headers();
         observer.SetSse(string.Equals(response.Content.Headers.ContentType?.MediaType, "text/event-stream", StringComparison.OrdinalIgnoreCase));
         var requestId = response.Headers.TryGetValues("x-request-id", out var ids) ? SafeValue(ids.FirstOrDefault(), settings) : null;
@@ -216,7 +232,7 @@ public sealed class ModelBridge : IAsyncDisposable
         using var observer = telemetry.Observe(false, "websocket");
         var uri = new UriBuilder(target) { Scheme = new Uri(target).Scheme == "https" ? "wss" : "ws" };
         using var upstream = new ClientWebSocket();
-        upstream.Options.Proxy = settings.UseSystemProxy ? proxy : null;
+        upstream.Options.Proxy = HttpConnectionPolicy.CanUseProxy(settings.BaseUrl, settings.UseSystemProxy) ? proxy : null;
         upstream.Options.SetRequestHeader("Authorization", "Bearer " + settings.ApiKey);
         CopyRequestHeaders(context, (key, value) => { if (key != "Accept") upstream.Options.SetRequestHeader(key, value); });
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
@@ -311,6 +327,8 @@ public sealed class ModelBridge : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        Volatile.Write(ref stopRequested, 1);
+        foreach (var context in activeRequests.Keys) context.Abort();
         if (app is not null) { await app.StopAsync(); await app.DisposeAsync(); }
         if (!ReferenceEquals(proxyClient, client)) proxyClient.Dispose();
         client.Dispose(); slots.Dispose();

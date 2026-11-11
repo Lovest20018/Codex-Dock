@@ -85,6 +85,7 @@ public partial class MainWindow
 
     private async void WindowClosing(object? sender, CancelEventArgs e)
     {
+        if (desktopRestartBusy) { e.Cancel = true; RestoreWindow(); SetStatus("正在处理 Codex 重启，请等待操作完成。", true); return; }
         if (exitReady || smokeOutput is not null && !smokeLifecycle)
         {
             closing = true; lifetime.Cancel(); previewTimer.Stop(); localStateTimer.Stop();
