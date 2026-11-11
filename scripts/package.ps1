@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.17.0',
+    [string]$Version = '0.17.1',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
@@ -34,6 +34,7 @@ Copy-Item -LiteralPath (Join-Path $taskRoot "docs\release-$Version.md"),(Join-Pa
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\configuration-implementation-2026-11-02.md'),(Join-Path $taskRoot 'docs\configuration-audit-2026-11-02.md'),(Join-Path $taskRoot 'docs\configuration-options-2026-11-02.md'),(Join-Path $taskRoot 'docs\runtime-settings-inventory-2026-11-02.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Get-ChildItem -LiteralPath (Join-Path $taskRoot 'third_party') -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $taskRelease 'third_party') -Force }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\superba-reuse-implementation-2026-11-11.md'),(Join-Path $taskRoot 'docs\superba-reuse-review-2026-11-11.md') -Destination (Join-Path $taskRelease 'docs') -Force
+Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\template-application-fix-2026-11-11.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\magpie-codex-comparison.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\mobile-connection.md'),(Join-Path $taskRoot 'docs\mobile-gateway-reuse.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\mobile-upstream-comparison.md') -Destination (Join-Path $taskRelease 'docs') -Force

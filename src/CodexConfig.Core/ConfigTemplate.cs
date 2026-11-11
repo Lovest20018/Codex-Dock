@@ -51,6 +51,11 @@ public sealed record ConfigTemplate(string Id, string Name, string SourceName, s
         var paths = selectedPaths.ToHashSet(StringComparer.Ordinal);
         if (paths.Any(path => !Settings.Any(setting => setting.Path == path))) throw new ArgumentException("所选项目不属于此模板。");
         var selected = BuildDiff(original, draft).Where(diff => paths.Contains(diff.Setting.Path) && !diff.Same).ToArray();
+        if (selected.Any(diff =>
+            diff.Setting.Path == "features.context_management" &&
+            TomlDocument.ParseModel("value = " + diff.Setting.Value)["value"] is bool &&
+            TomlDocument.ParseModel("value = " + (diff.CurrentValue ?? "false"))["value"] is TomlTable))
+            throw new ArgumentException("上下文管理当前采用表格式配置，请在全部配置中核对其子项；模板不会把整张表替换为布尔值。");
         foreach (var diff in selected) ConfigSchema.Instance.Validate(diff.Setting.Path, diff.Setting.Value, allowPreferences: true);
         var edits = new List<TemplateApplication.Edit>();
         foreach (var diff in selected)
@@ -74,23 +79,30 @@ public sealed record ConfigTemplate(string Id, string Name, string SourceName, s
 
 public static class BuiltInTemplates
 {
-    // Preserve provenance of the historical community recipe; no upstream or backend request.
+    // Pinned upstream recipe. Historical options require an explicit selection in Dock.
     public static ConfigTemplate KrillCommunity { get; } = new(
         "krill-community", "Krill 社区方案", "Krill / Superba",
         "https://github.com/krill-lab/superba/blob/v0.1.1-alpha.15/crates/superba-core/src/codex.rs",
-        "7 项社区设置；关闭统计与旧实验功能默认不选。保留已保存的自定义方案。",
+        "Superba alpha.15 的 6 项 PAT 配方。旧上下文、历史笔记及隐藏警告默认不选；这些上游取值不代表当前服务支持。",
         Array.AsReadOnly(new[] {
             new TemplateSetting("web_search", "\"live\""),
             new TemplateSetting("features.fast_mode", "true"),
-            new TemplateSetting("analytics.enabled", "false", false),
             new TemplateSetting("features.context_management", "true", false),
             new TemplateSetting("features.token_budget.enabled", "true", false),
             new TemplateSetting("features.token_budget.use_history_notes_extension", "true", false),
             new TemplateSetting("suppress_unstable_features_warning", "true", false)
         }));
+    public static ConfigTemplate DisableLegacyContext { get; } = new(
+        "disable-legacy-context", "停用旧上下文与历史笔记", "Codex Dock", "",
+        "将旧上下文管理、上下文预算和历史笔记三项明确设为 false。适用于旧布尔开关；表格式配置需在全部配置中核对。保存后重新打开 Codex 并新建聊天。",
+        [new("features.context_management", "false"), new("features.token_budget.enabled", "false"),
+         new("features.token_budget.use_history_notes_extension", "false")]);
     public static ConfigTemplate Daily { get; } = new("daily-high", "日常任务 · high", "Codex Dock", "",
         "只将推理强度设为 high；保留模型、服务档位、权限与实验设置。先预览，再选择应用。", [new("model_reasoning_effort", "\"high\"")]);
     public static ConfigTemplate Deep { get; } = new("deep-xhigh", "复杂任务 · xhigh", "Codex Dock", "",
         "只将推理强度设为 xhigh；需要当前模型支持，不代表自动使用 Fast 档位。", [new("model_reasoning_effort", "\"xhigh\"")]);
-    public static IReadOnlyList<ConfigTemplate> All { get; } = Array.AsReadOnly(new[] { Daily, Deep, KrillCommunity });
+    public static IReadOnlyList<ConfigTemplate> All { get; } = Array.AsReadOnly(new[] { Daily, Deep, KrillCommunity, DisableLegacyContext });
+
+    public static bool IsCustomized(ConfigTemplate template) => All.FirstOrDefault(item => item.Id == template.Id) is { } builtIn &&
+        (template.Name != builtIn.Name || template.Description != builtIn.Description || !template.Settings.SequenceEqual(builtIn.Settings));
 }

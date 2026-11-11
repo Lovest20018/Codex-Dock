@@ -444,20 +444,20 @@ Test("ordinary PAT save leaves legacy baseline untouched", () =>
     store.Restore(store.Load(home)); Assert(File.ReadAllText(legacy) == "opaque legacy file");
 });
 
-Test("Krill recommendations stage all seven keys and preserve unrelated configuration and authentication", () =>
+Test("Krill recommendations stage all six keys and preserve unrelated configuration and authentication", () =>
 {
     var home = Home(); var env = new FakeEnvironment(); var store = new ConfigStore(env);
     File.WriteAllText(Path.Combine(home, "config.toml"), "# keep\nweb_search='disabled' # search\n[analytics]\nenabled=true\n[other]\nflag='retain'\n");
     var before = store.Load(home); var edits = new Dictionary<string, string?> { ["model_context_window"] = "500000" };
     var template = BuiltInTemplates.KrillCommunity;
     var application = template.StageSelected(new TomlDocument(before.Config).Model, edits, template.Settings.Select(setting => setting.Path));
-    Assert(template.Settings.Count == 7 && application.Count == 7 && edits.Count == 8);
+    Assert(template.Settings.Count == 6 && application.Count == 6 && edits.Count == 7);
     Assert(File.ReadAllBytes(Path.Combine(home, "config.toml")).SequenceEqual(before.Config!));
     var plan = store.Plan(before, new("", "", ""), edits, updateConnection: false);
     store.Apply(plan); var doc = new TomlDocument(store.Load(home).Config);
     foreach (var setting in template.Settings)
         Assert(ConfigSchema.Literal(doc.Get(setting.Path)) == setting.Value, setting.Path);
-    Assert(doc.Get("model_context_window") is 500000L && doc.Get("other.flag") as string == "retain" && doc.Text.Contains("# search"));
+    Assert(doc.Get("model_context_window") is 500000L && doc.Get("other.flag") as string == "retain" && doc.Text.Contains("# search") && doc.Get("analytics.enabled") is true);
     Assert(store.Load(home).Auth is null && env.Value is null);
     store.Restore(store.Load(home));
     Assert(File.ReadAllBytes(Path.Combine(home, "config.toml")).SequenceEqual(before.Config!));
@@ -471,7 +471,7 @@ Test("template diff respects effective draft values and default opt ins", () =>
     var diff = template.BuildDiff(original, draft);
     Assert(diff.Single(x => x.Setting.Path == "web_search") is { CurrentValue: "\"cached\"", HasDraft: true, Same: false, SelectedByDefault: false });
     Assert(diff.Count(x => x.SelectedByDefault) == 0);
-    Assert(diff.Where(x => !x.Setting.SelectByDefault).Count() == 5 && draft.Count == 2);
+    Assert(diff.Where(x => !x.Setting.SelectByDefault).Count() == 4 && draft.Count == 2);
 });
 Test("equal and repeated template applications produce no redundant edits", () =>
 {
@@ -479,7 +479,7 @@ Test("equal and repeated template applications produce no redundant edits", () =
     var original = new TomlDocument(Bytes("web_search='live'\n")).Model;
     var draft = new Dictionary<string, string?>();
     var all = template.Settings.Select(setting => setting.Path).ToArray();
-    Assert(template.StageSelected(original, draft, all).Count == 6);
+    Assert(template.StageSelected(original, draft, all).Count == 5);
     Assert(template.StageSelected(original, draft, all).Count == 0 && !draft.ContainsKey("web_search"));
 });
 Test("template undo restores prior draft and preserves unrelated and later edits", () =>
@@ -487,11 +487,11 @@ Test("template undo restores prior draft and preserves unrelated and later edits
     var template = BuiltInTemplates.KrillCommunity;
     var original = new TomlDocument(null).Model;
     var draft = new Dictionary<string, string?> { ["web_search"] = "'cached'", ["other.flag"] = "true" };
-    var application = template.StageSelected(original, draft, ["web_search", "features.fast_mode", "analytics.enabled"]);
+    var application = template.StageSelected(original, draft, ["web_search", "features.fast_mode", "suppress_unstable_features_warning"]);
     draft["features.fast_mode"] = "false";
     var undone = application.Undo(draft);
     Assert(undone.Restored == 2 && undone.Preserved == 1);
-    Assert(draft["web_search"] == "'cached'" && draft["features.fast_mode"] == "false" && draft["other.flag"] == "true" && !draft.ContainsKey("analytics.enabled"));
+    Assert(draft["web_search"] == "'cached'" && draft["features.fast_mode"] == "false" && draft["other.flag"] == "true" && !draft.ContainsKey("suppress_unstable_features_warning"));
     Assert(application.Undo(draft).Restored == 0);
 });
 Test("template reverting draft to file value can be undone", () =>
@@ -576,6 +576,7 @@ Test("capturing current settings includes drafts, skips removed values and exclu
 });
 
 LegacyConnectionTests.Register(tests, runRoot);
+TemplateProvenanceTests.Register(tests, runRoot);
 GatewayTests.Register(tests, runRoot);
 GatewayProcessTests.Register(tests, runRoot);
 NativeBridgeTests.Register(tests, runRoot);

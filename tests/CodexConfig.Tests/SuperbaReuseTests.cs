@@ -38,6 +38,46 @@ internal static class SuperbaReuseTests
             var kept = repository.Load().Single(item => item.Id == template.Id);
             Assert(kept.Name == "customized" && kept.Settings.Single().SelectByDefault);
         });
+        Test("legacy shutdown stages explicit false, merges only selected keys and restores backup", () =>
+        {
+            var home = Home(); var store = new ConfigStore(new FakeEnvironment());
+            var original = "model='keep-model'\n[features]\ncontext_management=true # keep comment\nfast_mode=true\n[features.token_budget]\nenabled=true\nuse_history_notes_extension=true\n[projects.demo]\ntrust_level='trusted'\n";
+            File.WriteAllText(Path.Combine(home, "config.toml"), original);
+            File.WriteAllBytes(Path.Combine(home, "auth.json"), LegacyConnectionTests.Auth());
+            var before = store.Load(home); var draft = new Dictionary<string, string?>();
+            var template = BuiltInTemplates.DisableLegacyContext;
+            var selected = template.BuildDiff(Doc(original).Model, draft).Where(diff => diff.SelectedByDefault).Select(diff => diff.Setting.Path).ToArray();
+            Assert(selected.Length == 3);
+            template.StageSelected(Doc(original).Model, draft, selected);
+            Assert(before.SameContents(store.Load(home)) && draft.Values.All(value => value == "false"));
+            var plan = store.Plan(before, store.ReadSettings(before), draft, updateConnection: false);
+            store.Apply(plan); var saved = store.Load(home); var after = new TomlDocument(saved.Config);
+            Assert(template.Settings.All(setting => after.Get(setting.Path) is false));
+            Assert(after.Get("features.fast_mode") is true && after.String("model") == "keep-model" && after.Get("projects.demo.trust_level") as string == "trusted");
+            Assert(saved.Auth!.SequenceEqual(before.Auth!) && after.Text.Contains("context_management=false # keep comment"));
+            Assert(template.StageSelected(after.Model, new(), selected).Count == 0);
+            store.Restore(saved); Assert(before.SameContents(store.Load(home)));
+        });
+        Test("legacy shutdown draft preserves unselected fields and blocks table replacement atomically", () =>
+        {
+            var template = BuiltInTemplates.DisableLegacyContext;
+            var before = Doc("[features]\ncontext_management=true\n[features.token_budget]\nenabled=true\nuse_history_notes_extension=true\n");
+            var draft = new Dictionary<string, string?> { ["web_search"] = "'cached'" };
+            var application = template.StageSelected(before.Model, draft, ["features.context_management"]);
+            Assert(application.Count == 1 && draft.Count == 2 && draft["features.context_management"] == "false");
+            Assert(!draft.ContainsKey("features.token_budget.enabled") && before.Get("features.context_management") is true);
+            Assert(application.Undo(draft).Restored == 1 && draft.Count == 1 && draft["web_search"] == "'cached'");
+            var table = Doc("[features.context_management]\nexperimental_mode='keep'\n");
+            var all = template.Settings.Select(setting => setting.Path).ToArray();
+            Throws<ArgumentException>(() => template.StageSelected(table.Model, draft, all));
+            Assert(draft.Count == 1 && table.Get("features.context_management.experimental_mode") as string == "keep");
+            var copy = TemplateRepository.New("停用方案副本", template.Settings);
+            Throws<ArgumentException>(() => copy.StageSelected(table.Model, draft, all));
+            var inlineTable = Doc("[features]\ncontext_management={experimental_mode='keep'}\n");
+            Throws<ArgumentException>(() => copy.StageSelected(inlineTable.Model, draft, all));
+            Throws<ArgumentException>(() => BuiltInTemplates.KrillCommunity.StageSelected(inlineTable.Model, draft, ["web_search", "features.context_management"]));
+            Assert(draft.Count == 1 && inlineTable.Get("features.context_management.experimental_mode") as string == "keep");
+        });
         Test("Guardian elastic constraints match named sections, aliases, entry limits and default reservations", () =>
         {
             var before = Doc("");

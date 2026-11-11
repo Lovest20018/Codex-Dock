@@ -31,6 +31,9 @@ public sealed class TemplateBrowser : UserControl
     internal readonly Button AddRowButton = new() { Content = "添加设置" };
     internal readonly Dictionary<string, CheckBox> Choices = new(StringComparer.Ordinal);
     internal readonly Button StageButton = new() { Content = "查看并确认修改" };
+    internal readonly Button SelectAllValuesButton = new() { Content = "选择全部方案值" };
+    internal readonly Button PreviewBuiltInButton = new() { Content = "查看本版内置方案" };
+    internal readonly Dictionary<string, TextBlock> ChoiceResults = new(StringComparer.Ordinal);
     public event Action<ConfigTemplate, string[]>? StageRequested;
     public event Action<string, bool>? StatusChanged;
     internal ConfigTemplate? Current => current;
@@ -54,6 +57,8 @@ public sealed class TemplateBrowser : UserControl
         error.SetResourceReference(TextBlock.ForegroundProperty, "Error");
         AutomationProperties.SetName(NameInput, "模板名称"); AutomationProperties.SetName(DescriptionInput, "模板简介");
         StageButton.Click += (_, _) => { if (current is not null) StageRequested?.Invoke(current, Choices.Where(pair => pair.Value.IsChecked == true && pair.Value.IsEnabled).Select(pair => pair.Key).ToArray()); };
+        SelectAllValuesButton.Click += (_, _) => { foreach (var box in Choices.Values.Where(box => box.IsEnabled)) box.IsChecked = true; };
+        PreviewBuiltInButton.Click += (_, _) => { if (BuiltInTemplates.All.FirstOrDefault(item => item.Id == current?.Id) is { } builtIn) ShowTemplate(builtIn); };
         NewTemplateButton.Click += (_, _) => BeginEdit(TemplateRepository.New("", []), true);
         CaptureTemplateButton.Click += (_, _) =>
         {
@@ -90,7 +95,9 @@ public sealed class TemplateBrowser : UserControl
     }
     private void ResetView()
     {
-        body.Children.Clear(); footerActions.Children.Clear(); Choices.Clear(); error.Text = ""; scroll.ScrollToTop();
+        if (SelectAllValuesButton.Parent is Panel oldAll) oldAll.Children.Remove(SelectAllValuesButton);
+        if (PreviewBuiltInButton.Parent is Panel oldBuiltIn) oldBuiltIn.Children.Remove(PreviewBuiltInButton);
+        body.Children.Clear(); footerActions.Children.Clear(); Choices.Clear(); ChoiceResults.Clear(); error.Text = ""; scroll.ScrollToTop();
     }
 
     internal void ShowList()
@@ -112,12 +119,14 @@ public sealed class TemplateBrowser : UserControl
                 var title = new StackPanel { Margin = new(0, 0, 18, 0) };
                 title.Children.Add(new TextBlock { Text = template.Name, FontSize = 15, FontWeight = FontWeights.Medium });
                 var builtIn = BuiltInTemplates.All.FirstOrDefault(item => item.Id == template.Id);
-                var origin = builtIn is null ? "我的方案" : template.Name != builtIn.Name || template.Description != builtIn.Description || !template.Settings.SequenceEqual(builtIn.Settings) ? "内置推荐 · 本地已编辑" : "内置推荐";
+                var customized = BuiltInTemplates.IsCustomized(template);
+                var origin = builtIn is null ? "我的方案" : customized ? "本地已编辑 · 与本版内置方案不同" : "内置方案";
                 title.Children.Add(HelpContent.Note($"{template.Settings.Count} 项设置 · " + origin));
                 if (!string.IsNullOrWhiteSpace(template.Description)) title.Children.Add(HelpContent.Note(template.Description));
                 row.Children.Add(title);
-                var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+                var buttons = new WrapPanel { MaxWidth = 270, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
                 buttons.Children.Add(Action("选择方案", () => ShowTemplate(template))); buttons.Children.Add(Action("编辑方案", () => BeginEdit(template), true));
+                if (customized && builtIn is not null) buttons.Children.Add(Action("查看本版内置方案", () => ShowTemplate(builtIn), true));
                 var more = Action("更多", () => { }, true); var menu = new ContextMenu();
                 var copy = new MenuItem { Header = "复制模板" }; copy.Click += (_, _) => CopyTemplate(template);
                 var delete = new MenuItem { Header = "删除模板" }; delete.Click += (_, _) => DeleteTemplate(template);
@@ -143,31 +152,57 @@ public sealed class TemplateBrowser : UserControl
         top.Children.Add(buttons); top.Children.Add(back); body.Children.Add(top);
         body.Children.Add(new TextBlock { Text = template.Name, FontSize = 18, FontWeight = FontWeights.SemiBold });
         if (!string.IsNullOrWhiteSpace(template.Description)) body.Children.Add(HelpContent.Note(template.Description));
+        if (BuiltInTemplates.IsCustomized(template))
+        {
+            body.Children.Add(HelpContent.Note("正在使用本地编辑的方案，软件升级不会改写它。可查看本版内置方案并用于本次配置写入，本地方案仍保留。", new(0, 10, 0, 8)));
+            PreviewBuiltInButton.HorizontalAlignment = HorizontalAlignment.Left; body.Children.Add(PreviewBuiltInButton);
+        }
         if (Uri.TryCreate(template.SourceUrl, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)
             body.Children.Add(new Expander { Header = "来源", Content = HelpContent.SourceLink(template.SourceName, template.SourceUrl), Margin = new(0, 8, 0, 0) });
-        body.Children.Add(HelpContent.Note("勾选本次要修改的项目，再查看差异并确认写入。已有未保存修改默认保留；编辑方案只修改推荐内容。", new(0, 14, 0, 12)));
+        body.Children.Add(HelpContent.Note("勾选表示本次写入下方的方案值，取消勾选表示保留现值，不代表关闭功能。已有草稿默认保留；确认后只合并选中字段。", new(0, 14, 0, 12)));
+        var legacyPaths = new[] { "features.context_management", "features.token_budget.enabled", "features.token_budget.use_history_notes_extension" };
+        var activeLegacy = legacyPaths.Where(path => draft.TryGetValue(path, out var pending)
+            ? ConfigTemplateValueIsTrue(pending) : TomlDocument.ValueAt(original, path) is true).ToArray();
+        if (template.Settings.Any(setting => legacyPaths.Contains(setting.Path) && ConfigTemplateValueIsTrue(setting.Value)) ||
+            template.Id == BuiltInTemplates.KrillCommunity.Id && activeLegacy.Length > 0)
+        {
+            body.Children.Add(HelpContent.Note((activeLegacy.Length > 0 ? $"当前配置或草稿有 {activeLegacy.Length} 项旧上下文功能为 true。" : "此方案包含开启旧上下文或历史笔记的值。") +
+                "当前服务支持情况未核实。若已收到停用通知，请使用“停用旧上下文与历史笔记”方案；重新应用此配方不会关闭它们。", new(0, 0, 0, 10)));
+            body.Children.Add(Action("查看停用方案", () => ShowTemplate(BuiltInTemplates.DisableLegacyContext), true));
+        }
+        var selection = new WrapPanel { Margin = new(0, 12, 0, 6) };
+        SelectAllValuesButton.Margin = new(0, 0, 8, 0);
+        SelectAllValuesButton.ToolTip = "选中所有不同值，包括旧实验项和已有草稿；下一步核对差异后才写入。";
+        selection.Children.Add(SelectAllValuesButton);
+        selection.Children.Add(Action("全部保留", () => { foreach (var box in Choices.Values) box.IsChecked = false; }, true));
+        body.Children.Add(selection);
         foreach (var diff in template.BuildDiff(original, draft))
         {
             var shell = new StackPanel();
             var row = new Grid(); row.ColumnDefinitions.Add(new() { Width = new(1.3, GridUnitType.Star) }); row.ColumnDefinitions.Add(new()); row.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
             var label = new StackPanel { Margin = new(0, 0, 16, 0) };
-            var box = new CheckBox { Content = ConfigHelp.Name(diff.Setting.Path), IsChecked = diff.SelectedByDefault, IsEnabled = !diff.Same, Margin = new(0, 0, 0, 3) };
+            var box = new CheckBox { Content = "写入此项 · " + ConfigHelp.Name(diff.Setting.Path), IsChecked = diff.SelectedByDefault, IsEnabled = !diff.Same, Margin = new(0, 0, 0, 3) };
             Choices[diff.Setting.Path] = box; label.Children.Add(box);
             var help = ConfigHelp.Find(diff.Setting.Path);
             if (help is not null) label.Children.Add(HelpContent.Note(help.Summary));
             row.Children.Add(label);
             var valueText = "本地：" + DisplayValue(diff.FileValue);
             if (diff.HasDraft) valueText += "\n待写入：" + (diff.CurrentValue is null ? "移除本地覆盖" : DisplayValue(diff.CurrentValue));
-            var values = HelpContent.Note(valueText + "\n推荐：" + DisplayValue(diff.Setting.Value), new(0)); values.VerticalAlignment = VerticalAlignment.Center;
+            var values = HelpContent.Note(valueText + "\n方案值：" + DisplayValue(diff.Setting.Value), new(0)); values.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(values, 1); row.Children.Add(values);
             var details = new Expander { Header = "了解更多", Content = HelpContent.Details(diff.Setting.Path, ConfigSchema.Instance.Find(diff.Setting.Path)), Visibility = Visibility.Collapsed, Margin = new(22, 12, 0, 0) };
             var info = Action("了解更多", () => { details.Visibility = details.IsVisible ? Visibility.Collapsed : Visibility.Visible; details.IsExpanded = details.Visibility == Visibility.Visible; }, true);
             info.Margin = new(8, 0, 0, 0); Grid.SetColumn(info, 2); row.Children.Add(info); shell.Children.Add(row);
-            if (diff.Same || diff.HasDraft || help?.VerificationStatus == "historical") shell.Children.Add(HelpContent.Note(diff.Same ? "与当前值相同" : diff.HasDraft ? "已有修改，勾选将替换" : "旧版设置，当前版本可能不支持。", new(22, 5, 0, 0)));
+            var result = HelpContent.Note("", new(22, 5, 0, 0)); ChoiceResults[diff.Setting.Path] = result; shell.Children.Add(result);
+            void RefreshResult() => result.Text = diff.Same ? "与方案值一致 · 无需重复写入" : box.IsChecked == true
+                ? "本次将写入：" + DisplayValue(diff.Setting.Value) + (diff.HasDraft ? "（替换此项草稿）" : "")
+                : "本次保留" + (diff.HasDraft ? "草稿：" : "本地值：") + DisplayValue(diff.CurrentValue);
+            RefreshResult();
+            if (help?.VerificationStatus == "historical") shell.Children.Add(HelpContent.Note("旧版设置，当前版本或服务可能不支持。", new(22, 5, 0, 0)));
             shell.Children.Add(details);
             var border = new Border { Child = shell, Padding = new(0, 12, 0, 12), BorderThickness = new(0, 0, 0, 1) };
             border.SetResourceReference(Border.BorderBrushProperty, "Line"); body.Children.Add(border);
-            box.Checked += (_, _) => UpdateCount(); box.Unchecked += (_, _) => UpdateCount();
+            box.Checked += (_, _) => { RefreshResult(); UpdateCount(); }; box.Unchecked += (_, _) => { RefreshResult(); UpdateCount(); };
         }
         UpdateCount();
         ViewChanged?.Invoke();
@@ -177,10 +212,19 @@ public sealed class TemplateBrowser : UserControl
     {
         var text = value ?? "本地未设置（跟随 Codex 配置）"; if (text.Length > 80) text = text[..80] + "…"; return text;
     }
+    private static bool ConfigTemplateValueIsTrue(string? value)
+    {
+        if (value is null) return false;
+        try { return TomlDocument.ParseModel("value = " + value)["value"] is true; }
+        catch (InvalidDataException) { return false; }
+    }
     private void UpdateCount()
     {
         var count = Choices.Values.Count(box => box.IsEnabled && box.IsChecked == true);
-        StageButton.Content = $"查看并确认 {count} 项修改"; StageButton.IsEnabled = count > 0; selectedCount.Text = $"已选 {count} 项 · 尚未写入本地配置";
+        var same = Choices.Values.Count(box => !box.IsEnabled);
+        SelectAllValuesButton.IsEnabled = same < Choices.Count;
+        StageButton.Content = count == 0 ? "没有选中待写入项" : $"查看并确认 {count} 项修改"; StageButton.IsEnabled = count > 0;
+        selectedCount.Text = same == Choices.Count ? "全部与方案值一致 · 无需重复写入" : $"写入 {count} 项 · 保留 {Choices.Count - same - count} 项 · 一致 {same} 项";
     }
 
     internal void BeginEdit(ConfigTemplate template, bool isNew = false)

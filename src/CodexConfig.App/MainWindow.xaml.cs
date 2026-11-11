@@ -689,7 +689,7 @@ public partial class MainWindow : Window
         File.WriteAllBytes(Path.Combine(home, "config.toml"), current.Config!); Reload(); ShowPage("connection");
         detailedChanges["web_search"] = "\"cached\""; detailedChanges["future_config.other"] = "true";
         TemplatesClicked(TemplatesNav, new()); TemplateEditor.ShowTemplate(BuiltInTemplates.KrillCommunity);
-        Assert(TemplateEditor.Choices.Count == 7 && TemplateEditor.Choices["web_search"].IsChecked == false, "Template conflicts default to preserving draft");
+        Assert(TemplateEditor.Choices.Count == 6 && TemplateEditor.Choices["web_search"].IsChecked == false, "Template conflicts default to preserving draft");
         Assert(TemplateEditor.Choices["features.context_management"].IsChecked == false && TemplateEditor.Choices["suppress_unstable_features_warning"].IsChecked == false, "Historical and suppress-warning options opt in");
         Assert(detailedChanges.Count == 2 && File.ReadAllBytes(Path.Combine(home, "config.toml")).SequenceEqual(current.Config!), "Template preview has no side effects");
         ShowPage("catalog"); Assert(detailedChanges["web_search"] == "\"cached\"", "Cancel template preserves draft");
@@ -697,13 +697,13 @@ public partial class MainWindow : Window
         foreach (var box in TemplateEditor.Choices.Values) box.IsChecked = box.IsEnabled;
         await Settle(); Capture(output, "template-details.png");
         TemplateEditor.StageButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Assert(reviewTemplate?.Count == 7 && detailedChanges.Count == 8, "Selected template stages all seven");
+        Assert(reviewTemplate?.Count == 6 && detailedChanges.Count == 7, "Selected template stages all six");
         Assert(PreviewOverlay.IsVisible && currentPage == "templates" && !GlobalSaveBar.IsVisible, "Template goes directly to confirmation without a second save bar");
         ClosePreviewButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Assert(detailedChanges.Count == 2 && detailedChanges["web_search"] == "\"cached\"" && detailedChanges["future_config.other"] == "true", "Returning from template confirmation preserves the preceding draft");
         UndoClicked(UndoButton, new());
         TemplatesClicked(TemplatesNav, new()); TemplateEditor.ShowTemplate(BuiltInTemplates.KrillCommunity);
-        Assert(TemplateEditor.Choices.Values.Count(box => box.IsChecked == true) == 2 && TemplateEditor.Choices["analytics.enabled"].IsChecked == false, "Default template selects search and Fast without opting out of analytics");
+        Assert(TemplateEditor.Choices.Values.Count(box => box.IsChecked == true) == 2 && !TemplateEditor.Choices.ContainsKey("analytics.enabled"), "Default template selects search and Fast without opting out of analytics");
         Width = 960; Height = 640; await Settle();
         Assert(FindVisual<TextBlock>(TemplateEditor.StageButton).All(block => block.Foreground.ToString() == TemplateEditor.StageButton.Foreground.ToString()), "Primary button text contrast in light theme");
         var stageBounds = TemplateEditor.StageButton.TransformToAncestor(RootPanel).TransformBounds(new Rect(TemplateEditor.StageButton.RenderSize));
@@ -728,7 +728,7 @@ public partial class MainWindow : Window
         Assert(store.Load(home).Auth!.SequenceEqual(current.Auth!), "Template preserves authentication");
         TemplatesClicked(TemplatesNav, new()); TemplateEditor.ShowTemplate(BuiltInTemplates.KrillCommunity);
         Assert(!TemplateEditor.StageButton.IsEnabled && TemplateEditor.Choices.Values.All(box => !box.IsEnabled) && detailedChanges.Count == 0, "Repeated template creates no draft");
-        checks.AddRange(["All seven template settings explicitly selected and persisted", "Template preview and cancel have no side effects", "Template conflicts and historical options opt in", "Template confirmation returns to the preceding draft", "Repeated template skips equal values", "Masked field differences", "Template preserves authentication", "Minimum 960x640 common and template layout", "Dark template details"]);
+        checks.AddRange(["All six upstream template settings explicitly selected and persisted", "Template preview and cancel have no side effects", "Template conflicts and historical options opt in", "Template confirmation returns to the preceding draft", "Repeated template skips equal values", "Masked field differences", "Template preserves authentication", "Minimum 960x640 common and template layout", "Dark template details"]);
         // Exercise the actual template editor controls and local persistence in the isolated smoke home.
         var library = new TemplateRepository(Path.Combine(home, "editor-templates"));
         var configBeforeLibrary = File.ReadAllBytes(Path.Combine(home, "config.toml"));
@@ -841,6 +841,7 @@ public partial class MainWindow : Window
         await RunGatewayLifecycleSmokeAsync(output, checks);
         await RunConfigurationOptimizationSmokeAsync(output, checks);
         await RunConfigurationReviewSmokeAsync(output, checks);
+        await RunTemplateApplicationSmokeAsync(output, checks);
         await RunSuperbaReuseSmokeAsync(output, checks);
         await RunLayoutReviewAsync(output, checks);
         Assert(Environment.GetEnvironmentVariable(WindowsUserEnvironment.Variable, EnvironmentVariableTarget.User) == originalEnvironment, "Real environment changed");

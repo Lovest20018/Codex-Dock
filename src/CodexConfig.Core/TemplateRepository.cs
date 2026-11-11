@@ -71,10 +71,12 @@ public sealed class TemplateRepository(string directory)
         foreach (var setting in settings) combined.SetRaw(setting.Path, setting.Value);
         foreach (var setting in settings)
             if (ConfigSchema.Literal(combined.Get(setting.Path)) != setting.Value) throw new ArgumentException("模板中的父字段和子字段互相冲突，请只保留一种写法。");
-        // Provenance of an edited built-in recipe remains available.
+        // An edited recipe keeps the source it was based on. Loading a newer
+        // application must not relabel old local values as the current upstream recipe.
         var builtIn = BuiltInTemplates.All.FirstOrDefault(item => item.Id == template.Id);
         return template with { Name = template.Name.Trim(), Description = template.Description?.Trim() ?? "", Settings = settings.ToArray(),
-            SourceName = builtIn?.SourceName ?? "我的模板", SourceUrl = builtIn?.SourceUrl ?? "" };
+            SourceName = builtIn is null ? "我的模板" : string.IsNullOrWhiteSpace(template.SourceName) ? "本地方案（来源未记录）" : template.SourceName,
+            SourceUrl = builtIn is null ? "" : template.SourceUrl ?? "" };
     }
 
     public static bool CanInclude(string path)

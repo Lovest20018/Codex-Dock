@@ -14,18 +14,20 @@
 
 | 应用 | 版本与下载 | 本版更新 |
 | --- | --- | --- |
-| Windows · Codex Dock | **[0.17.0](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.17.0)** | 保存后重启 Codex，配置目录与兼容说明更新，逐站 HTTP 确认，调整社区模板默认选择。 |
+| Windows · Codex Dock | **[0.17.1](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.17.1)** | 明确模板写入与保留行为，提供内置配方预览和旧上下文停用方案，修复来源与表格式保护。 |
 | Android · Lovest Code | **[0.2.4](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.4)** / versionCode 7 | 应用内检查更新、校验下载并打开系统安装器；保留通知、原图下载、草稿和三页导航。 |
 
 **Windows 与 Android 独立更新、独立发布。** Windows Release 只放 EXE、便携包和对应源码；Android Release 只放 APK 和对应源码，各自附带校验清单与验证记录。Windows 使用 `vX.Y.Z` 标签，Android 使用 `android-vX.Y.Z` 标签。历史合并版保留，新版本按平台发布，维护方式见 [发布说明](docs/github-releases.md)。
 
-完整使用本轮功能，请配套使用 Windows **0.17.0** 与 Android **0.2.4**。Web 页面、手机后台与模型兼容性随 Windows 更新；应用内更新、独立通知、原生冷启动和图片下载支持随 APK 更新。
+完整使用本轮功能，请配套使用 Windows **0.17.1** 与 Android **0.2.4**。Web 页面、手机后台与模型兼容性随 Windows 更新；应用内更新、独立通知、原生冷启动和图片下载支持随 APK 更新。
 
 Web / 手机工作台复用固定的 Codex Mobile Bridge 2.1.7 快照，选择性移植上游 2.2.0 修复，并通过显式覆盖和自有适配提供 Codex 范围的功能。上游来源、许可与维护方式见 [UPSTREAM](src/CodexMobile/UPSTREAM.md) 和 [本轮移植记录](docs/mobile-upstream-backport-2026-11-09.md)。
 
 0.16.0 完成三批配置优化：配置目录更新、组合校验、已配置实例、配置来源、独立 profile，以及压缩与连接耗时诊断。使用入口和验证边界见 [实施记录](docs/configuration-implementation-2026-11-02.md)。
 
 0.17.0 补入 Superba alpha.15 的第一批配置更新：目录增至 1064 条结构定义、调整社区模板默认选择、增加逐站 HTTP 确认，并在保存成功页提供 **重启 Codex 并应用**。使用方式与验收状态见 [合并记录](docs/superba-reuse-implementation-2026-11-11.md)。
+
+0.17.1 修正模板应用逻辑：逐项显示将写入或保留的值；本地已编辑方案可直接预览本版内置配方；新增明确写入三项 `false` 的旧上下文停用方案。升级不自动应用模板，详见 [模板修正与验收](docs/template-application-fix-2026-11-11.md)。
 
 ## 可以做什么
 
@@ -112,7 +114,7 @@ Lovest Code 切换聊天、电脑和我的页面时保留当前 WebView 与草�
 
 安卓发送回归使用生产页面和真实触摸，验证连续发送、键盘变化、长回复、输入区保持展开和覆盖升级。补充任务专项另外经过生产 HTTP 与 IPC 链路，由隔离原生 owner 夹具接收；验证三次补充仍归属同一任务、重复提交保护和结束后保留草稿。测试资产仅打入独立测试 APK，不进入正式应用。
 
-模拟器与自动化结果不能覆盖所有厂商键盘、相机扫码、系统缩放、省电策略、公网链路或真实 Codex / WSL / SSH 任务。功能随执行端能力显示，阅读历史不会自动启动或接管原会话；结果未知的写入不会自动重放。具体证据见 [Windows 0.17.0 审查](docs/review-0.17.0.md) 和 [Android 0.2.4 审查](docs/review-android-0.2.4.md)。
+模拟器与自动化结果不能覆盖所有厂商键盘、相机扫码、系统缩放、省电策略、公网链路或真实 Codex / WSL / SSH 任务。功能随执行端能力显示，阅读历史不会自动启动或接管原会话；结果未知的写入不会自动重放。具体证据见 [Windows 0.17.1 审查](docs/review-0.17.1.md) 和 [Android 0.2.4 审查](docs/review-android-0.2.4.md)。
 
 ## 开发与文档
 
@@ -125,6 +127,6 @@ Windows 使用 C# / .NET 8 / WPF；手机服务使用 Python 3.12；安卓壳使
 | `src/CodexAndroid` | Lovest Code 自有原生壳、资源和页面适配。 |
 | `tests`、`scripts` | 隔离回归、构建、完整性检查与发布包验证。 |
 
-[Windows 0.17.0](docs/release-0.17.0.md) · [Android 0.2.4](docs/release-android-0.2.4.md) · [手机功能对照](docs/mobile-upstream-comparison.md) · [GitHub 发布约定](docs/github-releases.md)
+[Windows 0.17.1](docs/release-0.17.1.md) · [Android 0.2.4](docs/release-android-0.2.4.md) · [手机功能对照](docs/mobile-upstream-comparison.md) · [GitHub 发布约定](docs/github-releases.md)
 
 [MIT 许可证](LICENSE) · [第三方许可](THIRD-PARTY-NOTICES.md)
