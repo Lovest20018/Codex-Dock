@@ -42,7 +42,7 @@ model_catalog_json = "C:/Users/com/.codex/codex-dock-model-catalog-aa6b6662d8654
 实际保存时保留原文件的排版与其余内容；上面的正斜杠用于展示路径。认证文件、连接入口和推理设置未改动。已创建恢复备份：
 
 ```text
-C:\Users\com\.codex\codex-config-backups\20261112-082007-4462805-fe577e709c3f46f6871c300806ec1fa1.backup
+%USERPROFILE%\.codex\codex-config-backups\<本次保存记录>.backup
 ```
 
 写入当时，正在运行的客户端没有被中断或重启。随后需要完全退出并重新打开 Codex，使新的模型目录进入内核的内存目录与后续审核会话；仍使用“帮我批准”。后续实际重启与后台验收结果见文末。
