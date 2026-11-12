@@ -2,108 +2,98 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using CodexConfig.Core;
-using Microsoft.Win32;
 
 namespace CodexConfig.App;
 
 public partial class MainWindow
 {
     private byte[]? stagedOfficialAuth;
-    private CancellationTokenSource? loginCancellation;
-    private bool loginInProgress, gatewayPolling, allowSmokeGateway;
+    private bool officialLoginBusy, gatewayPolling, allowSmokeGateway;
+    private bool migratingLegacyPat;
+    private string? loginFeedback;
+    private bool loginFeedbackIsError;
     private readonly HashSet<string> stoppedGatewayHomes = new(StringComparer.OrdinalIgnoreCase);
-    private DateTimeOffset nextGatewayAttempt;
     private BridgeStatus? gatewayStatus;
-    private Func<string?> findCodexExecutable = CodexLoginClient.FindExecutable;
+    private const string DirectConnectionLabel = "API Key 直连";
+    private const string MixedConnectionLabel = "官方账号 + 独立模型入口";
+    private bool EditingMixedConnection => ConnectionModeBox.SelectedIndex == (int)ConnectionMode.OfficialWithApi;
+    private byte[]? OfficialAuthForDraft => EditingMixedConnection ? stagedOfficialAuth : null;
+
+    private void ConnectionModeLayoutChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (FindVisual<UniformGrid>(ConnectionModeBox).FirstOrDefault() is { } options)
+            options.Columns = e.NewSize.Width < 500 ? 1 : 2;
+    }
+
+    private string SavedConnectionLabel => loadedSettings.Mode == ConnectionMode.OfficialWithApi ? MixedConnectionLabel
+        : OfficialCredentials.HasLogin(snapshot?.Auth) ? "官方账号（未启用独立模型入口）"
+        : loadedSettings.NeedsApiKeyMigration ? "旧 PAT 直连（待迁移）"
+        : loadedSettings.ApiKey.Length > 0 ? DirectConnectionLabel : "尚未配置 API Key 连接";
+
+    private void RefreshConnectionModeHint()
+    {
+        SavedConnectionModeText.Text = snapshot is null ? "尚未读取配置" : "当前文件：" + SavedConnectionLabel;
+        var changed = ConnectionModeBox.SelectedIndex != (int)loadedSettings.Mode;
+        ConnectionModeHint.Text = changed
+            ? "待切换为“" + (EditingMixedConnection ? MixedConnectionLabel : DirectConnectionLabel) + "”，确认写入后再重新打开 Codex。"
+            : "选择只修改草稿；确认写入后，再重新打开 Codex 读取新连接。";
+        if (!EditingMixedConnection && stagedOfficialAuth is not null)
+            ConnectionModeHint.Text += " 本次官方登录已暂存，切回可继续使用。";
+        else if (!EditingMixedConnection && OfficialCredentials.HasLogin(snapshot?.Auth))
+            ConnectionModeHint.Text += " 写入直连时将改用服务凭据，原官方登录会纳入备份。";
+    }
 
     private void ClearStagedLogin()
     {
         if (stagedOfficialAuth is not null) CryptographicOperations.ZeroMemory(stagedOfficialAuth);
         stagedOfficialAuth = null;
+        loginFeedback = null; loginFeedbackIsError = false;
     }
 
     private void RefreshMixedUi()
     {
         if (OfficialPanel is null || GatewayPanel is null) return;
-        var mixed = ConnectionModeBox.SelectedIndex == (int)ConnectionMode.OfficialWithApi;
-        BackgroundModeHint.Text = mixed
-            ? "混合连接需要本地模型网关运行；退出 Dock 后网关继续服务。手机访问另需手机网关，可在“手机使用”中启停。"
-            : "直连保存后由 Codex 读取配置。手机访问另需手机网关，可在“手机使用”中启停；退出 Dock 后已启动的手机网关继续运行。";
-        OfficialPanel.Visibility = GatewayPanel.Visibility = mixed ? Visibility.Visible : Visibility.Collapsed;
-        LoginButton.IsEnabled = !loginInProgress && !closing;
-        CancelLoginButton.Visibility = loginInProgress ? Visibility.Visible : Visibility.Collapsed;
-        if (!loginInProgress)
+        var mixed = EditingMixedConnection;
+        var saved = loadedSettings.Mode == ConnectionMode.OfficialWithApi && snapshot?.Bridge is not null;
+        RefreshConnectionModeHint();
+        BackgroundModeHint.Text = saved
+            ? "混合连接需要本地模型网关运行；退出 Dock 后网关继续服务。手机访问另需手机网关，两个网关均在“网关管理”中启停。"
+            : "直连保存后由 Codex 读取配置。手机访问另需手机网关，可在“网关管理”中启停；退出 Dock 后已启动的手机网关继续运行。";
+        OfficialPanel.Visibility = mixed ? Visibility.Visible : Visibility.Collapsed;
+        DirectFastCompatibilityHint.Visibility = mixed ? Visibility.Collapsed : Visibility.Visible;
+        MixedGatewayOptions.Visibility = mixed ? Visibility.Visible : Visibility.Collapsed;
+        LegacyPatPanel.Visibility = !mixed && loadedSettings.NeedsApiKeyMigration ? Visibility.Visible : Visibility.Collapsed;
+        MigratePatButton.IsEnabled = !officialLoginBusy && !closing;
+        UpdateCredentialHint();
+        RefreshOfficialLoginButton.IsEnabled = !officialLoginBusy && !closing;
+        RestoreOfficialLoginButton.IsEnabled = !officialLoginBusy && !closing && !OfficialCredentials.HasLogin(snapshot?.Auth);
+        OfficialStatusText.SetResourceReference(TextBlock.ForegroundProperty, loginFeedbackIsError ? "Error" : "Muted");
+        if (!officialLoginBusy)
         {
             var storage = snapshot is null ? null : new TomlDocument(snapshot.Config).String("cli_auth_credentials_store");
-            OfficialStatusText.Text = stagedOfficialAuth is not null ? "登录已暂存，点击保存配置后启用。"
-                : storage is not (null or "file") ? $"当前使用 {storage} 凭据存储。需要通过下方登录明确选择文件凭据，或继续 PAT / API 直连。"
-                : OfficialCredentials.HasLogin(snapshot?.Auth) ? "检测到文件中的官方登录凭据，尚未在线验证。刷新与有效期由 Codex 管理。"
-                : "尚无可用于混合连接的官方文件凭据，请先登录。";
+            OfficialStatusText.Text = loginFeedback ?? (OfficialCredentials.HasLogin(snapshot?.Auth) ? "使用当前文件中的官方登录；刷新与有效期由 Codex 管理。"
+                : stagedOfficialAuth is not null ? "已备份的官方登录已暂存，确认保存后启用。"
+                : storage is not (null or "file") ? $"当前使用 {storage} 凭据存储。请在 Codex 使用文件凭据登录并重新读取，或选择 API Key 直连。"
+                : "尚无可用的官方文件凭据。请在 Codex 桌面登录后重新读取，或使用本目录已备份的官方登录。");
         }
-        var saved = loadedSettings.Mode == ConnectionMode.OfficialWithApi && snapshot?.Bridge is not null;
-        var authorized = HttpConnectionPolicy.IsAuthorized(loadedSettings.BaseUrl, loadedSettings.Details.HttpOrigin);
-        StartGatewayButton.IsEnabled = saved && authorized && !gatewayPolling && !closing;
-        RestartGatewayButton.IsEnabled = saved && authorized && !gatewayPolling && !closing;
-        StopGatewayButton.IsEnabled = saved && !gatewayPolling && gatewayStatus is not null && !closing;
-        if (!saved) GatewayStatusText.Text = "保存混合连接后启动。模型入口是否可用需要单独验证。";
+        if (gatewayPolling || closing) StartGatewayButton.IsEnabled = RestartGatewayButton.IsEnabled = StopGatewayButton.IsEnabled = false;
+        if (!saved) GatewayStatusText.Text = "请先保存“官方账号 + 独立模型入口”，再到此页启动。API Key 直连无需本机模型网关。";
+    }
+
+    private void MigratePatClicked(object sender, RoutedEventArgs e)
+    {
+        if (snapshot is null || !loadedSettings.NeedsApiKeyMigration || EditingMixedConnection || officialLoginBusy || closing) return;
+        migratingLegacyPat = true; MarkDirty(); OpenConfigurationReview();
     }
 
     private void ConnectionModeChanged(object sender, SelectionChangedEventArgs e)
     {
         if (initializing || OfficialPanel is null) return;
-        if (ConnectionModeBox.SelectedIndex == 0 && !loginInProgress) ClearStagedLogin();
         RefreshMixedUi(); MarkDirty();
     }
     private void MixedOptionChanged(object sender, RoutedEventArgs e) => MarkDirty();
-
-    private void ChooseCodexClicked(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFileDialog { Title = "选择原生 Codex 程序", Filter = "Codex 程序|codex.exe|应用程序|*.exe", CheckFileExists = true };
-        if (dialog.ShowDialog(this) == true) CodexPathBox.Text = dialog.FileName;
-    }
-
-    private async Task<string> ResolveCodexExecutableAsync()
-    {
-        var executable = CodexPathBox.Text.Trim().Trim('"');
-        if (string.IsNullOrWhiteSpace(executable)) executable = await Task.Run(findCodexExecutable);
-        if (executable is null || !File.Exists(executable))
-        {
-            CodexProgramExpander.IsExpanded = true;
-            CodexProgramExpander.BringIntoView(); CodexPathBox.Focus();
-            throw new InvalidOperationException("未找到可用的原生 codex.exe。已展开程序位置，请选择本机 Codex CLI；支持桌面版运行时、独立安装和 npm 安装。");
-        }
-        CodexPathBox.Text = executable;
-        return executable;
-    }
-
-    private async void LoginClicked(object sender, RoutedEventArgs e)
-    {
-        if (loginInProgress || closing) return;
-        if (smokeOutput is not null) { ShowError(new InvalidOperationException("隔离检查不会打开真实账号登录。")); return; }
-        var expectedHome = home;
-        loginInProgress = true;
-        loginCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-        OfficialStatusText.Text = "正在等待原生 Codex 完成浏览器登录，可随时取消。";
-        RefreshMixedUi(); UpdateActions();
-        try
-        {
-            var executable = await ResolveCodexExecutableAsync();
-            if (closing || home != expectedHome || ConnectionModeBox.SelectedIndex == 0) return;
-            loginCancellation.Token.ThrowIfCancellationRequested();
-            var auth = await new CodexLoginClient().LoginAsync(executable, Path.Combine(Path.GetTempPath(), "CodexDock-login"), loginCancellation.Token);
-            if (closing || home != expectedHome || ConnectionModeBox.SelectedIndex == 0) { CryptographicOperations.ZeroMemory(auth); return; }
-            ClearStagedLogin(); stagedOfficialAuth = auth; MarkDirty();
-        }
-        catch (OperationCanceledException) { SetStatus("登录已取消，已保存配置保持原值。"); }
-        catch (Exception error) { ShowError(error); }
-        finally
-        {
-            loginInProgress = false; loginCancellation.Dispose(); loginCancellation = null;
-            if (!closing) { RefreshMixedUi(); UpdateActions(); UpdatePreview(); }
-        }
-    }
-    private void CancelLoginClicked(object sender, RoutedEventArgs e) => loginCancellation?.Cancel();
 
     private async Task RefreshGatewayAsync(bool start = false)
     {
@@ -115,21 +105,20 @@ public partial class MainWindow
             var connection = MixedConnection.Read(bytes);
             if (!HttpConnectionPolicy.IsAuthorized(connection.BaseUrl, connection.HttpOrigin))
             {
-                await BridgeProcess.StopAsync(bytes, lifetime.Token);
                 if (!closing && home == expectedHome && ReferenceEquals(snapshot, expectedSnapshot))
-                { gatewayStatus = null; GatewayStatusText.Text = "HTTP 站点未确认或确认已撤销，模型网关已停止。重新确认并保存后可启动。"; }
+                { gatewayStatus = null; GatewayStatusText.Text = "HTTP 站点未确认或确认已撤销，无法启动转发。重新确认并保存后可启动。"; }
+                if (start) HttpConnectionPolicy.RequireAuthorization(connection.BaseUrl, connection.HttpOrigin);
                 return;
             }
             var status = await BridgeProcess.StatusAsync(connection, lifetime.Token);
-            if ((status is null || status.ProtocolVersion != ModelBridge.ProtocolVersion) && (start || !stoppedGatewayHomes.Contains(home) && DateTimeOffset.UtcNow >= nextGatewayAttempt))
-            {
-                nextGatewayAttempt = DateTimeOffset.UtcNow.AddSeconds(15);
+            if ((status is null || status.ProtocolVersion != ModelBridge.ProtocolVersion) && start)
                 status = await BridgeProcess.EnsureAsync(home, bytes, cancellation: lifetime.Token);
-            }
             if (closing || home != expectedHome || !ReferenceEquals(snapshot, expectedSnapshot)) return;
             gatewayStatus = status;
-            GatewayStatusText.Text = status is null ? "网关已暂时停止，下次打开工具会重新启动；切换并保存直连可停用混合模式。"
+            GatewayStatusText.Text = status is null ? "网关已停止。点击启动可运行；需要随 Dock 启动时，请勾选自动启动。"
                 : $"运行中 · {connection.NativeBaseUrl}\n本次请求 {status.Requests} 次" +
+                  (status.ProtocolVersion >= 6 ? $" · Fast {Math.Max(0, status.FastRequests - status.UltrafastRequests)} · Ultra Fast {status.UltrafastRequests} · 审核 {status.AutoReviewRequests}"
+                      : "\n旧网关未提供新的速度与审核分类；手动重启后可查看。") +
                   (status.LastUpstreamStatus is { } code ? $" · 最近上游 HTTP {code}" : "") +
                   (status.LastRequestId is { } requestId ? $"\n请求 ID：{requestId}" : "") +
                   (status.LastUpstreamCode is { } upstreamCode ? $" · {upstreamCode}" : "") +
@@ -140,8 +129,9 @@ public partial class MainWindow
         catch (Exception)
         {
             if (!closing && home == expectedHome) { gatewayStatus = null; GatewayStatusText.Text = "网关未能运行，请检查端口占用，或点击启动重试。"; }
+            if (start) throw;
         }
-        finally { gatewayPolling = false; if (!closing) { RefreshMixedUi(); await RefreshGatewaySummaryAsync(); } }
+        finally { gatewayPolling = false; if (!closing) RefreshMixedUi(); }
     }
     private string BridgeMetricsText(BridgeStatus status)
     {
@@ -161,22 +151,38 @@ public partial class MainWindow
     }
     private async void StartGatewayClicked(object sender, RoutedEventArgs e)
     {
-        stoppedGatewayHomes.Remove(home); await RefreshGatewayAsync(start: true);
+        await ModelGatewayActionAsync(StartModelGatewayAsync);
     }
-    private async void RefreshGatewayClicked(object sender, RoutedEventArgs e) => await RefreshGatewayAsync();
+    private async Task StartModelGatewayAsync()
+    {
+        if (desktopRestartBusy) throw new InvalidOperationException("正在应用 Codex 配置，请等待完成后再操作模型网关。");
+        if (gatewayPolling || closing) throw new InvalidOperationException("本机模型网关正在处理操作，请稍后重试。");
+        var expectedHome = home;
+        gatewayPolling = true; RefreshMixedUi();
+        try
+        {
+            var saved = await Task.Run(() => store.Load(expectedHome), lifetime.Token);
+            if (saved.Bridge is not { } bytes || store.ReadSettings(saved).Mode != ConnectionMode.OfficialWithApi)
+                throw new InvalidOperationException("请先在“连接与账号”保存“官方账号 + 独立模型入口”。");
+            var connection = MixedConnection.Read(bytes);
+            HttpConnectionPolicy.RequireAuthorization(connection.BaseUrl, connection.HttpOrigin);
+            var status = await BridgeProcess.EnsureAsync(expectedHome, bytes, cancellation: lifetime.Token);
+            if (!closing && home == expectedHome) { stoppedGatewayHomes.Remove(expectedHome); gatewayStatus = status; }
+        }
+        finally { gatewayPolling = false; if (!closing) await RefreshAllGatewaysAsync(); }
+    }
     private async void RestartGatewayClicked(object sender, RoutedEventArgs e)
     {
-        try { await RestartModelGatewayAsync(); }
-        catch (Exception error) { GatewayStatusText.Text = error is IOException or InvalidOperationException ? error.Message : "模型网关重启未完成，请刷新状态后重试。"; }
+        await ModelGatewayActionAsync(RestartModelGatewayAsync);
     }
     private async void StopGatewayClicked(object sender, RoutedEventArgs e)
     {
-        try { await StopModelGatewayAsync(); }
-        catch (Exception) { GatewayStatusText.Text = "网关尚未停止，请稍后重试。"; }
+        await ModelGatewayActionAsync(StopModelGatewayAsync);
     }
 
     private async Task StopModelGatewayAsync()
     {
+        if (desktopRestartBusy) throw new InvalidOperationException("正在应用 Codex 配置，请等待完成后再操作模型网关。");
         if (gatewayPolling || closing) throw new InvalidOperationException("模型网关正在处理操作，请稍后重试。");
         var expectedHome = home;
         stoppedGatewayHomes.Add(expectedHome); gatewayPolling = true; RefreshMixedUi();
@@ -190,12 +196,13 @@ public partial class MainWindow
         finally
         {
             gatewayPolling = false;
-            if (!closing && home == expectedHome) await RefreshGatewayAsync();
+            if (!closing && home == expectedHome) await RefreshAllGatewaysAsync();
         }
     }
 
     private async Task RestartModelGatewayAsync()
     {
+        if (desktopRestartBusy) throw new InvalidOperationException("正在应用 Codex 配置，请等待完成后再操作模型网关。");
         if (gatewayPolling || closing) throw new InvalidOperationException("模型网关正在处理操作，请稍后重试。");
         var expectedHome = home;
         gatewayPolling = true; stoppedGatewayHomes.Add(expectedHome); RefreshMixedUi();
@@ -203,14 +210,17 @@ public partial class MainWindow
         try
         {
             var saved = await Task.Run(() => store.Load(expectedHome), lifetime.Token);
-            if (saved.Bridge is not { } bytes) throw new InvalidOperationException("请先保存混合连接，再重启模型网关。");
+            if (saved.Bridge is not { } bytes || store.ReadSettings(saved).Mode != ConnectionMode.OfficialWithApi)
+                throw new InvalidOperationException("请先保存“官方账号 + 独立模型入口”，再重启本机模型网关。");
+            var connection = MixedConnection.Read(bytes);
+            HttpConnectionPolicy.RequireAuthorization(connection.BaseUrl, connection.HttpOrigin);
             var status = await BridgeProcess.RestartAsync(expectedHome, bytes, cancellation: lifetime.Token);
             if (home == expectedHome) { stoppedGatewayHomes.Remove(expectedHome); gatewayStatus = status; }
         }
         finally
         {
             gatewayPolling = false;
-            if (!closing && home == expectedHome) await RefreshGatewayAsync();
+            if (!closing && home == expectedHome) await RefreshAllGatewaysAsync();
         }
     }
 }

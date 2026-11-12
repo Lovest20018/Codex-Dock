@@ -17,7 +17,7 @@ internal static class LocalStateTests
             var before = store.Load(home); var settings = store.ReadSettings(before);
             Assert(settings.ProviderId == "team.gateway" && settings.ProviderName == "Team gateway");
             Assert(settings.BaseUrl == "https://team.example/v1" && settings.Model == "original-model" && settings.ApiKey == "fake-provider-key");
-            Assert(settings.Kind == ConnectionKind.ResponsesApi && settings.Authentication == AuthenticationChoice.ApiKey && settings.CredentialSource.Contains("TEST_PROVIDER_KEY"));
+            Assert(settings.Kind == ConnectionKind.ResponsesApi && !settings.NeedsApiKeyMigration && settings.CredentialSource.Contains("TEST_PROVIDER_KEY"));
             Assert(before.SameContents(store.Load(home)) && before.Auth is null && environment.Read() is null && !Directory.Exists(Path.Combine(home, "codex-config-backups")));
             var plan = store.Plan(before, settings, new Dictionary<string, string?> { ["web_search"] = "'cached'" }, updateConnection: false);
             store.Apply(plan);

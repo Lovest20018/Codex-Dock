@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Input;
 using System.Windows.Threading;
 using CodexConfig.Core;
 
@@ -14,6 +15,8 @@ public sealed partial class SettingsEditor : UserControl
     private readonly ConfigSchema catalog = ConfigSchema.Instance;
     private readonly Grid toolbar = new();
     private readonly StackPanel rows = new();
+    private readonly Border rowsSurface;
+    internal FrameworkElement? ModelSection, SpeedSection, ReviewSection;
     private readonly StackPanel scrollBody = new();
     private readonly Grid searchShell = new();
     private readonly ScrollViewer scroll = new();
@@ -53,7 +56,7 @@ public sealed partial class SettingsEditor : UserControl
     public event Action? Changed;
     public event Action? ConnectionRequested;
     internal int VisibleCount { get; private set; }
-    private static readonly string[] CommonPaths = ["model_reasoning_effort", "features.fast_mode", "service_tier", "web_search", "model_context_window", "model_auto_compact_token_limit", "approval_policy", "approvals_reviewer", "sandbox_mode", "analytics.enabled"];
+    private static readonly string[] CommonPaths = ["model_reasoning_effort", "features.fast_mode", "features.ultrafast_mode", "service_tier", "approval_policy", "approvals_reviewer", "web_search", "model_context_window", "model_auto_compact_token_limit", "sandbox_mode", "analytics.enabled"];
 
     public SettingsEditor()
     {
@@ -126,7 +129,7 @@ public sealed partial class SettingsEditor : UserControl
         validationSummary.SetResourceReference(TextBlock.ForegroundProperty, "Error"); scrollBody.Children.Add(validationSummary);
         scroll.SetResourceReference(StyleProperty, "PageScroll"); scroll.Padding = new(0, 0, 10, 24);
         var body = new StackPanel(); body.Children.Add(rows); body.Children.Add(empty);
-        var surface = new Border { Child = body, Padding = new(20, 0, 20, 4) };
+        var surface = rowsSurface = new Border { Child = body, Padding = new(20, 0, 20, 4) };
         surface.SetResourceReference(StyleProperty, "SurfacePanel"); scrollBody.Children.Add(surface); scroll.Content = scrollBody;
         layout.Children.Add(scroll); Content = layout;
         paging.Orientation = Orientation.Horizontal; paging.HorizontalAlignment = HorizontalAlignment.Right; paging.Margin = new(0, 8, 10, 8);
@@ -259,10 +262,40 @@ public sealed partial class SettingsEditor : UserControl
 
     private void RenderPage()
     {
+        var restoreModelFocus = ModelSection?.IsKeyboardFocusWithin == true;
+        var modelFocus = restoreModelFocus ? Keyboard.FocusedElement : null;
+        toolbar.Visibility = preferences ? Visibility.Collapsed : Visibility.Visible;
         var pages = Math.Max(1, (filteredEntries.Length + PageSize - 1) / PageSize);
         paging.Visibility = pages > 1 ? Visibility.Visible : Visibility.Collapsed;
         pageIndex = Math.Clamp(pageIndex, 0, pages - 1);
         rows.Children.Clear(); inputs.Clear();
+        foreach (var slot in new[] { ModelSection, SpeedSection, ReviewSection })
+            if (slot?.Parent is Panel parent) parent.Children.Remove(slot);
+        if (preferences && Search.Text.Trim().Length == 0 && !OrdinaryProfile)
+        {
+            rowsSurface.Style = null; rowsSurface.Padding = new(0);
+            var selected = filteredEntries.ToDictionary(entry => entry.Path);
+            void Section(string title, string description, string[] paths, FrameworkElement? slot = null, bool slotFirst = false, bool collapsed = false)
+            {
+                var body = new StackPanel();
+                if (!collapsed) body.Children.Add(new TextBlock { Text = title, FontSize = 18, FontWeight = FontWeights.SemiBold, Margin = new(0, 0, 0, 6) });
+                if (description.Length > 0) body.Children.Add(Helper(description, new(0, 0, 0, 10)));
+                if (slotFirst && slot is not null) body.Children.Add(slot);
+                foreach (var path in paths) if (selected.TryGetValue(path, out var entry)) body.Children.Add(BuildRow(entry));
+                if (!slotFirst && slot is not null) body.Children.Add(slot);
+                FrameworkElement content = collapsed ? new Expander { Header = title, Content = body } : body;
+                var surface = new Border { Child = content, Margin = new(0, 0, 0, 14) };
+                surface.SetResourceReference(StyleProperty, "SurfacePanel"); rows.Children.Add(surface);
+            }
+            Section("模型", "", [], ModelSection, true);
+            Section("推理强度", "决定思考深度。Ultra 涉及协作，与速度档位分别设置。", ["model_reasoning_effort"]);
+            Section("速度", "可用档位来自模型目录；当前聊天可在 Codex 中单独选择。", ["service_tier"], SpeedSection);
+            Section("自动审核", "决定需要审批的操作由谁审核。", ["approvals_reviewer"], ReviewSection);
+            Section("更多行为设置", "保留既有执行、搜索与上下文设置。", ["features.fast_mode", "features.ultrafast_mode", "approval_policy", "sandbox_mode", "web_search", "model_context_window", "model_auto_compact_token_limit", "analytics.enabled"], collapsed: true);
+            if (restoreModelFocus && modelFocus is not null) Keyboard.Focus(modelFocus);
+            return;
+        }
+        rowsSurface.SetResourceReference(StyleProperty, "SurfacePanel"); rowsSurface.Padding = new(20, 0, 20, 4);
         foreach (var entry in filteredEntries.Skip(pageIndex * PageSize).Take(PageSize))
         {
             if (preferences && entry.Path is "model_reasoning_effort" or "web_search" or "approval_policy" or "analytics.enabled")
@@ -285,11 +318,16 @@ public sealed partial class SettingsEditor : UserControl
         var line = new Grid(); line.ColumnDefinitions.Add(new()); line.ColumnDefinitions.Add(new() { Width = new(260) });
         line.RowDefinitions.Add(new() { Height = GridLength.Auto }); line.RowDefinitions.Add(new() { Height = GridLength.Auto });
         var label = new StackPanel { Margin = new(0, 3, 18, 0) };
-        var displayName = ConfigHelp.Name(entry.HelpPath);
+        var displayName = preferences ? entry.Path switch { "service_tier" => "默认速度", "approvals_reviewer" => "审批方式", _ => ConfigHelp.Name(entry.HelpPath) } : ConfigHelp.Name(entry.HelpPath);
         if (entry.DefinitionPath is not null && !entry.Dynamic) displayName += " · " + entry.Path;
         var title = new TextBlock { Text = displayName, FontSize = 14, FontWeight = FontWeights.Medium };
         label.Children.Add(title);
-        label.Children.Add(Helper(ConfigHelp.Summary(entry), new(0, 5, 0, 0)));
+        var brief = preferences ? entry.Path switch {
+            "model_reasoning_effort" => "日常任务可选较低档位；困难任务再提高。",
+            "service_tier" => "普通、Fast 与 Ultra Fast 分别选择。",
+            "approvals_reviewer" => "需要审批时交给你，或由审核模型判断。", _ => ConfigHelp.Summary(entry)
+        } : ConfigHelp.Summary(entry);
+        label.Children.Add(Helper(brief, new(0, 5, 0, 0)));
         line.Children.Add(label); body.Children.Add(line);
         var right = new StackPanel(); Grid.SetColumn(right, 1); line.Children.Add(right);
         line.SizeChanged += (_, _) =>
@@ -378,7 +416,7 @@ public sealed partial class SettingsEditor : UserControl
         }
         else if (entry.Kind is "boolean" or "enum" or "bool_or_table" || entry.Path is "model_reasoning_effort" or "service_tier")
         {
-            var choices = new List<ValueChoice> { new("跟随 Codex 配置（移除本地覆盖）", null) };
+            var choices = new List<ValueChoice> { new(preferences ? "跟随默认" : "跟随 Codex 配置（移除本地覆盖）", null) };
             if (entry.Kind is "boolean" or "bool_or_table") { choices.Add(new("开启", "true")); choices.Add(new("关闭", "false")); }
             else
             {
@@ -526,7 +564,7 @@ public sealed partial class SettingsEditor : UserControl
     }
     private string? Value(string path) => changes.TryGetValue(path, out var repr) ? repr : OriginalValue(path) is { } value ? ConfigSchema.Literal(value) : null;
     private static TextBlock Helper(string text, Thickness margin) { var block = new TextBlock { Text = text, Margin = margin }; block.SetResourceReference(StyleProperty, "Helper"); return block; }
-    private static string Friendly(string value) => value switch { "none" => "无 · none", "minimal" => "最低 · minimal", "low" => "低 · low", "medium" => "中 · medium", "high" => "高 · high", "xhigh" => "较高 · xhigh", "disabled" => "关闭", "cached" => "缓存搜索", "indexed" => "索引约束搜索", "live" => "实时搜索", _ => value };
+    private static string Friendly(string value) => value switch { "none" => "无 · none", "minimal" => "最低 · minimal", "low" => "低 · low", "medium" => "中 · medium", "high" => "高 · high", "xhigh" => "极高 · xhigh", "max" => "Max · 最大推理", "ultra" => "Ultra · 协作推理", "default" => "普通", "priority" or "fast" => "Fast", "ultrafast" => "Ultra Fast", "auto_review" => "帮我批准", "user" => "由我审批", "disabled" => "关闭", "cached" => "缓存搜索", "indexed" => "索引约束搜索", "live" => "实时搜索", _ => value };
     internal static bool Sensitive(string path) => TomlDocument.IsSensitivePath(path);
     private static string SafeError(string path, Exception error) => Sensitive(path) || error is InvalidDataException ? "输入值格式不正确，请检查该配置的类型与 TOML 格式。" : error.Message;
     internal sealed record ValueChoice(string Label, string? Repr);

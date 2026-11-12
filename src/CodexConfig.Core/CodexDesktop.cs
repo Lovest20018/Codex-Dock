@@ -11,16 +11,21 @@ public sealed record CodexDesktopTarget(string Executable, IReadOnlyList<CodexDe
 {
     public bool IsRunning => Processes.Count > 0;
 }
+public enum CodexDesktopPhase { Preparing, Closing, Starting, Verifying }
+public sealed class CodexDesktopCloseException(string message, Exception inner) : IOException(message, inner);
+public sealed class CodexDesktopExitTimeoutException(string message) : TimeoutException(message);
 
 internal interface ICodexDesktopPlatform
 {
     IReadOnlyList<CodexDesktopProcess> Running();
     IReadOnlyList<string> Installed();
     void Close(CodexDesktopProcess process);
+    void ForceClose(CodexDesktopProcess process) => throw new NotSupportedException("该桌面启动方式不支持结束实例。");
+    void PrepareStart(ProcessStartInfo start) { }
     void Start(ProcessStartInfo start);
 }
 
-// Restart only the identified desktop GUI. CLI sessions, Dock and services have separate lifecycles.
+// Restart only the identified desktop GUI. Unrelated CLI sessions, Dock and services have separate lifecycles.
 public sealed class CodexDesktop
 {
     private readonly ICodexDesktopPlatform platform;
@@ -46,38 +51,73 @@ public sealed class CodexDesktop
         return new(installed[0], []);
     }
 
-    public async Task RestartAsync(CodexDesktopTarget target, string home, string? authApiBaseUrl,
-        Action? validateSaved = null, CancellationToken cancellation = default)
+    public async Task<CodexDesktopTarget> RestartAsync(CodexDesktopTarget target, string home, string? authApiBaseUrl,
+        Action? validateSaved = null, CancellationToken cancellation = default, int? speedDebugPort = null,
+        Action<CodexDesktopPhase>? progress = null, bool forceConfirmed = false)
     {
+        progress?.Invoke(CodexDesktopPhase.Preparing);
         // Construct and validate the launch before asking the existing app to close.
         var start = CreateStartInfo(target.Executable, home, authApiBaseUrl);
+        if (speedDebugPort is { } port)
+        {
+            if (port is < 1024 or > 65535) throw new ArgumentOutOfRangeException(nameof(speedDebugPort));
+            start.ArgumentList.Add("--remote-debugging-address=127.0.0.1");
+            start.ArgumentList.Add("--remote-debugging-port=" + port);
+        }
+        platform.PrepareStart(start);
         if (!File.Exists(start.FileName)) throw new FileNotFoundException("Codex 桌面程序已移动或更新，请重新打开后重试。");
         cancellation.ThrowIfCancellationRequested(); validateSaved?.Invoke();
-        var current = platform.Running();
-        if (current.Any(process => !target.Processes.Contains(process)))
-            throw new InvalidOperationException("Codex 桌面实例已变化，请重新点击重启并确认目标。");
+        var known = target.Processes.ToHashSet();
+        IReadOnlyList<CodexDesktopProcess> OwnedProcesses()
+        {
+            var processes = platform.Running();
+            var accepted = processes.Where(known.Contains).ToHashSet();
+            // Electron can create renderers after the confirmation. A new child of
+            // the captured instance is expected; a replacement root must be rejected.
+            var remaining = processes.Where(process => !accepted.Contains(process)).ToList();
+            while (remaining.Count > 0)
+            {
+                var children = remaining.Where(process => SamePath(process.Executable, target.Executable) &&
+                    known.Concat(accepted).Any(parent => parent.Id == process.ParentId && process.Started >= parent.Started)).ToArray();
+                if (children.Length == 0) throw new InvalidOperationException("Codex 桌面实例已变化，请重新点击应用并确认目标。");
+                foreach (var child in children) { accepted.Add(child); known.Add(child); remaining.Remove(child); }
+            }
+            return processes;
+        }
+        var current = OwnedProcesses();
         if (!current.Any() && !platform.Installed().Any(path => SamePath(path, target.Executable)))
             throw new InvalidOperationException("无法重新核对 Codex 安装位置，请先手动打开后重试。");
-        foreach (var root in current.Where(process => !current.Any(parent => parent.Id == process.ParentId)))
+        progress?.Invoke(CodexDesktopPhase.Closing);
+        foreach (var root in target.Processes.Where(process => current.Contains(process) && !target.Processes.Any(parent => parent.Id == process.ParentId)))
         {
-            cancellation.ThrowIfCancellationRequested(); platform.Close(root);
+            cancellation.ThrowIfCancellationRequested();
+            try
+            {
+                // Only the UI's separate, explicit confirmation can select this path.
+                if (forceConfirmed) platform.ForceClose(root); else platform.Close(root);
+            }
+            catch (Exception error) when (error is InvalidOperationException or IOException)
+            { throw new CodexDesktopCloseException(error.Message, error); }
         }
         var timer = Stopwatch.StartNew();
-        while ((current = platform.Running()).Count > 0)
+        while ((current = OwnedProcesses()).Count > 0)
         {
-            if (current.Any(process => !target.Processes.Contains(process)))
-                throw new InvalidOperationException("退出期间出现了新的 Codex 桌面实例，已停止重启，请重新核对。");
             if (timer.Elapsed >= exitTimeout)
-                throw new TimeoutException("Codex 尚未完全退出，可能已取消退出或仍驻留托盘。配置已保存；请在 Codex 中完成退出后重试。");
+                throw new CodexDesktopExitTimeoutException("Codex 尚未完全退出，可能已取消退出或仍驻留托盘。请在 Codex 中完成退出后重试，或单独确认结束本次实例。");
             await Task.Delay(100, cancellation).ConfigureAwait(false);
         }
         cancellation.ThrowIfCancellationRequested(); validateSaved?.Invoke();
         // Do not launch into a new single-instance owner that appeared while the old app was closing.
         if (platform.Running().Count > 0) throw new InvalidOperationException("Codex 已被重新打开，请核对当前实例后重试。");
+        progress?.Invoke(CodexDesktopPhase.Starting);
         platform.Start(start);
+        progress?.Invoke(CodexDesktopPhase.Verifying);
         timer.Restart();
-        while (!platform.Running().Any(process => SamePath(process.Executable, target.Executable)))
+        while (true)
         {
+            var opened = platform.Running();
+            if (opened.Any(process => SamePath(process.Executable, target.Executable)))
+                return new(target.Executable, opened.Where(process => SamePath(process.Executable, target.Executable)).ToArray());
             if (timer.Elapsed >= startTimeout)
                 throw new IOException("已请求打开 Codex，但尚未确认桌面进程。配置已保存，请手动打开 Codex 并核对。");
             await Task.Delay(100, cancellation).ConfigureAwait(false);
@@ -108,6 +148,7 @@ internal sealed class WindowsCodexDesktopPlatform(string? fixtureExecutable = nu
     public IReadOnlyList<CodexDesktopProcess> Running()
     {
         var result = new List<CodexDesktopProcess>();
+        var registered = fixtureExecutable is null ? RegisteredExecutables() : [];
         using var snapshot = CreateToolhelp32Snapshot(2, 0);
         if (snapshot.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error(), "无法读取桌面进程列表。");
         var entry = new ProcessEntry { Size = (uint)Marshal.SizeOf<ProcessEntry>() };
@@ -134,7 +175,7 @@ internal sealed class WindowsCodexDesktopPlatform(string? fixtureExecutable = nu
             }
             var executable = path.ToString();
             if (fixtureExecutable is not null ? CodexDesktop.SamePath(executable, fixtureExecutable)
-                : IsDesktopExecutable(executable, Family(process))) verifiedExecutables.Add(executable);
+                : IsDesktopExecutable(executable, Family(process), registered)) verifiedExecutables.Add(executable);
             result.Add(new((int)entry.Id, (int)entry.ParentId, created, executable));
         } while (Process32Next(snapshot, ref entry));
         // Sandboxed renderer processes can omit package identity; include them only at an already verified GUI path.
@@ -144,7 +185,13 @@ internal sealed class WindowsCodexDesktopPlatform(string? fixtureExecutable = nu
     public IReadOnlyList<string> Installed()
     {
         if (fixtureExecutable is not null) return File.Exists(fixtureExecutable) ? [fixtureExecutable] : [];
-        var result = verifiedExecutables.Where(File.Exists).Concat(KnownExecutables().Where(IsUnpackagedDesktop)).ToList();
+        return verifiedExecutables.Where(File.Exists).Concat(KnownExecutables().Where(IsUnpackagedDesktop))
+            .Concat(RegisteredExecutables()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    }
+
+    private static IReadOnlyList<string> RegisteredExecutables()
+    {
+        var result = new List<string>();
         uint count = 0, length = 0;
         if (GetPackagesByPackageFamily(PackageFamily, ref count, IntPtr.Zero, ref length, IntPtr.Zero) == 122 && count is > 0 and < 100 && length < 1024 * 1024)
         {
@@ -170,11 +217,11 @@ internal sealed class WindowsCodexDesktopPlatform(string? fixtureExecutable = nu
         return result.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
-    internal static bool IsDesktopExecutable(string path, string? packageFamily) =>
+    internal static bool IsDesktopExecutable(string path, string? packageFamily, IReadOnlyList<string>? registered = null) =>
         packageFamily == PackageFamily
             ? Path.GetFileName(Path.GetDirectoryName(path))?.Equals("app", StringComparison.OrdinalIgnoreCase) == true &&
                 (Path.GetFileName(path).Equals("ChatGPT.exe", StringComparison.OrdinalIgnoreCase) || Path.GetFileName(path).Equals("Codex.exe", StringComparison.OrdinalIgnoreCase))
-            : IsUnpackagedDesktop(path);
+            : (packageFamily is null && registered?.Any(candidate => CodexDesktop.SamePath(candidate, path)) == true) || IsUnpackagedDesktop(path);
 
     private static bool IsUnpackagedDesktop(string path)
     {
@@ -203,10 +250,55 @@ internal sealed class WindowsCodexDesktopPlatform(string? fixtureExecutable = nu
             throw new IOException("无法请求 Codex 正常退出，请在 Codex 菜单中完成退出后重试。");
     }
 
-    public void Start(ProcessStartInfo start)
+    public void ForceClose(CodexDesktopProcess expected)
+    {
+        if (!Running().Contains(expected)) throw new InvalidOperationException("Codex 实例已改变，不能结束旧目标，请重新核对。");
+        var parents = new Dictionary<int, int>();
+        using (var snapshot = CreateToolhelp32Snapshot(2, 0))
+        {
+            if (snapshot.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error(), "无法核对实例与 Dock 的进程关系。");
+            var entry = new ProcessEntry { Size = (uint)Marshal.SizeOf<ProcessEntry>() };
+            if (!Process32First(snapshot, ref entry)) throw new IOException("无法核对实例与 Dock 的进程关系。");
+            do { parents[(int)entry.Id] = (int)entry.ParentId; } while (Process32Next(snapshot, ref entry));
+        }
+        if (IsAncestor(expected.Id, Environment.ProcessId, parents))
+            throw new InvalidOperationException("Dock 是该 Codex 实例的子进程。请从资源管理器独立打开 Dock，再使用结束实例；本次未结束进程。");
+        using var process = Process.GetProcessById(expected.Id);
+        _ = process.Handle;
+        if (process.StartTime.ToFileTimeUtc() != expected.Started ||
+            !CodexDesktop.SamePath(process.MainModule!.FileName, expected.Executable))
+            throw new InvalidOperationException("Codex 进程身份已改变，已取消结束实例。");
+        process.Kill(entireProcessTree: true);
+    }
+
+    internal static bool IsAncestor(int ancestor, int process, IReadOnlyDictionary<int, int> parents)
+    {
+        var visited = new HashSet<int>();
+        while (visited.Add(process))
+        {
+            if (process == ancestor) return true;
+            if (!parents.TryGetValue(process, out process)) return false;
+        }
+        return false;
+    }
+
+    public void PrepareStart(ProcessStartInfo start)
     {
         if (!Installed().Any(path => CodexDesktop.SamePath(path, start.FileName)))
             throw new InvalidOperationException("Codex 安装位置已变化，请先手动打开后重试。");
+        if (fixtureExecutable is null && RegisteredExecutables().Any(path => CodexDesktop.SamePath(path, start.FileName)))
+            start.FileName = CodexStoreLaunch.Resolve(start.FileName, Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+    }
+
+    public void Start(ProcessStartInfo start)
+    {
+        var registered = fixtureExecutable is null ? RegisteredExecutables() : [];
+        var valid = Installed().Any(path => CodexDesktop.SamePath(path, start.FileName)) &&
+            (fixtureExecutable is not null || !registered.Any(path => CodexDesktop.SamePath(path, start.FileName)));
+        if (!valid && fixtureExecutable is null)
+            valid = registered.Any(path => CodexDesktop.SamePath(CodexStoreLaunch.Resolve(path,
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)), start.FileName));
+        if (!valid) throw new InvalidOperationException("Codex 启动入口已变化，请重新核对后重试。");
         using var process = Process.Start(start) ?? throw new IOException("无法启动 Codex 桌面端，请手动打开后核对。");
     }
 

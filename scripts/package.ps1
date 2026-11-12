@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.17.1',
+    [string]$Version = '0.18.0',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
@@ -35,6 +35,10 @@ Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\configuration-implementation-2
 Get-ChildItem -LiteralPath (Join-Path $taskRoot 'third_party') -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $taskRelease 'third_party') -Force }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\superba-reuse-implementation-2026-11-11.md'),(Join-Path $taskRoot 'docs\superba-reuse-review-2026-11-11.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\template-application-fix-2026-11-11.md') -Destination (Join-Path $taskRelease 'docs') -Force
+Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\connection-gateway-interaction-2026-11-11.md'),(Join-Path $taskRoot 'docs\api-key-auth-migration-2026-11-12.md'),(Join-Path $taskRoot 'docs\official-login-convergence-2026-11-12.md') -Destination (Join-Path $taskRelease 'docs') -Force
+Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\desktop-speed-compatibility.md') -Destination (Join-Path $taskRelease 'docs') -Force
+Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\model-behavior-managed-catalog.md') -Destination (Join-Path $taskRelease 'docs') -Force
+Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\codex-restart-flow-2026-11-12.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\magpie-codex-comparison.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\mobile-connection.md'),(Join-Path $taskRoot 'docs\mobile-gateway-reuse.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\mobile-upstream-comparison.md') -Destination (Join-Path $taskRelease 'docs') -Force
@@ -70,7 +74,9 @@ Copy-Item -LiteralPath $taskUiReport -Destination (Join-Path $taskRelease 'verif
     '保存前自动加密备份，可在备份与恢复页恢复上次配置。'
     '手机连接使用已有 HTTPS 根域名；默认 HTTP 端口 13090，可在手机连接页修改。保留外部 Host（含非默认端口）。'
     '无需填写代理来源 IP；支持本机代理、群晖和路由端口映射。代理目标为电脑可达的 IP:端口，管理端口仅本机。'
-    '手机连接单独保存和启停。保持电脑及所选执行端可用，用 Lovest Code 扫码或使用独立账号密码登录。'
+    'API Key 直连无需本机模型网关；混合连接在应用到 Codex 前由统一流程检查并启动所需网关。'
+    '手机连接单独保存，网关管理统一启停两个网关；自动启动默认关闭，需要时分别开启。'
+    '保持电脑及所选执行端可用，用 Lovest Code 扫码或使用独立账号密码登录。'
     'mobile 文件夹包含手机服务与 Python 运行时，必须与主程序一起保留。详见 docs/mobile-connection.md。'
     '完整说明见 README.md。'
 ) | Set-Content -LiteralPath (Join-Path $taskRelease '使用说明.txt') -Encoding utf8

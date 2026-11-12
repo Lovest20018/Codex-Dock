@@ -19,6 +19,12 @@ internal static class DesktopRestartTests
             Assert(!WindowsCodexDesktopPlatform.IsDesktopExecutable(@"C:\Store\app\resources\codex.exe", family));
             Assert(!WindowsCodexDesktopPlatform.IsDesktopExecutable(@"C:\Local\OpenAI\Codex\bin\hash\codex.exe", family));
             Assert(!WindowsCodexDesktopPlatform.IsDesktopExecutable(@"C:\Store\app\ChatGPT.exe", "OpenAI.ChatGPT_unrelated"));
+            Assert(WindowsCodexDesktopPlatform.IsDesktopExecutable(@"C:\Store\app\ChatGPT.exe", null, [@"C:\Store\app\ChatGPT.exe"]));
+            Assert(!WindowsCodexDesktopPlatform.IsDesktopExecutable(@"C:\Other\app\ChatGPT.exe", null, [@"C:\Store\app\ChatGPT.exe"]));
+            Assert(!WindowsCodexDesktopPlatform.IsDesktopExecutable(@"C:\Store\app\ChatGPT.exe", "unrelated", [@"C:\Store\app\ChatGPT.exe"]));
+            Assert(WindowsCodexDesktopPlatform.IsAncestor(100, 300, new Dictionary<int, int> { [300] = 200, [200] = 100 }));
+            Assert(!WindowsCodexDesktopPlatform.IsAncestor(100, 300, new Dictionary<int, int> { [300] = 200, [200] = 400, [400] = 200 }));
+            Assert(!WindowsCodexDesktopPlatform.IsAncestor(100, 300, new Dictionary<int, int> { [300] = 200 }));
             var host = new FakePlatform(executable) { Processes = [Process(), Process(101, 100)] };
             var desktop = new CodexDesktop(host); var target = desktop.FindTarget();
             Assert(target.IsRunning && target.Processes.Count == 2);
@@ -31,6 +37,29 @@ internal static class DesktopRestartTests
             Assert(!start.UseShellExecute && start.ArgumentList.Count == 0 && start.Environment["CODEX_HOME"] == home && start.Environment[WindowsUserEnvironment.Variable] == "https://fixture.invalid");
             Assert(!CodexDesktop.CreateStartInfo(executable, home, null).Environment.ContainsKey(WindowsUserEnvironment.Variable));
             Throws<ArgumentException>(() => CodexDesktop.CreateStartInfo("codex.exe", home, null));
+        });
+        Test("Store launch uses the package-specific alias and rejects stale or unrelated registrations before exit", () =>
+        {
+            var package = Home(); var gui = Path.Combine(package, "app", "ChatGPT.exe"); var local = Home();
+            Directory.CreateDirectory(Path.GetDirectoryName(gui)!);
+            File.WriteAllText(Path.Combine(package, "AppxManifest.xml"), """
+                <Package xmlns="urn:fixture"><Applications><Application Id="App" Executable="app/ChatGPT.exe"><Extensions>
+                <Extension Category="windows.appExecutionAlias"><AppExecutionAlias><ExecutionAlias Alias="chatgpt-desktop.exe" /></AppExecutionAlias></Extension>
+                </Extensions></Application><Application Id="Other" Executable="other.exe" /></Applications></Package>
+                """);
+            byte[] Alias(string family, string app, string path)
+            {
+                var fields = System.Text.Encoding.Unicode.GetBytes(family + "\0" + app + "\0" + path + "\0" + "0\0");
+                var data = new byte[12 + fields.Length];
+                System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(data, 0x8000001b);
+                System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan(4), checked((ushort)(fields.Length + 4)));
+                fields.CopyTo(data, 12); return data;
+            }
+            var family = CodexStoreLaunch.Family; var expected = Path.Combine(local, "Microsoft", "WindowsApps", family, "chatgpt-desktop.exe");
+            Assert(CodexStoreLaunch.Resolve(gui, local, path => { Assert(path == expected); return Alias(family, family + "!App", gui); }) == expected);
+            Throws<IOException>(() => CodexStoreLaunch.Resolve(gui, local, _ => Alias(family, family + "!Other", gui)));
+            Throws<IOException>(() => CodexStoreLaunch.Resolve(gui, local, _ => Alias(family, family + "!App", gui + ".old")));
+            Throws<IOException>(() => CodexStoreLaunch.VerifyAlias([1, 2, 3], gui, family + "!App"));
         });
         tests.Add(("desktop restart honors vetoes, instance replacement, cancellation and changed saved files", async () =>
         {
@@ -55,6 +84,45 @@ internal static class DesktopRestartTests
             Assert(host.Closed.SequenceEqual([100]) && host.Starts == 1 && host.Processes.Single().Id == 200);
             Assert(host.StartInfo!.Environment[WindowsUserEnvironment.Variable] == "https://fixture.invalid");
         }));
+        tests.Add(("desktop restart accepts new renderer descendants and reports actual launch stages", async () =>
+        {
+            var host = new FakePlatform(executable) { Processes = [Process()] }; var desktop = new CodexDesktop(host);
+            var target = desktop.FindTarget(); host.Processes.Add(Process(101, 100, 2)); host.Processes.Add(Process(102, 101, 3));
+            var stages = new List<CodexDesktopPhase>();
+            var opened = await desktop.RestartAsync(target, Home(), null, progress: stages.Add);
+            Assert(host.Closed.SequenceEqual([100]) && host.Forced.Count == 0 && opened.Processes.Single().Id == 200);
+            Assert(stages.SequenceEqual([CodexDesktopPhase.Preparing, CodexDesktopPhase.Closing, CodexDesktopPhase.Starting, CodexDesktopPhase.Verifying]));
+            host.Processes = [Process()]; target = desktop.FindTarget(); host.Processes.Add(Process(500));
+            await ThrowsAsync<InvalidOperationException>(() => desktop.RestartAsync(target, Home(), null));
+            Assert(host.Starts == 1 && host.Forced.Count == 0);
+        }));
+        tests.Add(("desktop forced fallback requires the explicit flag and captured identity before ending an instance", async () =>
+        {
+            var host = new FakePlatform(executable) { Processes = [Process()], RefuseClose = true };
+            var desktop = new CodexDesktop(host, TimeSpan.FromMilliseconds(120)); var target = desktop.FindTarget();
+            await ThrowsAsync<CodexDesktopExitTimeoutException>(() => desktop.RestartAsync(target, Home(), null));
+            Assert(host.Forced.Count == 0 && host.Starts == 0);
+            await desktop.RestartAsync(target, Home(), null, forceConfirmed: true);
+            Assert(host.Forced.SequenceEqual([100]) && host.Starts == 1);
+            host.Processes = [Process(started: 999)];
+            await ThrowsAsync<InvalidOperationException>(() => desktop.RestartAsync(target, Home(), null, forceConfirmed: true));
+            Assert(host.Forced.Count == 1 && host.Starts == 1);
+        }));
+        tests.Add(("desktop speed debugging is opt-in, loopback-only and validates the port before closing", async () =>
+        {
+            var host = new FakePlatform(executable) { Processes = [Process()] }; var desktop = new CodexDesktop(host);
+            await ThrowsAsync<ArgumentOutOfRangeException>(() => desktop.RestartAsync(desktop.FindTarget(), Home(), null, speedDebugPort: 80));
+            Assert(host.Closed.Count == 0 && host.Starts == 0);
+            await desktop.RestartAsync(desktop.FindTarget(), Home(), null, speedDebugPort: 19283);
+            Assert(host.StartInfo!.ArgumentList.SequenceEqual(["--remote-debugging-address=127.0.0.1", "--remote-debugging-port=19283"]));
+        }));
+        tests.Add(("desktop startup registration failures leave the running app untouched", async () =>
+        {
+            var host = new FakePlatform(executable) { Processes = [Process()], StartPreparationError = new IOException("Fixture alias is stale") };
+            var desktop = new CodexDesktop(host);
+            await ThrowsAsync<IOException>(() => desktop.RestartAsync(desktop.FindTarget(), Home(), null));
+            Assert(host.Closed.Count == 0 && host.Starts == 0 && host.Processes.Count == 1);
+        }));
         tests.Add(("native Windows desktop restart replaces an isolated GUI fixture without touching configuration", async () =>
         {
             var home = Home(); var config = Path.Combine(home, "config.toml"); File.WriteAllText(config, "# fixture\nmodel='unchanged'\n");
@@ -70,6 +138,11 @@ internal static class DesktopRestartTests
                 using var report = await Report(second.Processes.Single().Id);
                 Assert(report.RootElement.GetProperty("home").GetString() == home && report.RootElement.GetProperty("auth").ValueKind == JsonValueKind.Null);
                 Assert(original.SequenceEqual(File.ReadAllBytes(config)) && host.Starts == 2);
+                await desktop.RestartAsync(second, home, null, forceConfirmed: true);
+                var third = desktop.FindTarget();
+                using var forcedReport = await Report(third.Processes.Single().Id);
+                Assert(third.Processes.Single().Id != second.Processes.Single().Id && host.Starts == 3 &&
+                    forcedReport.RootElement.GetProperty("home").GetString() == home && original.SequenceEqual(File.ReadAllBytes(config)));
                 async Task<JsonDocument> Report(int pid)
                 {
                     var timer = Stopwatch.StartNew();
@@ -95,12 +168,16 @@ internal static class DesktopRestartTests
     {
         internal List<CodexDesktopProcess> Processes = [];
         internal List<int> Closed = [];
+        internal List<int> Forced = [];
         internal bool RefuseClose;
         internal int Starts;
         internal ProcessStartInfo? StartInfo;
+        internal Exception? StartPreparationError;
         public IReadOnlyList<CodexDesktopProcess> Running() => Processes.ToArray();
         public IReadOnlyList<string> Installed() => [executable];
         public void Close(CodexDesktopProcess process) { Closed.Add(process.Id); if (!RefuseClose) Processes.Clear(); }
+        public void ForceClose(CodexDesktopProcess process) { Assert(Processes.Contains(process)); Forced.Add(process.Id); Processes.Clear(); }
+        public void PrepareStart(ProcessStartInfo start) { if (StartPreparationError is not null) throw StartPreparationError; }
         public void Start(ProcessStartInfo start) { Starts++; StartInfo = start; Processes = [new(200, 1, 200, executable)]; }
     }
 
@@ -112,6 +189,7 @@ internal static class DesktopRestartTests
         public IReadOnlyList<CodexDesktopProcess> Running() => native.Running();
         public IReadOnlyList<string> Installed() => native.Installed();
         public void Close(CodexDesktopProcess process) => native.Close(process);
+        public void ForceClose(CodexDesktopProcess process) => native.ForceClose(process);
         public void Start(ProcessStartInfo start)
         {
             start.ArgumentList.Add("--desktop-restart-fixture"); start.ArgumentList.Add(output);
@@ -157,6 +235,52 @@ internal static class DesktopRestartTests
     }
 
     private static void Assert(bool value) { if (!value) throw new InvalidOperationException("Desktop restart regression"); }
+
+    // Inspect a newly created, suspended Store process, then discard it without
+    // ever running the app's entry point or contacting its existing instance.
+    internal static int CheckStoreLaunch()
+    {
+        var platform = new WindowsCodexDesktopPlatform(); var target = new CodexDesktop(platform).FindTarget();
+        var start = CodexDesktop.CreateStartInfo(target.Executable, Path.GetFullPath(".test-home"), null);
+        platform.PrepareStart(start);
+        var startup = new StartupInfo { Size = Marshal.SizeOf<StartupInfo>() };
+        if (!CreateProcess(start.FileName, new System.Text.StringBuilder("\"" + start.FileName + "\""), IntPtr.Zero, IntPtr.Zero,
+            false, 0x00000004, IntPtr.Zero, start.WorkingDirectory, ref startup, out var created))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        try
+        {
+            uint length = 512; var family = new System.Text.StringBuilder((int)length);
+            Assert(GetPackageFamilyName(created.Process, ref length, family) == 0 && family.ToString() == CodexStoreLaunch.Family);
+            uint size = 32768; var path = new System.Text.StringBuilder((int)size);
+            Assert(QueryFullProcessImageName(created.Process, 0, path, ref size) && CodexDesktop.SamePath(path.ToString(), target.Executable));
+            Console.WriteLine("Store launch PASS: package identity and executable verified while suspended; no application code executed.");
+            return 0;
+        }
+        finally
+        {
+            TerminateProcess(created.Process, 0); CloseHandle(created.Thread); CloseHandle(created.Process);
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct StartupInfo
+    {
+        public int Size; public string? Reserved, Desktop, Title;
+        public int X, Y, Width, Height, Columns, Rows, Fill, Flags; public short Show, ReservedSize;
+        public IntPtr ReservedData, Input, Output, Error;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessInformation { public IntPtr Process, Thread; public uint ProcessId, ThreadId; }
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "CreateProcessW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateProcess(string executable, System.Text.StringBuilder command, IntPtr processAttributes, IntPtr threadAttributes,
+        [MarshalAs(UnmanagedType.Bool)] bool inherit, uint flags, IntPtr environment, string directory, ref StartupInfo startup, out ProcessInformation created);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern int GetPackageFamilyName(IntPtr process, ref uint length, System.Text.StringBuilder name);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "QueryFullProcessImageNameW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)] private static extern bool QueryFullProcessImageName(IntPtr process, uint flags, System.Text.StringBuilder path, ref uint length);
+    [DllImport("kernel32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool TerminateProcess(IntPtr process, uint exitCode);
+    [DllImport("kernel32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool CloseHandle(IntPtr handle);
+
     private static void Throws<T>(Action action) where T : Exception { try { action(); } catch (T) { return; } throw new Exception("Expected " + typeof(T).Name); }
     private static async Task ThrowsAsync<T>(Func<Task> action) where T : Exception { try { await action(); } catch (T) { return; } throw new Exception("Expected " + typeof(T).Name); }
     private delegate IntPtr WindowProcedure(IntPtr window, uint message, IntPtr wparam, IntPtr lparam);

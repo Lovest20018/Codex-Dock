@@ -14,12 +14,12 @@ namespace CodexConfig.Core;
 
 public sealed record BridgeStatus(long Requests, long FastRequests, long AutoReviewRequests, int ProtocolVersion = 0,
     string? LastError = null, int? LastUpstreamStatus = null, string? LastRequestId = null, string? LastRequestKind = null, string? LastUpstreamCode = null,
-    BridgeMetrics? Metrics = null);
+    BridgeMetrics? Metrics = null, long UltrafastRequests = 0);
 
 // A narrow inference bridge. Account, plugin and login endpoints are intentionally absent.
 public sealed class ModelBridge : IAsyncDisposable
 {
-    public const int ProtocolVersion = 5;
+    public const int ProtocolVersion = 6;
     private readonly Func<MixedConnection> readConnection;
     private readonly Func<byte[]?> readAuth;
     private readonly HttpClient client;
@@ -28,7 +28,7 @@ public sealed class ModelBridge : IAsyncDisposable
     private readonly SemaphoreSlim slots = new(16);
     private readonly ConcurrentDictionary<HttpContext, byte> activeRequests = new();
     private WebApplication? app;
-    private long requests, fastRequests, autoReviewRequests;
+    private long requests, fastRequests, ultrafastRequests, autoReviewRequests;
     private int stopRequested;
     private BridgeStatus diagnostics = new(0, 0, 0);
     private readonly BridgeTelemetry telemetry = new();
@@ -83,7 +83,7 @@ public sealed class ModelBridge : IAsyncDisposable
             {
                 if (!SameToken(token, settings.LocalToken)) { context.Response.StatusCode = 403; return; }
                 context.Response.ContentType = "application/json";
-                await JsonSerializer.SerializeAsync(context.Response.Body, diagnostics with { Requests = Interlocked.Read(ref requests), FastRequests = Interlocked.Read(ref fastRequests), AutoReviewRequests = Interlocked.Read(ref autoReviewRequests), ProtocolVersion = ProtocolVersion, Metrics = telemetry.Snapshot() }, cancellationToken: context.RequestAborted);
+                await JsonSerializer.SerializeAsync(context.Response.Body, diagnostics with { Requests = Interlocked.Read(ref requests), FastRequests = Interlocked.Read(ref fastRequests), UltrafastRequests = Interlocked.Read(ref ultrafastRequests), AutoReviewRequests = Interlocked.Read(ref autoReviewRequests), ProtocolVersion = ProtocolVersion, Metrics = telemetry.Snapshot() }, cancellationToken: context.RequestAborted);
                 return;
             }
             if (context.Request.Path == "/codex-config/stop" && HttpMethods.IsPost(context.Request.Method))
@@ -159,7 +159,7 @@ public sealed class ModelBridge : IAsyncDisposable
                 await body.WriteAsync(buffer.AsMemory(0, length), context.RequestAborted);
             }
             var bytes = body.ToArray();
-            CountRequest(bytes);
+            CountRequest(bytes, context.Request.Headers["x-openai-subagent"] == "guardian");
             observer.Request(bytes);
             request.Content = new ByteArrayContent(bytes);
             request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
@@ -191,7 +191,7 @@ public sealed class ModelBridge : IAsyncDisposable
             // Keep upstream auth failures separate from the native account's refresh path.
             await WriteErrorAsync(context, authFailure || status is >= 300 and < 400 ? 502 : status,
                 authFailure ? "model_authentication_failed" : "model_upstream_error",
-                authFailure ? $"模型入口鉴权失败（HTTP {status}），请检查 PAT / API Key。" : $"模型入口返回 HTTP {status}。", status, requestId, upstreamCode);
+                authFailure ? $"模型入口鉴权失败（HTTP {status}），请检查 API Key。" : $"模型入口返回 HTTP {status}。", status, requestId, upstreamCode);
             return;
         }
         diagnostics = diagnostics with { LastError = null, LastUpstreamStatus = (int)response.StatusCode, LastRequestId = requestId, LastUpstreamCode = null };
@@ -252,7 +252,7 @@ public sealed class ModelBridge : IAsyncDisposable
         transfer.Headers();
         lifetime.CancelAfter(TimeSpan.FromMinutes(5));
         using var downstream = await context.WebSockets.AcceptWebSocketAsync();
-        var send = PumpAsync(downstream, upstream, lifetime, true, observer, transfer);
+        var send = PumpAsync(downstream, upstream, lifetime, true, observer, transfer, context.Request.Headers["x-openai-subagent"] == "guardian");
         var receive = PumpAsync(upstream, downstream, lifetime, false, observer, transfer);
         var ended = await Task.WhenAny(send, receive);
         var endReason = context.RequestAborted.IsCancellationRequested ? "client_disconnected" : lifetime.IsCancellationRequested ? "timeout" : ended.IsFaulted ? "transport_error" : "peer_closed";
@@ -261,7 +261,7 @@ public sealed class ModelBridge : IAsyncDisposable
         transfer.End(endReason);
     }
 
-    private async Task PumpAsync(WebSocket source, WebSocket destination, CancellationTokenSource lifetime, bool inspect, BridgeTelemetry.Observer observer, BridgeTelemetry.Transfer transfer)
+    private async Task PumpAsync(WebSocket source, WebSocket destination, CancellationTokenSource lifetime, bool inspect, BridgeTelemetry.Observer observer, BridgeTelemetry.Transfer transfer, bool guardian = false)
     {
         var cancellation = lifetime.Token;
         var buffer = new byte[16384];
@@ -275,7 +275,7 @@ public sealed class ModelBridge : IAsyncDisposable
             {
                 if (message.Length + result.Count > MaxBody) throw new InvalidDataException("Model message too large.");
                 message.Write(buffer, 0, result.Count);
-                if (result.EndOfMessage) { var bytes = message.ToArray(); CountRequest(bytes); observer.Request(bytes); message.SetLength(0); }
+                if (result.EndOfMessage) { var bytes = message.ToArray(); CountRequest(bytes, guardian); observer.Request(bytes); message.SetLength(0); }
             }
             else if (result.MessageType == WebSocketMessageType.Text)
             {
@@ -286,14 +286,17 @@ public sealed class ModelBridge : IAsyncDisposable
         }
     }
 
-    private void CountRequest(byte[] bytes)
+    private void CountRequest(byte[] bytes, bool guardian = false)
     {
         Interlocked.Increment(ref requests);
         try
         {
             using var doc = JsonDocument.Parse(bytes);
-            if (doc.RootElement.TryGetProperty("model", out var model) && model.GetString() == "codex-auto-review") Interlocked.Increment(ref autoReviewRequests);
+            if (guardian || doc.RootElement.TryGetProperty("model", out var model) && model.GetString() == "codex-auto-review" ||
+                doc.RootElement.TryGetProperty("client_metadata", out var metadata) && metadata.ValueKind == JsonValueKind.Object && metadata.TryGetProperty("x-openai-subagent", out var agent) && agent.GetString() == "guardian")
+                Interlocked.Increment(ref autoReviewRequests);
             if (doc.RootElement.TryGetProperty("service_tier", out var tier) && tier.GetString() is "fast" or "priority" or "ultrafast") Interlocked.Increment(ref fastRequests);
+            if (doc.RootElement.TryGetProperty("service_tier", out tier) && tier.GetString() == "ultrafast") Interlocked.Increment(ref ultrafastRequests);
         }
         catch (Exception error) when (error is JsonException or InvalidOperationException) { }
     }

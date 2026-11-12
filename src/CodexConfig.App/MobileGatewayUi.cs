@@ -58,13 +58,12 @@ public partial class MainWindow
         setup.Children.Add(OverviewText("此页单独保存并立即生效。更改账号、密码或域名后，已登录设备需要重新登录。", "Muted", 12));
         MobileBody.Children.Add(OverviewSurface(setup, new(0, 0, 0, 16)));
 
-        var runtime = new StackPanel(); runtime.Children.Add(OverviewText("后台服务", size: 18));
+        var runtime = new StackPanel(); runtime.Children.Add(OverviewText("连接检测与 Codex 接入", size: 18));
         mobileStatus.Margin = new(0, 10, 0, 9); runtime.Children.Add(mobileStatus); runtime.Children.Add(mobileEndpoint);
         var controls = new WrapPanel { Margin = new(0, 16, 0, 0) };
-        Action(controls, "启动", async () => { await MobileManager().StartAsync(lifetime.Token); await RefreshMobilePageAsync(); });
-        Action(controls, "重启", RestartMobileGatewayAsync).ToolTip = "使用已保存设置重启；不保存表单草稿，手机会暂时断开。";
-        Action(controls, "停止", StopMobileGatewayAsync);
         Action(controls, "刷新状态", () => RefreshMobilePageAsync());
+        var manageGateways = new Button { Content = "管理网关与自动启动", Margin = new(0, 0, 8, 8) };
+        manageGateways.Click += ManageGatewaysClicked; controls.Children.Add(manageGateways);
         Action(controls, "管理 Codex 接入", async () =>
         {
             using var result = await MobileManager().ControlAsync("manager", new { }, lifetime.Token);
@@ -78,7 +77,7 @@ public partial class MainWindow
             mobileStatus.Text = "HTTPS 入口已确认指向这台电脑，可生成配对码。";
         });
         runtime.Children.Add(controls);
-        runtime.Children.Add(OverviewText("重启使用已保存设置，不保存表单草稿；手机会暂时断开，已有登录保持。普通退出保留服务；手动更新前可在应用设置或托盘选择“停止网关并退出”。", "Muted", 12));
+        runtime.Children.Add(OverviewText("启动、停止、重启和自动启动在“网关管理”统一设置。此页保留 HTTPS 入口检测、Codex 接入和手机配对。", "Muted", 12));
         MobileBody.Children.Add(OverviewSurface(runtime, new(0, 0, 0, 16)));
         var notifications = new StackPanel(); notifications.Children.Add(OverviewText("任务完成提醒", size: 18));
         notifications.Children.Add(OverviewText("先在手机工作台的“聊天与通知”中选择需要的完成提醒；单条聊天也可单独覆盖。", "Muted", 13));
@@ -120,6 +119,7 @@ public partial class MainWindow
     {
         if (mobileBusy || closing) throw new InvalidOperationException("手机网关正在处理操作，请稍后重试。");
         mobileBusy = true; foreach (var button in mobileActions) button.IsEnabled = false;
+        StartMobileGatewayButton.IsEnabled = RestartMobileGatewayButton.IsEnabled = StopMobileGatewayButton.IsEnabled = false;
         mobileUrl.IsEnabled = mobileUsername.IsEnabled = mobilePort.IsEnabled = mobilePassword.IsEnabled = false;
         mobileStatus.Text = "正在处理…";
         try { await action(); }

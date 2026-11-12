@@ -20,7 +20,7 @@ public partial class MainWindow
             SidebarColumn.Width = new(compact ? 176 : 196);
             PageHeading.Margin = compact ? new(28, 14, 28, 12) : new(28, 22, 28, 20);
         };
-        foreach (var (nav, glyph) in new[] { (OverviewNav, "\uE80F"), (ConnectionNav, "\uE774"), (CatalogNav, "\uE9D9"), (MobileNav, "\uE8EA"), (TemplatesNav, "\uE8F1"), (AdvancedNav, "\uE9E9"), (AppNav, "\uE713") })
+        foreach (var (nav, glyph) in new[] { (OverviewNav, "\uE80F"), (ConnectionNav, "\uE774"), (CatalogNav, "\uE9D9"), (MobileNav, "\uE8EA"), (GatewayNav, "\uE7F4"), (TemplatesNav, "\uE8F1"), (AdvancedNav, "\uE9E9"), (AppNav, "\uE713") })
         {
             var label = ((TextBlock)nav.Content).Text;
             var content = new Grid();
@@ -63,12 +63,13 @@ public partial class MainWindow
         if (overviewState is { } previous && previous == state) return;
         overviewState = state;
         OverviewBody.Children.Clear();
-        AddLocalCodexStatus();
         if (snapshot is null)
         {
+            AddLocalCodexStatus();
             OverviewBody.Children.Add(OverviewText("配置暂不可用", size: 20));
             OverviewBody.Children.Add(OverviewText("请检查配置位置，或按页面提示恢复未完成的保存。", "Muted")); return;
         }
+        AddApplicationOverview();
         if (snapshot.Config is null && snapshot.Auth is null)
         {
             var welcome = new StackPanel();
@@ -80,7 +81,7 @@ public partial class MainWindow
         }
         var summary = new StackPanel(); summary.Children.Add(OverviewText("当前连接", "Muted", 12));
         var mixed = loadedSettings.Mode == ConnectionMode.OfficialWithApi;
-        var mode = OverviewText(mixed ? "官方账号 + 独立模型入口" : loadedSettings.ApiKey.Length > 0 ? loadedSettings.Authentication == AuthenticationChoice.Pat ? "PAT 连接" : "PAT / API Key 连接" : "待设置 PAT", size: 22);
+        var mode = OverviewText(mixed ? "官方账号 + 独立模型入口" : loadedSettings.NeedsApiKeyMigration ? "旧 PAT（待迁移为 API Key）" : loadedSettings.ApiKey.Length > 0 ? "API Key 连接" : OfficialCredentials.HasLogin(snapshot.Auth) ? "官方账号" : "待设置 API Key", size: 22);
         mode.FontWeight = FontWeights.SemiBold; mode.Margin = new(0, 8, 0, 20); summary.Children.Add(mode);
         var route = new Grid();
         var stages = mixed ? new[] { ("Codex", "保留官方账号身份"), ("本地网关", "独立模型凭据"), ("模型入口", "接收模型请求") } : new[] { ("Codex", "读取本地配置"), ("模型入口", "由客户端连接") };

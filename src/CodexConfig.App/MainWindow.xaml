@@ -30,6 +30,9 @@
             <RadioButton x:Name="MobileNav" Tag="mobile" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged">
               <TextBlock Text="手机连接" />
             </RadioButton>
+            <RadioButton x:Name="GatewayNav" Tag="gateways" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged">
+              <TextBlock Text="网关管理" />
+            </RadioButton>
             <TextBlock Text="配置管理" Style="{StaticResource Helper}" Margin="12,18,0,8" />
             <RadioButton x:Name="TemplatesNav" Tag="templates" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged">
               <TextBlock Text="模板与备份" />
@@ -72,8 +75,8 @@
             </Grid>
           </Border>
           <WrapPanel x:Name="GatewaySummaryBar" Margin="28,8,28,0" AutomationProperties.Name="网关运行状态">
-            <Button x:Name="ModelGatewaySummary" Content="本地网关 · 正在核对" Click="ModelGatewaySummaryClicked" Style="{StaticResource QuietButton}" FontSize="12" Padding="10,6" MinHeight="30" Margin="0,0,8,0" ToolTip="本机模型转发进程状态；点击查看连接与账号。运行中不代表上游模型请求已验证。" />
-            <Button x:Name="MobileGatewaySummary" Content="手机网关 · 正在核对" Click="MobileGatewaySummaryClicked" Style="{StaticResource QuietButton}" FontSize="12" Padding="10,6" MinHeight="30" Margin="0,0,8,0" ToolTip="手机服务进程状态；点击查看入口检测、配对和设备。" />
+            <Button x:Name="ModelGatewaySummary" Content="本机模型网关 · 正在核对" Click="ModelGatewaySummaryClicked" Style="{StaticResource QuietButton}" FontSize="12" Padding="10,6" MinHeight="30" Margin="0,0,8,0" ToolTip="点击管理本机模型网关的启停与自动启动。运行中不代表上游模型请求已验证。" />
+            <Button x:Name="MobileGatewaySummary" Content="手机网关 · 正在核对" Click="MobileGatewaySummaryClicked" Style="{StaticResource QuietButton}" FontSize="12" Padding="10,6" MinHeight="30" Margin="0,0,8,0" ToolTip="点击管理手机网关的启停与自动启动。" />
             <Button Content="刷新状态" Click="GatewaySummaryRefreshClicked" Style="{StaticResource QuietButton}" FontSize="12" Padding="10,6" MinHeight="30" ToolTip="只读取运行状态，不启动服务或保存草稿。" />
           </WrapPanel>
           <StackPanel x:Name="PageHeading" Margin="28,22,28,20">
@@ -89,34 +92,83 @@
           <ScrollViewer x:Name="MobilePage" Visibility="Collapsed" Style="{StaticResource PageScroll}">
             <StackPanel x:Name="MobileBody" Margin="0,0,8,24" />
           </ScrollViewer>
+          <ScrollViewer x:Name="GatewayPage" Visibility="Collapsed" Style="{StaticResource PageScroll}" Padding="0,0,8,24">
+            <StackPanel>
+              <Border Style="{StaticResource SurfacePanel}" Margin="0,0,0,16"><StackPanel>
+                <TextBlock Text="启动方式" Style="{StaticResource SectionTitle}" Margin="0,0,0,10"/>
+                <TextBlock Text="两个网关分别启停，使用当前目录中已保存的设置。自动启动按配置目录保存，默认关闭；刷新状态不会启动服务。" Style="{StaticResource Helper}"/>
+                <CheckBox x:Name="GatewayDockAutoStartBox" Checked="AutoStartChanged" Unchecked="AutoStartChanged" Margin="0,14,0,0"><TextBlock Text="登录 Windows 后启动 Dock（当前配置目录）" TextWrapping="Wrap"/></CheckBox>
+                <TextBlock x:Name="GatewayDockAutoStartHint" Style="{StaticResource Helper}" Margin="0,6,0,0"/>
+                <TextBlock Text="要随 Windows 登录启动网关，还需在下方勾选该网关的自动启动。开关立即保存；关闭开关不停止正在运行的服务。" Style="{StaticResource Helper}" Margin="0,6,0,0"/>
+                <TextBlock x:Name="GatewayStartupFeedback" Style="{StaticResource Helper}" Visibility="Collapsed" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite"/>
+                <Button Content="刷新两个网关状态" Click="GatewaySummaryRefreshClicked" HorizontalAlignment="Left" Margin="0,14,0,0"/>
+              </StackPanel></Border>
+              <Border x:Name="GatewayPanel" Style="{StaticResource SurfacePanel}" Margin="0,0,0,16"><StackPanel>
+                <TextBlock Text="本机模型网关" Style="{StaticResource SectionTitle}" Margin="0,0,0,8"/>
+                <TextBlock x:Name="ModelGatewayStateText" FontWeight="SemiBold" AutomationProperties.LiveSetting="Polite"/>
+                <TextBlock Text="为“官方账号 + 独立模型入口”转发模型请求，API Key 直连无需启动。" Style="{StaticResource Helper}" Margin="0,8,0,0"/>
+                <TextBlock x:Name="ModelGatewaySetupHint" Style="{StaticResource Helper}" Margin="0,6,0,0"/>
+                <CheckBox x:Name="ModelGatewayAutoStartBox" Checked="GatewayAutoStartChanged" Unchecked="GatewayAutoStartChanged" Margin="0,14,0,0"><TextBlock Text="打开 Dock 时自动启动本机模型网关" TextWrapping="Wrap"/></CheckBox>
+                <WrapPanel Margin="0,14,0,0">
+                  <Button x:Name="StartGatewayButton" Content="启动" Click="StartGatewayClicked" Style="{StaticResource PrimaryButton}" Margin="0,0,8,8" ToolTip="使用已保存的模型连接，不保存草稿。"/>
+                  <Button x:Name="RestartGatewayButton" Content="重启" Click="RestartGatewayClicked" Margin="0,0,8,8" ToolTip="使用已保存连接重启，会短暂中断模型连接。"/>
+                  <Button x:Name="StopGatewayButton" Content="停止" Click="StopGatewayClicked" Margin="0,0,8,8"/>
+                  <Button Content="配置模型连接" Click="GatewayConnectionClicked" Style="{StaticResource QuietButton}" Margin="0,0,0,8"/>
+                </WrapPanel>
+                <TextBlock x:Name="ModelGatewayOperationText" Style="{StaticResource Helper}" Visibility="Collapsed" Margin="0,4,0,0" AutomationProperties.LiveSetting="Polite"/>
+                <Expander Header="运行详情" Margin="0,6,0,0"><TextBlock x:Name="GatewayStatusText" Style="{StaticResource Helper}" Margin="0,8,0,0"/></Expander>
+              </StackPanel></Border>
+              <Border x:Name="MobileGatewayPanel" Style="{StaticResource SurfacePanel}"><StackPanel>
+                <TextBlock Text="手机网关" Style="{StaticResource SectionTitle}" Margin="0,0,0,8"/>
+                <TextBlock x:Name="MobileGatewayStateText" FontWeight="SemiBold" AutomationProperties.LiveSetting="Polite"/>
+                <TextBlock Text="让手机通过自己的 HTTPS 入口访问电脑上的 Codex 工作台。可独立运行，无需先启用本机模型网关。" Style="{StaticResource Helper}" Margin="0,8,0,0"/>
+                <TextBlock x:Name="MobileGatewaySetupHint" Style="{StaticResource Helper}" Margin="0,6,0,0"/>
+                <CheckBox x:Name="MobileGatewayAutoStartBox" Checked="GatewayAutoStartChanged" Unchecked="GatewayAutoStartChanged" Margin="0,14,0,0"><TextBlock Text="打开 Dock 时自动启动手机网关" TextWrapping="Wrap"/></CheckBox>
+                <WrapPanel Margin="0,14,0,0">
+                  <Button x:Name="StartMobileGatewayButton" Content="启动" Click="StartMobileGatewayClicked" Style="{StaticResource PrimaryButton}" Margin="0,0,8,8" ToolTip="使用已保存的手机设置，不保存表单草稿。"/>
+                  <Button x:Name="RestartMobileGatewayButton" Content="重启" Click="RestartMobileGatewayClicked" Margin="0,0,8,8" ToolTip="使用已保存设置重启，手机会暂时断开。"/>
+                  <Button x:Name="StopMobileGatewayButton" Content="停止" Click="StopMobileGatewayClicked" Margin="0,0,8,8"/>
+                  <Button Content="设置手机连接" Click="GatewayMobileSettingsClicked" Style="{StaticResource QuietButton}" Margin="0,0,0,8"/>
+                </WrapPanel>
+                <TextBlock x:Name="MobileGatewayOperationText" Style="{StaticResource Helper}" Visibility="Collapsed" Margin="0,4,0,0" AutomationProperties.LiveSetting="Polite"/>
+              </StackPanel></Border>
+              <TextBlock Text="关闭窗口会收起到托盘；退出 Dock 后，已启动的网关继续运行。停止或重启会中断对应连接，需要一起退出时可使用“停止网关并退出”。" Style="{StaticResource Helper}" Margin="0,14,0,0"/>
+            </StackPanel>
+          </ScrollViewer>
           <ScrollViewer x:Name="ConnectionPage" Visibility="Collapsed" Style="{StaticResource PageScroll}" Padding="0,0,8,24">
             <Border Style="{StaticResource SurfacePanel}" HorizontalAlignment="Stretch"><StackPanel x:Name="ConnectionForm">
-              <TextBlock Text="模型服务连接" Style="{StaticResource SectionTitle}" />
-              <TextBlock Text="默认使用 PAT / API 直连，也可保留官方账号并为模型选择独立入口。" Style="{StaticResource Helper}" Margin="0,0,0,18" />
-              <TextBlock x:Name="LegacyConnectionHint" Visibility="Collapsed" Text="已读取旧版混合连接。保存连接修改后使用新版路由；也可明确选择 PAT / API 直连。" Style="{StaticResource Helper}" Margin="0,0,0,18" />
-              <Grid Style="{StaticResource FormRow}">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition/></Grid.ColumnDefinitions>
-                <TextBlock Text="连接方式" Style="{StaticResource FieldLabel}"/>
-                <ComboBox x:Name="ConnectionModeBox" Grid.Column="1" SelectedIndex="0" SelectionChanged="ConnectionModeChanged" AutomationProperties.Name="连接方式">
-                  <ComboBoxItem Content="PAT / API 直连"/>
-                  <ComboBoxItem Content="官方账号 + 独立模型入口"/>
-                </ComboBox>
-              </Grid>
+              <TextBlock Text="连接方式" Style="{StaticResource SectionTitle}" Margin="0,0,0,8" />
+              <TextBlock x:Name="SavedConnectionModeText" Style="{StaticResource Helper}" Margin="0,0,0,12" />
+              <TextBlock x:Name="LegacyConnectionHint" Visibility="Collapsed" Text="已读取旧版混合连接。保存连接修改后使用新版路由；也可明确选择 API Key 直连。" Style="{StaticResource Helper}" Margin="0,0,0,18" />
+              <ListBox x:Name="ConnectionModeBox" SelectedIndex="0" SelectionMode="Single" SelectionChanged="ConnectionModeChanged" SizeChanged="ConnectionModeLayoutChanged" AutomationProperties.Name="连接方式" BorderThickness="0" Background="Transparent" Padding="0" Margin="0,0,-8,0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled" ItemContainerStyle="{StaticResource ConnectionModeOption}">
+                <ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ListBox.ItemsPanel>
+                <ListBoxItem AutomationProperties.Name="API Key 直连">
+                  <StackPanel><TextBlock Text="API Key 直连" FontWeight="SemiBold"/><TextBlock Text="Codex 使用 API Key 连接模型，无需 ChatGPT 登录或本地模型网关。" Style="{StaticResource Helper}" Margin="0,6,0,0"/></StackPanel>
+                </ListBoxItem>
+                <ListBoxItem AutomationProperties.Name="官方账号 + 独立模型入口">
+                  <StackPanel><TextBlock Text="官方账号 + 独立模型入口" FontWeight="SemiBold"/><TextBlock Text="保留 ChatGPT 登录，模型请求通过本地网关使用下方服务。" Style="{StaticResource Helper}" Margin="0,6,0,0"/></StackPanel>
+                </ListBoxItem>
+              </ListBox>
+              <TextBlock x:Name="ConnectionModeHint" Style="{StaticResource Helper}" Margin="0,10,0,18" AutomationProperties.LiveSetting="Polite"/>
+              <TextBlock x:Name="DirectFastCompatibilityHint" Text="Codex 26.1106 原生桌面在 API Key 登录下隐藏 Fast／闪电入口。可在软件设置启用 Fast / Ultrafast 兼容并重启 Codex；是否已应用请查看兼容状态，实际档位仍取决于模型目录与服务。" Style="{StaticResource Helper}" Margin="0,0,0,8"/>
+              <Button Content="管理 Fast / Ultrafast 兼容" Click="SpeedSettingsClicked" HorizontalAlignment="Left" Style="{StaticResource QuietButton}" Margin="0,0,0,18"/>
+              <Border x:Name="LegacyPatPanel" Visibility="Collapsed" Background="{DynamicResource AccentSoft}" CornerRadius="8" Padding="16" Margin="0,0,0,20">
+                <StackPanel>
+                  <TextBlock Text="旧 PAT 需要迁移" FontWeight="SemiBold"/>
+                  <TextBlock Text="可用已读取的密钥迁移；确认时备份原配置并清理旧认证地址。如服务不接受该密钥，请在下方填写新的 API Key。已核对的 Codex 26.1106 桌面在迁移后不显示 Fast／闪电入口。" Style="{StaticResource Helper}" Margin="0,7,0,10"/>
+                  <Button x:Name="MigratePatButton" Content="迁移为 API Key" Click="MigratePatClicked" HorizontalAlignment="Left"/>
+                </StackPanel>
+              </Border>
               <Border x:Name="OfficialPanel" Visibility="Collapsed" Background="{DynamicResource AccentSoft}" CornerRadius="8" Padding="16" Margin="0,0,0,20">
                 <StackPanel>
-                  <TextBlock Text="官方账号" FontWeight="SemiBold"/>
+                  <TextBlock Text="ChatGPT 官方账号" FontWeight="SemiBold"/>
                   <TextBlock x:Name="OfficialStatusText" Style="{StaticResource Helper}" Margin="0,7,0,10"/>
                   <WrapPanel>
-                    <Button x:Name="LoginButton" Content="使用 ChatGPT 登录" Click="LoginClicked" Margin="0,0,8,0"/>
-                    <Button x:Name="CancelLoginButton" Content="取消登录" Click="CancelLoginClicked" Visibility="Collapsed"/>
+                    <Button x:Name="RefreshOfficialLoginButton" Content="重新读取官方登录" Click="RefreshOfficialLoginClicked" Margin="0,0,8,8"/>
+                    <Button x:Name="RestoreOfficialLoginButton" Content="使用已备份的官方登录" Click="RestoreOfficialLoginClicked" Margin="0,0,0,8"/>
                   </WrapPanel>
-                  <TextBlock Text="登录在独立目录暂存为文件凭据，保存配置后才启用。模型 PAT / API Key 在下方单独填写；官方令牌不会发送给该入口。" Style="{StaticResource Helper}" Margin="0,10,0,0"/>
-                  <Expander x:Name="CodexProgramExpander" Header="Codex 程序位置（可选）" Margin="0,10,0,0">
-                    <DockPanel Margin="0,8,0,0">
-                      <Button DockPanel.Dock="Right" Content="选择" Click="ChooseCodexClicked" Margin="8,0,0,0"/>
-                      <TextBox x:Name="CodexPathBox" AutomationProperties.Name="Codex 程序位置"/>
-                    </DockPanel>
-                  </Expander>
+                  <TextBlock Text="先在 Codex 桌面完成 ChatGPT 登录，再回到这里重新读取同一配置目录的文件凭据。当前官方登录优先使用；已备份的登录需确认保存后恢复，有效期由 Codex 管理。" Style="{StaticResource Helper}" Margin="0,7,0,0"/>
+                  <TextBlock Text="模型 API Key 在下方单独填写；官方令牌不会发送给模型服务。API Key 直连无需官方登录。" Style="{StaticResource Helper}" Margin="0,7,0,0"/>
                 </StackPanel>
               </Border>
               <Grid Style="{StaticResource FormRow}">
@@ -161,10 +213,10 @@
                   <ColumnDefinition Width="120" />
                   <ColumnDefinition />
                 </Grid.ColumnDefinitions>
-                <TextBlock x:Name="CredentialLabel" Text="PAT / API Key" Style="{StaticResource FieldLabel}" />
+                <TextBlock x:Name="CredentialLabel" Text="API Key" Style="{StaticResource FieldLabel}" />
                 <StackPanel Grid.Column="1">
                   <Grid>
-                    <PasswordBox x:Name="ApiKeyBox" PasswordChanged="PasswordChanged" AutomationProperties.Name="PAT / API Key" />
+                    <PasswordBox x:Name="ApiKeyBox" PasswordChanged="PasswordChanged" AutomationProperties.Name="API Key" />
                     <TextBox x:Name="VisibleKeyBox" Visibility="Collapsed" TextChanged="VisibleKeyChanged" AutomationProperties.Name="可见访问凭据" />
                   </Grid>
                   <DockPanel Margin="0,8,0,0">
@@ -195,20 +247,11 @@
                 </StackPanel>
               </Grid>
             </StackPanel>
-              <Border x:Name="GatewayPanel" Visibility="Collapsed" Background="{DynamicResource AccentSoft}" CornerRadius="8" Padding="16" Margin="0,0,0,18">
-                <StackPanel>
-                  <TextBlock Text="本地网关" FontWeight="SemiBold"/>
-                  <TextBlock x:Name="GatewayStatusText" Style="{StaticResource Helper}" Margin="0,7,0,10"/>
-                  <CheckBox x:Name="GatewayProxyBox" Content="使用本机 HTTP 代理连接模型入口" Checked="MixedOptionChanged" Unchecked="MixedOptionChanged" Margin="0,0,0,10"/>
-                  <WrapPanel>
-                    <Button x:Name="StartGatewayButton" Content="启动网关" Click="StartGatewayClicked" Margin="0,0,8,0"/>
-                    <Button x:Name="RestartGatewayButton" Content="重启网关" Click="RestartGatewayClicked" Margin="0,0,8,0" ToolTip="按已保存的连接重启，不保存当前草稿。"/>
-                    <Button x:Name="StopGatewayButton" Content="停止网关" Click="StopGatewayClicked" Margin="0,0,8,0"/>
-                    <Button Content="刷新状态" Click="RefreshGatewayClicked"/>
-                  </WrapPanel>
-                  <TextBlock Text="重启使用已保存的连接，不保存草稿；停止或重启会断开正在使用的模型连接。普通退出保留网关，更新前请使用“停止网关并退出”。" Style="{StaticResource Helper}" Margin="0,10,0,0"/>
-                </StackPanel>
-              </Border>
+              <StackPanel x:Name="MixedGatewayOptions" Visibility="Collapsed" Margin="0,0,0,18">
+                <CheckBox x:Name="GatewayProxyBox" Content="使用本机 HTTP 代理连接模型入口" Checked="MixedOptionChanged" Unchecked="MixedOptionChanged"/>
+                <TextBlock Text="确认写入后，到“网关管理”启动本机模型网关，或按需开启自动启动。" Style="{StaticResource Helper}" Margin="0,8,0,0"/>
+              </StackPanel>
+              <Button Content="管理网关与自动启动" Click="ManageGatewaysClicked" HorizontalAlignment="Left" Margin="0,0,0,18"/>
               <Expander x:Name="MoreConnection" Header="更多连接选项" Margin="0,2,0,0">
                 <StackPanel Margin="0,14,0,0">
               <Grid Style="{StaticResource FormRow}">
@@ -230,20 +273,8 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="服务类型" Style="{StaticResource FieldLabel}" />
                     <ComboBox x:Name="KindBox" Grid.Column="1" SelectedIndex="0" SelectionChanged="ConnectionSelectionChanged">
-                      <ComboBoxItem Content="PAT 中转" />
+                      <ComboBoxItem Content="Codex 中转" />
                       <ComboBoxItem Content="Responses API" />
-                    </ComboBox>
-                  </Grid>
-                  <Grid x:Name="AuthenticationRow" Style="{StaticResource FormRow}">
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="120" />
-                      <ColumnDefinition />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="认证方式" Style="{StaticResource FieldLabel}" />
-                    <ComboBox x:Name="AuthenticationBox" Grid.Column="1" SelectedIndex="0" SelectionChanged="ConnectionSelectionChanged">
-                      <ComboBoxItem Content="自动选择" />
-                      <ComboBoxItem Content="PAT" />
-                      <ComboBoxItem Content="API Key" />
                     </ComboBox>
                   </Grid>
                 </StackPanel>
@@ -277,11 +308,21 @@
                 <Button Content="GitHub 发布页" Click="ReleasePageClicked" Style="{StaticResource QuietButton}" Margin="0,0,0,8"/>
               </WrapPanel>
               <TextBlock x:Name="UpdateStatusText" Text="从 GitHub 检查正式版本，下载后校验安装器。" Style="{StaticResource Helper}" AutomationProperties.LiveSetting="Polite"/>
+              <StackPanel x:Name="SpeedCompatibilityCard">
+                <TextBlock Text="桌面速度兼容" FontWeight="SemiBold" Margin="0,12,0,8"/>
+                <CheckBox x:Name="SpeedCompatibilityBox" Content="启用纯 API 的速度档位兼容（当前配置目录）" Checked="SpeedCompatibilityChanged" Unchecked="SpeedCompatibilityChanged"/>
+                <TextBlock Text="API Key 桌面隐藏速度入口时，在此应用兼容。需保持 Dock 运行，可收起到托盘。可用档位仍以模型目录和服务为准。" Style="{StaticResource Helper}" Margin="0,8,0,0"/>
+                <Expander Header="兼容方式与退出行为" Margin="0,6,0,0"><TextBlock Text="仅通过本机调试连接处理界面模块，不改安装文件。关闭开关或退出 Dock 后停用；重开 Dock 时需再次应用。" Style="{StaticResource Helper}" Margin="0,8,0,0"/></Expander>
+                <TextBlock Text="兼容状态" FontWeight="SemiBold" Margin="0,12,0,0"/>
+                <TextBlock x:Name="SpeedCompatibilityStatus" Text="已关闭。" Style="{StaticResource Helper}" Margin="0,4,0,0" AutomationProperties.LiveSetting="Polite"/>
+                <Button x:Name="ApplySpeedCompatibilityButton" Content="打开或重启 Codex" Click="ApplySpeedCompatibilityClicked" HorizontalAlignment="Left" Margin="0,12,0,0" IsEnabled="False"/>
+              </StackPanel>
               <Border Height="1" Background="{DynamicResource Line}" Margin="0,22,0,20"/>
               <TextBlock Text="启动" Style="{StaticResource SectionTitle}" Margin="0,0,0,12"/>
-              <CheckBox x:Name="AutoStartBox" Content="登录 Windows 后自动启动" Checked="AutoStartChanged" Unchecked="AutoStartChanged"/>
+              <CheckBox x:Name="AutoStartBox" Content="登录 Windows 后启动 Dock（当前配置目录）" Checked="AutoStartChanged" Unchecked="AutoStartChanged"/>
               <TextBlock x:Name="AutoStartHint" Style="{StaticResource Helper}" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite"/>
               <TextBlock Text="立即生效。自动启动时收起到托盘，并读取开启此选项时的配置目录。" Style="{StaticResource Helper}" Margin="0,6,0,0"/>
+              <Button Content="设置两个网关的自动启动" Click="ManageGatewaysClicked" HorizontalAlignment="Left" Margin="0,10,0,0"/>
               <Border Height="1" Background="{DynamicResource Line}" Margin="0,22,0,20"/>
               <TextBlock Text="窗口与后台运行" Style="{StaticResource SectionTitle}" Margin="0,2,0,10" />
               <TextBlock Text="点击窗口关闭按钮会收起到系统托盘并保留草稿；双击托盘图标可恢复窗口。普通最小化保留任务栏入口。" Style="{StaticResource Helper}" />
@@ -351,13 +392,27 @@
             <TextBox x:Name="PreviewBox" IsReadOnly="True" Background="{DynamicResource Code}" BorderThickness="0" Padding="12" VerticalContentAlignment="Top" FontFamily="Consolas" FontSize="12" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="脱敏配置预览" />
             <ScrollViewer x:Name="ReviewSuccess" Visibility="Collapsed" Margin="0,8,0,0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
               <StackPanel>
-              <TextBlock Text="配置已保存" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,12" />
               <TextBlock x:Name="ReviewSuccessMessage" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+              <Border Background="{DynamicResource AccentSoft}" CornerRadius="8" Padding="12" Margin="0,12,0,0">
+                <StackPanel>
+                  <TextBlock x:Name="DesktopApplyStageText" Text="等待应用" FontWeight="SemiBold" AutomationProperties.LiveSetting="Polite"/>
+                  <ProgressBar x:Name="DesktopApplyProgress" Height="3" IsIndeterminate="True" Visibility="Collapsed" Margin="0,8,0,0"/>
+                  <Expander x:Name="DesktopApplyTargetDetails" Header="本次启动目标" Margin="0,6,0,0">
+                    <TextBlock x:Name="DesktopApplyContext" TextWrapping="Wrap" Style="{StaticResource Helper}" Margin="0,6,0,0"/>
+                  </Expander>
+                </StackPanel>
+              </Border>
               <WrapPanel Margin="0,12,0,0">
+                <Button x:Name="SavedGatewaysButton" Content="前往网关管理" Click="SavedGatewaysClicked" Margin="0,0,8,8" Visibility="Collapsed"/>
                 <Button x:Name="RestartCodexButton" Content="重启 Codex 并应用" Click="RestartCodexClicked" Style="{StaticResource PrimaryButton}" Margin="0,0,8,8" />
                 <Button x:Name="ConfigurationSourcesButton" Content="查看配置来源" Click="ViewConfigurationSourcesClicked" Margin="0,0,0,8" />
               </WrapPanel>
               <TextBlock x:Name="DesktopRestartStatus" TextWrapping="Wrap" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite" />
+              <Button x:Name="ReloadDesktopConfigurationButton" Content="读取最新配置并核对" Click="ReloadDesktopConfigurationClicked" HorizontalAlignment="Left" Visibility="Collapsed" Margin="0,10,0,0"/>
+              <Button x:Name="ForceDesktopRestartButton" Content="结束该实例并重开…" Click="ForceDesktopRestartClicked" HorizontalAlignment="Left" Visibility="Collapsed" Margin="0,10,0,0"/>
+              <Expander x:Name="DesktopConfigurationChanges" Header="本次读取的外部变更" Visibility="Collapsed" Margin="0,10,0,0">
+                <TextBlock x:Name="DesktopConfigurationChangesText" TextWrapping="Wrap" Style="{StaticResource Helper}"/>
+              </Expander>
               <TextBlock Text="可在“模板与备份 → 备份恢复”查看保存前的备份。" Style="{StaticResource Helper}" Margin="0,12,0,0" />
               </StackPanel>
             </ScrollViewer>

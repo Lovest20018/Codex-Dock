@@ -30,18 +30,18 @@ internal static class LegacyConnectionTests
             Assert(settings.Mode == ConnectionMode.OfficialWithApi && settings.BaseUrl == "https://legacy.example/backend-api/codex" && settings.ApiKey == "fake-legacy-pat");
             Assert(before.SameContents(store.Load(home)) && !Directory.Exists(Path.Combine(home, "codex-config-backups")));
         });
-        Test("legacy connection converts to PAT with an encrypted reversible backup", () =>
+        Test("legacy connection converts to API key with an encrypted reversible backup", () =>
         {
             var home = Home(); WriteFixture(home);
             var environment = new FakeEnvironment(); var store = new ConfigStore(environment, _ => null);
             var before = store.Load(home);
-            var settings = store.ReadSettings(before) with { Mode = ConnectionMode.Direct, Authentication = AuthenticationChoice.Pat, PreservePreferenceValues = true };
+            var settings = store.ReadSettings(before) with { Mode = ConnectionMode.Direct, PreservePreferenceValues = true };
             store.Apply(store.Plan(before, settings));
             var saved = store.Load(home); var document = new TomlDocument(saved.Config);
             Assert(saved.Bridge is null && document.String("model_provider") == "openai" && document.String("openai_base_url") == "https://legacy.example/backend-api/codex");
             Assert(document.String("web_search") == "cached" && document.Text.Contains("# retained preference") && !document.Text.Contains("48125") && !document.Text.Contains(new string('A', 64)));
             using var auth = JsonDocument.Parse(saved.Auth!);
-            Assert(auth.RootElement.GetProperty("personal_access_token").GetString() == "fake-legacy-pat" && !auth.RootElement.TryGetProperty("tokens", out _));
+            Assert(auth.RootElement.GetProperty("OPENAI_API_KEY").GetString() == "fake-legacy-pat" && auth.RootElement.GetProperty("auth_mode").GetString() == "apikey" && auth.RootElement.EnumerateObject().Count() == 2);
             Assert(!Encoding.UTF8.GetString(File.ReadAllBytes(store.LatestBackup(home)!)).Contains("fake-legacy-pat"));
             store.Restore(saved);
             Assert(before.SameContents(store.Load(home)));

@@ -65,7 +65,7 @@ public partial class MainWindow
             ConfirmWriteClicked(ConfirmWriteButton, new()); CloseOverlay();
             Check(new TomlDocument(store.Load(home).Config).Get("agents.max_depth") is null, "Confirmed default removes just the selected override");
             ModelBox.Text = "must-not-overwrite"; SaveClicked(SaveButton, new());
-            File.AppendAllText(configPath, "# external edit\n"); var external = File.ReadAllBytes(configPath);
+            File.AppendAllText(configPath, "\nfuture_concurrent_write = true\n"); var external = File.ReadAllBytes(configPath);
             ConfirmWriteClicked(ConfirmWriteButton, new());
             Check(reviewWriteFailed && !ConfirmWriteButton.IsEnabled && ReviewError.IsVisible && File.ReadAllBytes(configPath).SequenceEqual(external), "Concurrent external edits block confirmed writes");
             PreviewTabClicked(ConfigTab, new());

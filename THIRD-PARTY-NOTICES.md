@@ -1,5 +1,9 @@
 # Third-party notices
 
+## CodexPlusPlus native speed compatibility design reference
+
+Design reference: CodexPlusPlus 2.6.6, commit `fb3926fac4f9738941c57703a1fb47b7b0072cee`, https://github.com/BigPizzaV3/CodexPlusPlus . Upstream runtime sources are AGPL-3.0. No upstream runtime source files are included in this product. Dock independently implements the four authentication-gate mechanism in C# under this project's MIT license; implementation and validation boundaries are documented in `docs/desktop-speed-compatibility.md`.
+
 ## Codex Mobile Bridge 2.1.7 (Codex backend, Web UI and source snapshot)
 
 Copyright (c) 2026 try2love. MIT.

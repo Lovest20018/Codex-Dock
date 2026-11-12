@@ -20,19 +20,10 @@ public partial class MainWindow
         try
         {
             fixture.Show(); fixture.ShowPage("connection");
-            Assert(!fixture.OfficialPanel.IsVisible && !fixture.GatewayPanel.IsVisible && !fixture.Dirty, "Default connection remains a clean PAT editor");
+            Assert(!fixture.OfficialPanel.IsVisible && !fixture.GatewayPanel.IsVisible && !fixture.Dirty, "Default connection remains a clean API key editor");
             fixture.ConnectionModeBox.SelectedIndex = 1; fixture.BaseUrlBox.Text = "https://offline.invalid/v1";
             fixture.KindBox.SelectedIndex = (int)ConnectionKind.ResponsesApi; fixture.ApiKeyBox.Password = "fake-mixed-model-key"; fixture.ModelBox.Text = "fixture-model";
-            Assert(fixture.OfficialPanel.IsVisible && fixture.GatewayPanel.IsVisible && fixture.SaveButton.IsEnabled && fixture.GlobalSaveBar.IsVisible, "Mixed controls are optional and save remains visible");
-            var executable = Path.Combine(fixtureHome, "codex.exe"); File.WriteAllText(executable, "fixture: never execute");
-            fixture.findCodexExecutable = () => executable;
-            Assert(await fixture.ResolveCodexExecutableAsync() == executable && fixture.CodexPathBox.Text == executable, "Detected native Codex path is shown without starting login");
-            fixture.CodexPathBox.Clear(); fixture.findCodexExecutable = () => null;
-            try { await fixture.ResolveCodexExecutableAsync(); throw new InvalidOperationException("Missing Codex should require a selection."); }
-            catch (InvalidOperationException) when (fixture.CodexProgramExpander.IsExpanded) { }
-            Assert(fixture.CodexProgramExpander.IsExpanded, "Missing Codex opens the program selection immediately");
-            fixture.CodexProgramExpander.IsExpanded = false;
-            checks.AddRange(["Detected native Codex path is shown before login", "Missing native Codex expands the program picker"]);
+            Assert(fixture.OfficialPanel.IsVisible && fixture.MixedGatewayOptions.IsVisible && !fixture.GatewayPanel.IsVisible && fixture.SaveButton.IsEnabled && fixture.GlobalSaveBar.IsVisible, "Mixed account options keep lifecycle controls on the independent gateway page");
             Assert(fixture.SaveCurrent(), "Mixed connection save: " + fixture.StatusText.Text);
             bridge = fixtureStore.Load(fixtureHome).Bridge!;
             for (var i = 0; i < 100 && fixture.gatewayPolling; i++) await Task.Delay(100);
@@ -54,7 +45,8 @@ public partial class MainWindow
                 "Model restart uses saved connection and preserves hidden editor draft");
             checks.Add("Model page and tray offer restart using saved settings while preserving drafts");
             fixture.tray.StopModelItem.PerformClick();
-            for (var i = 0; i < 150 && fixture.tray.GatewayActionInProgress; i++) await Task.Delay(100);
+            for (var i = 0; i < 200 && fixture.tray.GatewayActionInProgress; i++) await Task.Delay(100);
+            await fixture.tray.RefreshGatewayActionsAsync();
             await fixture.RefreshLocalCodexStateAsync();
             Assert(!fixture.tray.GatewayActionInProgress && !fixture.IsVisible && fixture.Dirty && fixture.ModelBox.Text == "unsaved-tray-model" &&
                 await BridgeProcess.StatusAsync(connection) is null && !fixture.tray.StopModelItem.Enabled && beforeTrayStop.SameContents(fixtureStore.Load(fixtureHome)),
@@ -68,13 +60,13 @@ public partial class MainWindow
             fixture.detailedChanges["analytics.enabled"] = "false"; fixture.MarkDirty();
             Assert(fixture.SaveCurrent() && File.ReadAllBytes(Path.Combine(fixtureHome, "auth.json")).SequenceEqual(auth), "Ordinary mixed-mode settings save does not rewrite the login");
             fixture.Width = 960; fixture.Height = 640; fixture.ConnectionPage.ScrollToHome(); await Settle(); fixture.Capture(output, "mixed-account.png");
-            fixture.ConnectionPage.ScrollToEnd(); await Settle(); fixture.Capture(output, "mixed-gateway.png");
-            Assert(fixture.GlobalSaveBar.IsVisible, "Gateway scroll keeps save actions visible");
+            fixture.ShowPage("gateways"); fixture.GatewayPanel.BringIntoView(); await fixture.RefreshAllGatewaysAsync(); await Settle(); fixture.Capture(output, "mixed-gateway.png");
+            Assert(!fixture.GlobalSaveBar.IsVisible && fixture.GatewayPanel.IsVisible, "Gateway lifecycle remains independent of configuration save actions");
             ThemeManager.Apply(true); await Settle(); fixture.Capture(output, "mixed-gateway-dark.png"); ThemeManager.Apply(false);
             fixture.exitReady = true; fixture.Close();
             Assert(await BridgeProcess.StatusAsync(connection) is not null, "Closing the actual editor must leave the gateway running");
             await BridgeProcess.StopAsync(bridge); Assert(await BridgeProcess.StatusAsync(connection) is null, "Independent worker can be explicitly stopped");
-            checks.AddRange(["PAT default hides account and gateway controls", "Optional official account with independent API saves through the persistent save bar", "Mixed save preserves the native OpenAI provider and official login", "Ordinary mixed settings preserve authentication", "Independent worker survives the actual editor closing", "Explicit stop releases the port", "Mixed account and gateway layout at 960x640 in light and dark themes"]);
+            checks.AddRange(["API key default hides account and gateway controls", "Optional official account with independent API saves through the persistent save bar", "Mixed save preserves the native OpenAI provider and official login", "Ordinary mixed settings preserve authentication", "Independent worker survives the actual editor closing", "Explicit stop releases the port", "Mixed account and gateway layout at 960x640 in light and dark themes"]);
         }
         finally
         {

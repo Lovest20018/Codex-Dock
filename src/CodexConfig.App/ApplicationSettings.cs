@@ -15,13 +15,21 @@ public partial class MainWindow
         try
         {
             var command = startup.Read();
-            AutoStartBox.IsChecked = StartupCommand.Targets(command, Environment.ProcessPath!);
+            AutoStartBox.IsChecked = StartupCommand.Targets(command, Environment.ProcessPath!, home);
+            GatewayDockAutoStartBox.IsChecked = AutoStartBox.IsChecked;
             AutoStartHint.Text = command is null ? "已关闭。" : AutoStartBox.IsChecked == true
                 ? "已登记当前程序。若 Windows 已禁用此启动项，请在系统的“启动应用”设置中启用。"
-                : "启动项指向另一位置的 Codex Dock。开启后将改用当前程序与配置目录。";
+                : "启动项指向另一位置或配置目录。开启后将改用当前程序与配置目录。";
             AutoStartHint.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "Muted");
+            GatewayDockAutoStartHint.Text = AutoStartHint.Text;
+            GatewayDockAutoStartHint.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "Muted");
+            AutoStartBox.IsEnabled = GatewayDockAutoStartBox.IsEnabled = !closing;
         }
-        catch (Exception) { AutoStartBox.IsEnabled = false; AutoStartHint.Text = "无法读取开机启动设置，请检查当前用户权限。"; }
+        catch (Exception)
+        {
+            AutoStartBox.IsEnabled = GatewayDockAutoStartBox.IsEnabled = false;
+            AutoStartHint.Text = GatewayDockAutoStartHint.Text = "无法读取开机启动设置，请检查当前用户权限与路径长度。";
+        }
         finally { updatingStartup = false; }
     }
     private void AutoStartChanged(object sender, RoutedEventArgs e)
@@ -29,7 +37,8 @@ public partial class MainWindow
         if (initializing || updatingStartup) return;
         try
         {
-            startup.Write(AutoStartBox.IsChecked == true ? StartupCommand.Create(Environment.ProcessPath!, home) : null);
+            var enabled = sender is System.Windows.Controls.CheckBox box && box.IsChecked == true;
+            startup.Write(enabled ? StartupCommand.Create(Environment.ProcessPath!, home) : null);
             RefreshStartupSetting();
         }
         catch (Exception error)
@@ -37,6 +46,8 @@ public partial class MainWindow
             RefreshStartupSetting();
             AutoStartHint.Text = error is ArgumentException ? error.Message : "开机启动设置未能保存，请检查当前用户权限。";
             AutoStartHint.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "Error");
+            GatewayDockAutoStartHint.Text = AutoStartHint.Text;
+            GatewayDockAutoStartHint.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "Error");
         }
     }
 
@@ -108,15 +119,15 @@ public partial class MainWindow
         ShowPage("overview"); await Settle(); Capture(output, "connection-named-overview.png");
         if (!FindVisual<System.Windows.Controls.TextBlock>(OverviewBody).Any(text => text.Text == "我的自定义连接")) throw new InvalidOperationException("Overview omitted saved connection name.");
         ShowPage("connection"); ConnectionPage.ScrollToTop(); await Settle(); Capture(output, "connection-named.png");
-        KindBox.SelectedIndex = (int)ConnectionKind.PatRelay; AuthenticationBox.SelectedIndex = (int)AuthenticationChoice.Pat;
+        KindBox.SelectedIndex = (int)ConnectionKind.CodexRelay;
         BaseUrlBox.Text = "https://named.example/backend-api/codex"; ApiKeyBox.Password = "fake-named-pat";
-        if (!SaveCurrent()) throw new InvalidOperationException("PAT connection saves without account login.");
+        if (!SaveCurrent()) throw new InvalidOperationException("API key connection saves without account login.");
         using (var auth = System.Text.Json.JsonDocument.Parse(store.Load(home).Auth!))
-            if (!auth.RootElement.TryGetProperty("personal_access_token", out _) || auth.RootElement.TryGetProperty("tokens", out _) || store.Load(home).Bridge is not null)
-                throw new InvalidOperationException("PAT save did not write a direct connection.");
+            if (auth.RootElement.GetProperty("auth_mode").GetString() != "apikey" || auth.RootElement.TryGetProperty("personal_access_token", out _) || auth.RootElement.TryGetProperty("tokens", out _) || store.Load(home).Bridge is not null)
+                throw new InvalidOperationException("API key save did not write a direct connection.");
         if (loadedSettings.Details.Name != "我的自定义连接") throw new InvalidOperationException("Mode switch lost labels.");
         ShowPage("connection"); ConnectionPage.ScrollToTop(); await Settle(); Capture(output, "connection-pat-named.png");
         store.Restore(store.Load(home)); Reload();
-        checks.AddRange(["Name and multiline notes save and reload without rewriting credentials or routing", "Overview displays saved connection name", "PAT connection saves without login or gateway and preserves labels"]);
+        checks.AddRange(["Name and multiline notes save and reload without rewriting credentials or routing", "Overview displays saved connection name", "API key connection saves without login or gateway and preserves labels"]);
     }
 }

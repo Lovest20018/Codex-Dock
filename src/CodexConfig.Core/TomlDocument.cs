@@ -41,6 +41,12 @@ public sealed class TomlDocument
         return current;
     }
 
+    internal string? ValueSource(string path)
+    {
+        var entry = Assignments(Toml.Parse(source)).FirstOrDefault(item => item.Path.SequenceEqual(ParsePath(path)));
+        return entry?.Syntax.Value is { } value ? source.Substring(value.Span.Start.Offset, value.Span.Length) : null;
+    }
+
     public void SetRaw(string path, string repr)
     {
         var model = ParseModel("value = " + repr);

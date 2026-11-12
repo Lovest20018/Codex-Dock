@@ -17,8 +17,10 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
     public ConfigSnapshot Load(string home)
     {
         home = Path.GetFullPath(home);
-        return new(home, ReadFile(Path.Combine(home, "config.toml")), ReadFile(Path.Combine(home, "auth.json")), environment.Read())
-        { Bridge = ReadFile(Path.Combine(home, MixedConnection.FileName)), Details = ReadFile(Path.Combine(home, ConnectionDetails.FileName)) };
+        var config = ReadFile(Path.Combine(home, "config.toml"));
+        return new(home, config, ReadFile(Path.Combine(home, "auth.json")), environment.Read())
+        { Bridge = ReadFile(Path.Combine(home, MixedConnection.FileName)), Details = ReadFile(Path.Combine(home, ConnectionDetails.FileName)),
+            CatalogIndex = ManagedModelCatalogStore.Read(Path.Combine(home, ManagedModelCatalogStore.IndexFile)), Catalog = ManagedModelCatalogStore.Capture(home, config) };
     }
 
     public ConnectionSettings ReadSettings(ConfigSnapshot snapshot)
@@ -45,35 +47,40 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         }
         string key = "";
         string credentialSource = "未读取模型凭据";
-        var choice = AuthenticationChoice.Auto;
+        var legacyPat = false;
         if (snapshot.Auth is not null)
         {
             using var auth = ParseAuth(snapshot.Auth);
             var isKey = auth.RootElement.TryGetProperty("auth_mode", out var discriminator) && discriminator.ValueKind == JsonValueKind.String && discriminator.GetString() == "apikey";
-            var isOfficial = auth.RootElement.TryGetProperty("auth_mode", out var mode) && mode.ValueKind == JsonValueKind.String && mode.GetString() == "chatgpt";
+            var isOfficial = auth.RootElement.TryGetProperty("auth_mode", out var mode) && mode.ValueKind == JsonValueKind.String && mode.GetString() == "chatgpt" ||
+                !isKey && auth.RootElement.TryGetProperty("tokens", out var tokens) && tokens.ValueKind == JsonValueKind.Object;
+            var hasPat = auth.RootElement.TryGetProperty("personal_access_token", out var pat) && pat.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(pat.GetString());
             foreach (var field in isOfficial ? Array.Empty<string>() : isKey ? new[] { "OPENAI_API_KEY" } : new[] { "personal_access_token", "OPENAI_API_KEY" })
                 if (auth.RootElement.TryGetProperty(field, out var token) && token.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(token.GetString()))
-                { key = token.GetString()!; choice = field == "personal_access_token" ? AuthenticationChoice.Pat : AuthenticationChoice.ApiKey; credentialSource = "auth.json · " + (choice == AuthenticationChoice.Pat ? "PAT" : "API Key"); break; }
+                {
+                    key = token.GetString()!; legacyPat = hasPat;
+                    credentialSource = "auth.json · " + (legacyPat ? "旧 PAT（待迁移为 API Key）" : "API Key"); break;
+                }
         }
         var environmentKey = Text(provider, "env_key");
         var bearer = Text(provider, "experimental_bearer_token");
         if (environmentKey is { Length: > 0 })
         {
-            key = Variable(environmentKey) ?? ""; choice = AuthenticationChoice.ApiKey;
+            key = Variable(environmentKey) ?? ""; legacyPat = false;
             credentialSource = "环境变量 " + environmentKey + (key.Length > 0 ? " · 已读取" : " · 当前进程未设置");
         }
         else if (bearer is { Length: > 0 })
         {
-            key = bearer; choice = AuthenticationChoice.ApiKey; credentialSource = "供应商配置 · Bearer Token";
+            key = bearer; legacyPat = false; credentialSource = "供应商配置 · Bearer Token";
         }
         else if (providerId != "openai" && Value(provider, "requires_openai_auth") is not true)
         {
-            key = ""; choice = AuthenticationChoice.Auto;
+            key = ""; legacyPat = false;
             credentialSource = provider?.ContainsKey("auth") == true ? "供应商外部认证命令 · 未执行" : "由供应商或客户端管理";
         }
         else if (key.Length == 0 && !OfficialCredentials.HasLogin(snapshot.Auth) && Variable("OPENAI_API_KEY") is { Length: > 0 } environmentToken)
         {
-            key = environmentToken; choice = AuthenticationChoice.ApiKey; credentialSource = "环境变量 OPENAI_API_KEY · 已读取";
+            key = environmentToken; legacyPat = false; credentialSource = "环境变量 OPENAI_API_KEY · 已读取";
         }
         if (key.Length == 0 && string.IsNullOrEmpty(environmentKey) &&
             (providerId == "openai" || Value(provider, "requires_openai_auth") is true) && OfficialCredentials.HasLogin(snapshot.Auth))
@@ -84,7 +91,7 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
             : Text(provider, "base_url") ?? "";
         var relay = providerId == "openai" && (string.IsNullOrEmpty(url) || (Uri.TryCreate(url, UriKind.Absolute, out var address) && address.AbsolutePath.TrimEnd('/') is "/backend-api/codex" or "/codex/v1"));
         return new(url, key, doc.String("model") ?? "gpt-6.1-sol", Feature("fast_mode"), Feature("context_management"), doc.String("web_search") != "disabled")
-        { Details = details, Authentication = choice, Kind = relay ? ConnectionKind.PatRelay : ConnectionKind.ResponsesApi, WebSearchMode = doc.String("web_search"),
+        { Details = details, NeedsApiKeyMigration = legacyPat && providerId == "openai", Kind = relay ? ConnectionKind.CodexRelay : ConnectionKind.ResponsesApi, WebSearchMode = doc.String("web_search"),
             ProviderId = providerId, ProviderName = providerName, CredentialSource = credentialSource };
     }
 
@@ -139,10 +146,13 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         if (settings.Mode == ConnectionMode.OfficialWithApi)
             return PlanMixed(before, settings, doc, officialAuth) with { Details = details };
         RestoreMixedPreferences(before, doc);
-        foreach (var name in new[] { "profile", "forced_login_method", "forced_chatgpt_workspace_id" })
+        if (doc.String("forced_login_method") == "chatgpt")
+        {
+            doc.Remove("forced_login_method");
+            notes.Add("移除本文件中仅允许 ChatGPT 登录的限制，改用 API Key；组织或其他配置层的要求仍然生效。");
+        }
+        foreach (var name in new[] { "profile", "forced_chatgpt_workspace_id" })
             if (doc.Get(name) is not null) notes.Add($"保留现有 {name}；它可能覆盖当前设置，请核查生效配置。");
-        if (doc.String("cli_auth_credentials_store") is { } credentials && credentials != "file")
-            notes.Add($"保留现有 cli_auth_credentials_store={credentials}；Codex 可能优先读取其他凭据存储，请核查实际认证。");
         var decision = settings.Decide();
         doc.Set("model", settings.Model);
         doc.Set("model_provider", "openai");
@@ -151,7 +161,8 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
             doc.Get("model_providers." + MixedConnection.Provider + ".base_url") as string == owned.LocalBaseUrl &&
             doc.Get("model_providers." + MixedConnection.Provider + ".experimental_bearer_token") as string == owned.LocalToken)
             foreach (var path in TomlDocument.ValuePaths(doc.Model).Where(path => path.StartsWith("model_providers." + MixedConnection.Provider + ".", StringComparison.Ordinal)).ToArray()) doc.Remove(path);
-        if (decision.ChatGptBaseUrl is not null) doc.Set("chatgpt_base_url", decision.ChatGptBaseUrl);
+        doc.Remove("chatgpt_base_url");
+        doc.Set("cli_auth_credentials_store", "file");
         var search = settings.WebSearchMode ?? (settings.WebSearch ? "live" : "disabled");
         if (!settings.PreservePreferenceValues)
         {
@@ -160,16 +171,25 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
             doc.Set("features.fast_mode", settings.FastMode);
             doc.Set("features.context_management", settings.ContextManagement);
         }
-        notes.Add(decision.Mode == AuthenticationMode.Pat ? "PAT 双字段；CODEX_AUTHAPI_BASE_URL 写入线路 origin，ChatGPT 后端使用 /backend-api/。" : "API Key 模式明确写入 auth_mode=apikey，不写 PAT；认证环境变量与 ChatGPT 后端保持现值。");
+        notes.Add("直连统一使用 API Key：auth.json 只写 auth_mode=apikey 与 OPENAI_API_KEY，删除旧 PAT；清理 chatgpt_base_url 与用户环境变量 CODEX_AUTHAPI_BASE_URL，使用文件凭据。");
+        if (ReadSettings(before).NeedsApiKeyMigration)
+            notes.Add("旧 PAT 改为 API Key；使用当前填写的密钥，服务端需支持该密钥作为 API Key。原认证和地址均可从本次加密备份恢复。");
         notes.Add("原文件及用户环境变量纳入加密备份；不删除会话或修改客户端安装文件。");
-        var preservedAuthOrigin = before.AuthApiBaseUrl;
-        if (before.Bridge is { } previousBytes && MixedConnection.Read(previousBytes) is { NativeRoute: true } previousConnection && preservedAuthOrigin is null)
-            preservedAuthOrigin = previousConnection.OriginalAuthApiBaseUrl;
-        return new(before, doc.Bytes, Encoding.UTF8.GetBytes(settings.RenderAuth()), decision.AuthApiOrigin ?? preservedAuthOrigin,
+        return new(before, doc.Bytes, Encoding.UTF8.GetBytes(settings.RenderAuth()), null,
             doc.Masked(), settings.RenderAuth(true), notes, decision.Mode, decision.Reason) { Details = details };
     }
 
-    public string Apply(ConfigPlan plan) => Commit(plan.Before, plan.Config, plan.Auth, plan.AuthApiBaseUrl, "save", plan.Bridge, plan.Details);
+    public string Apply(ConfigPlan plan)
+    {
+        var doc = new TomlDocument(plan.Config);
+        if (plan.CatalogUpdate is null && plan.Before.CatalogIndex is not null && doc.String("approvals_reviewer") == "auto_review")
+        {
+            if (ManagedModelCatalogStore.Index(plan.Before.CatalogIndex)!.ConnectionId != ManagedModelCatalogStore.ConnectionId(doc, plan.Bridge))
+                throw new InvalidOperationException("模型服务已改变，请为当前服务重新导入能力目录。");
+            ManagedModelCatalogStore.ValidateCoverage(plan.Before, doc);
+        }
+        return Commit(plan.Before, plan.Config, plan.Auth, plan.AuthApiBaseUrl, "save", plan.Bridge, plan.Details, plan.CatalogUpdate);
+    }
 
     private static ConfigPlan PlanMixed(ConfigSnapshot before, ConnectionSettings settings, TomlDocument doc, byte[]? officialAuth)
     {
@@ -178,7 +198,8 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         if (doc.Get("model_providers.openai") is not null) throw new InvalidOperationException("检测到内置 openai 的自定义覆盖，请先处理该覆盖。");
         var storage = doc.String("cli_auth_credentials_store");
         if (storage is not (null or "file") && officialAuth is null) throw new InvalidOperationException("混合连接当前需要可验证的文件登录凭据；当前凭据存储为 " + storage + "。请使用原生登录或明确选择文件存储，原有登录不会被自动修改。");
-        var auth = OfficialCredentials.ForMixed(officialAuth ?? before.Auth);
+        // Codex may have refreshed the live login since a backup was saved.
+        var auth = OfficialCredentials.ForMixed(OfficialCredentials.HasLogin(before.Auth) ? before.Auth : officialAuth);
         var previous = before.Bridge is null ? null : MixedConnection.Read(before.Bridge);
         var connection = MixedConnection.Create(settings, previous);
         if (previous is null || !previous.NativeRoute)
@@ -221,6 +242,18 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
     public string? LatestBackup(string home) => Directory.Exists(DataDir(home))
         ? Directory.EnumerateFiles(DataDir(home), "*.backup").OrderByDescending(Path.GetFileName, StringComparer.Ordinal).FirstOrDefault() : null;
 
+    public byte[]? ReadOfficialLoginBackup(string home)
+    {
+        var directory = DataDir(Path.GetFullPath(home));
+        if (!Directory.Exists(directory)) return null;
+        foreach (var path in Directory.EnumerateFiles(directory, "*.backup").OrderByDescending(Path.GetFileName, StringComparer.Ordinal))
+        {
+            var backup = ReadBackup(path);
+            if (OfficialCredentials.HasLogin(backup.BeforeAuth)) return OfficialCredentials.ForMixed(backup.BeforeAuth);
+        }
+        return null;
+    }
+
     public bool HasPending(string home) => File.Exists(Path.Combine(DataDir(home), "pending.json"));
 
     public void Recover(string home)
@@ -243,26 +276,76 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         if (HasPending(current.Home)) throw new InvalidOperationException("请先恢复未完成的保存。");
         var path = LatestBackup(current.Home) ?? throw new InvalidOperationException("尚无可恢复的备份。");
         var record = ReadBackup(path);
-        if (Hash(current.Config) != record.AfterConfigHash || Hash(current.Auth) != record.AfterAuthHash || current.AuthApiBaseUrl != record.AfterEnv ||
-            record.AfterBridgeHash is not null && Hash(current.Bridge) != record.AfterBridgeHash ||
-            record.AfterDetailsHash is not null && Hash(current.Details) != record.AfterDetailsHash)
+        var expected = ExpectedAfter(record, current);
+        if (!CodexApplySnapshot.Compare(expected, current).CanContinue || record.AfterBridgeHash is not null && Hash(current.Bridge) != record.AfterBridgeHash ||
+            record.AfterDetailsHash is not null && Hash(current.Details) != record.AfterDetailsHash ||
+            record.AfterCatalogIndexHash is not null && Hash(current.CatalogIndex) != record.AfterCatalogIndexHash ||
+            record.AfterCatalog is not null && !record.AfterCatalog.Same(current.Catalog))
             throw new InvalidOperationException("配置或环境变量已被其他程序修改，不能直接覆盖恢复。请先检查源文件。");
-        return Commit(current, record.BeforeConfig, record.BeforeAuth, record.BeforeEnv, "restore", record.AfterBridgeHash is null ? current.Bridge : record.BeforeBridge, record.AfterDetailsHash is null ? current.Details : record.BeforeDetails);
+        var config = CodexApplySnapshot.RebaseConfig(expected.Config, record.BeforeConfig, current.Config);
+        var auth = CodexApplySnapshot.RebaseAuth(expected.Auth, record.BeforeAuth, current.Auth);
+        var dependency = record.BeforeCatalog;
+        // A removed external source is restored into an immutable managed copy, never written over an unrelated file.
+        if (dependency?.Content is { } bytes && !File.Exists(dependency.Path))
+        {
+            var managed = ManagedModelCatalogStore.CatalogPath(current.Home, bytes);
+            if (!dependency.Path.Equals(managed, StringComparison.OrdinalIgnoreCase))
+            {
+                var doc = new TomlDocument(config); doc.Set("model_catalog_json", managed); config = doc.Bytes;
+                dependency = new(managed, bytes);
+            }
+        }
+        return Commit(current, config, auth, record.BeforeEnv, "restore", record.AfterBridgeHash is null ? current.Bridge : record.BeforeBridge,
+            record.AfterDetailsHash is null ? current.Details : record.BeforeDetails, restoreCatalog: dependency,
+            catalogIndex: record.AfterCatalogIndexHash is null ? current.CatalogIndex : record.BeforeCatalogIndex);
     }
 
-    private string Commit(ConfigSnapshot before, byte[]? config, byte[]? auth, string? authApiUrl, string action, byte[]? bridge, byte[]? details)
+    private string Commit(ConfigSnapshot before, byte[]? config, byte[]? auth, string? authApiUrl, string action, byte[]? bridge, byte[]? details,
+        ManagedCatalogUpdate? catalogUpdate = null, CatalogReference? restoreCatalog = null, byte[]? catalogIndex = null)
     {
         using var writeLock = Lock(before.Home);
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var current = Load(before.Home);
+            var comparison = CodexApplySnapshot.Compare(before, current);
+            if (!comparison.CanContinue) throw new InvalidOperationException("确认后的本地设置已改变：" + string.Join("、", comparison.Changes) + "。请重新读取并核对后再保存。");
+            config = CodexApplySnapshot.RebaseConfig(before.Config, config, current.Config);
+            auth = CodexApplySnapshot.RebaseAuth(before.Auth, auth, current.Auth);
+            before = current;
+            try { return CommitLocked(before, config, auth, authApiUrl, action, bridge, details, catalogUpdate, restoreCatalog, catalogIndex); }
+            catch (RuntimeWriteRetryException) when (attempt < 2) { }
+            catch (RuntimeWriteRetryException error) { throw new IOException("Codex 正在连续更新运行信息，请稍后再保存；当前草稿已保留。", error); }
+        }
+        throw new IOException("Codex 正在连续更新运行信息，请稍后再保存；当前草稿已保留。");
+    }
+
+    private string CommitLocked(ConfigSnapshot before, byte[]? config, byte[]? auth, string? authApiUrl, string action, byte[]? bridge, byte[]? details,
+        ManagedCatalogUpdate? catalogUpdate, CatalogReference? restoreCatalog, byte[]? catalogIndex)
+    {
         if (HasPending(before.Home)) throw new InvalidOperationException("发现未完成的保存，请先点击恢复未完成保存。");
         EnsureUnchanged(before);
-        foreach (var file in new[] { "config.toml", "auth.json", MixedConnection.FileName, ConnectionDetails.FileName })
+        foreach (var file in new[] { "config.toml", "auth.json", MixedConnection.FileName, ConnectionDetails.FileName, ManagedModelCatalogStore.IndexFile })
         {
             var target = Path.Combine(before.Home, file);
             if (File.Exists(target) && File.GetAttributes(target).HasFlag(FileAttributes.ReparsePoint))
                 throw new IOException("配置文件是符号链接，请选择实际配置目录后再保存。");
         }
+        var afterIndex = catalogUpdate?.Index ?? (action == "restore" ? catalogIndex : before.CatalogIndex);
+        var dependency = catalogUpdate is not null ? new CatalogReference(catalogUpdate.Path, catalogUpdate.Content) : restoreCatalog ?? ManagedModelCatalogStore.Capture(before.Home, config);
+        if (catalogUpdate is not null)
+        {
+            if (ManagedModelCatalogStore.Hash(ManagedModelCatalogStore.Read(catalogUpdate.SourcePath) ?? []) != catalogUpdate.SourceHash)
+                throw new IOException("来源模型目录在预览后发生变化，请重新读取。");
+            if (new TomlDocument(config).String("model_catalog_json") != catalogUpdate.Path) throw new IOException("模型目录与配置计划不一致。");
+            ManagedModelCatalogStore.EnsureSafeTarget(before.Home, catalogUpdate.Path, catalogUpdate.Content);
+        }
+        if (dependency?.Content is { } desired && !File.Exists(dependency.Path)) ManagedModelCatalogStore.EnsureSafeTarget(before.Home, dependency.Path, desired);
+        if (dependency?.Content is { } expected && File.Exists(dependency.Path) && Hash(ManagedModelCatalogStore.Read(dependency.Path)) != Hash(expected))
+            throw new IOException("要恢复的模型目录已被其他程序修改，已停止覆盖。");
         var record = new Backup(DateTimeOffset.UtcNow, action, before.Config, before.Auth, before.AuthApiBaseUrl,
-            Hash(config), Hash(auth), authApiUrl, BeforeBridge: before.Bridge, AfterBridgeHash: Hash(bridge), BeforeDetails: before.Details, AfterDetailsHash: Hash(details));
+            Hash(config), Hash(auth), authApiUrl, BeforeBridge: before.Bridge, AfterBridgeHash: Hash(bridge), BeforeDetails: before.Details, AfterDetailsHash: Hash(details),
+            BeforeCatalogIndex: before.CatalogIndex, AfterCatalogIndexHash: Hash(afterIndex), BeforeCatalog: before.Catalog, AfterCatalog: dependency,
+            AfterSnapshotVersion: 1, AfterConfig: config, AfterAuth: auth);
         var name = $"{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss-fffffff}-{Guid.NewGuid():N}.backup";
         var path = Path.Combine(DataDir(before.Home), name);
         AtomicWrite(path, Protect(record));
@@ -271,13 +354,17 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         AtomicWrite(PendingPath(before.Home), Encoding.UTF8.GetBytes(name));
         try
         {
+            if (dependency?.Content is { } catalogBytes && !File.Exists(dependency.Path)) AtomicWrite(dependency.Path, catalogBytes);
+            if (Hash(afterIndex) != Hash(before.CatalogIndex)) AtomicWrite(Path.Combine(before.Home, ManagedModelCatalogStore.IndexFile), afterIndex);
             if (Hash(config) != Hash(before.Config)) AtomicWrite(Path.Combine(before.Home, "config.toml"), config);
             if (Hash(auth) != Hash(before.Auth)) AtomicWrite(Path.Combine(before.Home, "auth.json"), auth);
             if (Hash(bridge) != Hash(before.Bridge)) AtomicWrite(Path.Combine(before.Home, MixedConnection.FileName), bridge);
             if (Hash(details) != Hash(before.Details)) AtomicWrite(Path.Combine(before.Home, ConnectionDetails.FileName), details);
             if (before.AuthApiBaseUrl != authApiUrl) environment.Write(authApiUrl);
             var after = Load(before.Home);
-            if (Hash(after.Config) != record.AfterConfigHash || Hash(after.Auth) != record.AfterAuthHash || after.AuthApiBaseUrl != record.AfterEnv || Hash(after.Bridge) != record.AfterBridgeHash || Hash(after.Details) != record.AfterDetailsHash)
+            if (!CodexApplySnapshot.Compare(before with { Config = config, Auth = auth, AuthApiBaseUrl = authApiUrl, Bridge = bridge, Details = details, CatalogIndex = afterIndex, Catalog = dependency }, after).CanContinue ||
+                Hash(after.Bridge) != record.AfterBridgeHash || Hash(after.Details) != record.AfterDetailsHash ||
+                Hash(after.CatalogIndex) != record.AfterCatalogIndexHash || (dependency is null ? after.Catalog is not null : !dependency.Same(after.Catalog)))
                 throw new IOException("保存后的内容校验未通过。");
             File.Delete(PendingPath(before.Home));
             return path;
@@ -296,15 +383,34 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         var current = Load(home);
         var baselineCurrent = record.AfterTestBaselineHash is not null ? ReadFile(TestBaselinePath(home)) : null;
         static bool Expected(byte[]? value, byte[]? before, string afterHash) => Hash(value) == Hash(before) || Hash(value) == afterHash;
-        if (!Expected(current.Config, record.BeforeConfig, record.AfterConfigHash) ||
-            !Expected(current.Auth, record.BeforeAuth, record.AfterAuthHash) ||
+        var beforeConfig = CodexApplySnapshot.SameConfig(record.BeforeConfig, current.Config);
+        var beforeAuth = CodexApplySnapshot.SameAuth(record.BeforeAuth, current.Auth);
+        var afterConfig = beforeConfig ? current.Config : record.AfterSnapshotVersion > 0 ? record.AfterConfig : LegacyAfterConfig(record, current.Config);
+        var afterAuth = beforeAuth ? current.Auth : record.AfterSnapshotVersion > 0 ? record.AfterAuth : LegacyAfterAuth(record, current.Auth);
+        if ((!beforeConfig && !CodexApplySnapshot.SameConfig(afterConfig, current.Config)) ||
+            (!beforeAuth && !CodexApplySnapshot.SameAuth(afterAuth, current.Auth)) ||
             (record.AfterBridgeHash is not null && !Expected(current.Bridge, record.BeforeBridge, record.AfterBridgeHash)) ||
             (record.AfterDetailsHash is not null && !Expected(current.Details, record.BeforeDetails, record.AfterDetailsHash)) ||
+            (record.AfterCatalogIndexHash is not null && !Expected(current.CatalogIndex, record.BeforeCatalogIndex, record.AfterCatalogIndexHash)) ||
             (current.AuthApiBaseUrl != record.BeforeEnv && current.AuthApiBaseUrl != record.AfterEnv) ||
             (record.AfterTestBaselineHash is not null && !Expected(baselineCurrent, record.BeforeTestBaseline, record.AfterTestBaselineHash)))
             throw new IOException("恢复前发现其他程序修改了配置，已停止恢复以保留这些修改。");
-        if (Hash(current.Config) != Hash(record.BeforeConfig)) AtomicWrite(Path.Combine(home, "config.toml"), record.BeforeConfig);
-        if (Hash(current.Auth) != Hash(record.BeforeAuth)) AtomicWrite(Path.Combine(home, "auth.json"), record.BeforeAuth);
+        if (record.BeforeCatalog?.Content is { } catalogBytes)
+        {
+            var old = record.BeforeCatalog;
+            if (!File.Exists(old.Path))
+            {
+                ManagedModelCatalogStore.EnsureSafeTarget(home, old.Path, catalogBytes);
+                AtomicWrite(old.Path, catalogBytes);
+            }
+            else if (Hash(ManagedModelCatalogStore.Read(old.Path)) != Hash(catalogBytes)) throw new IOException("原模型目录已被其他程序修改，请核对后恢复。");
+        }
+        if (record.AfterCatalogIndexHash is not null && Hash(current.CatalogIndex) != Hash(record.BeforeCatalogIndex))
+            AtomicWrite(Path.Combine(home, ManagedModelCatalogStore.IndexFile), record.BeforeCatalogIndex);
+        var config = beforeConfig ? current.Config : CodexApplySnapshot.RebaseConfig(afterConfig, record.BeforeConfig, current.Config);
+        var auth = beforeAuth ? current.Auth : CodexApplySnapshot.RebaseAuth(afterAuth, record.BeforeAuth, current.Auth);
+        if (Hash(current.Config) != Hash(config)) AtomicWrite(Path.Combine(home, "config.toml"), config);
+        if (Hash(current.Auth) != Hash(auth)) AtomicWrite(Path.Combine(home, "auth.json"), auth);
         if (record.AfterBridgeHash is not null && Hash(current.Bridge) != Hash(record.BeforeBridge)) AtomicWrite(Path.Combine(home, MixedConnection.FileName), record.BeforeBridge);
         if (record.AfterDetailsHash is not null && Hash(current.Details) != Hash(record.BeforeDetails)) AtomicWrite(Path.Combine(home, ConnectionDetails.FileName), record.BeforeDetails);
         if (environment.Read() != record.BeforeEnv) environment.Write(record.BeforeEnv);
@@ -315,8 +421,42 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
     private void EnsureUnchanged(ConfigSnapshot snapshot)
     {
         var current = Load(snapshot.Home);
-        if (Hash(current.Config) != Hash(snapshot.Config) || Hash(current.Auth) != Hash(snapshot.Auth) || current.AuthApiBaseUrl != snapshot.AuthApiBaseUrl || Hash(current.Bridge) != Hash(snapshot.Bridge) || Hash(current.Details) != Hash(snapshot.Details))
-            throw new InvalidOperationException("文件或环境变量已被其他程序修改，请重新读取后再保存。");
+        if (snapshot.SameContents(current)) return;
+        var comparison = CodexApplySnapshot.Compare(snapshot, current);
+        if (comparison.CanContinue) throw new RuntimeWriteRetryException();
+        throw new InvalidOperationException("确认后的本地设置已改变：" + string.Join("、", comparison.Changes) + "。请重新读取后再保存。");
+    }
+
+    private sealed class RuntimeWriteRetryException : IOException;
+
+    private static ConfigSnapshot ExpectedAfter(Backup record, ConfigSnapshot current) => current with
+    {
+        Config = record.AfterSnapshotVersion > 0 ? record.AfterConfig : LegacyAfterConfig(record, current.Config),
+        Auth = record.AfterSnapshotVersion > 0 ? record.AfterAuth : LegacyAfterAuth(record, current.Auth),
+        AuthApiBaseUrl = record.AfterEnv
+    };
+
+    private static byte[]? LegacyAfterConfig(Backup record, byte[]? current)
+    {
+        if (Hash(current) == record.AfterConfigHash) return current;
+        var candidate = CodexApplySnapshot.PreserveRuntimePipe(current, record.BeforeConfig);
+        if (Hash(candidate) == record.AfterConfigHash) return candidate;
+        // Older versions retained the original string literal. Reconstruct that
+        // exact token as well, so changing quote style cannot defeat hash verification.
+        var literal = new TomlDocument(record.BeforeConfig).ValueSource(CodexApplySnapshot.RuntimePipePath);
+        if (literal is not null && current is not null && !CodexApplySnapshot.Same(candidate, current))
+        {
+            var doc = new TomlDocument(current); doc.SetRaw(CodexApplySnapshot.RuntimePipePath, literal);
+            if (Hash(doc.Bytes) == record.AfterConfigHash) return doc.Bytes;
+        }
+        throw new InvalidOperationException("旧备份只有保存后的摘要，无法核对当前配置差异。请先检查外部设置，已保留当前文件。");
+    }
+
+    private static byte[]? LegacyAfterAuth(Backup record, byte[]? current)
+    {
+        if (Hash(current) == record.AfterAuthHash) return current;
+        if (Hash(record.BeforeAuth) == record.AfterAuthHash) return record.BeforeAuth;
+        throw new InvalidOperationException("登录已改变，旧备份无法核对保存后的凭据。请先确认当前登录，已保留当前文件。");
     }
 
     private static FileStream Lock(string home)
@@ -386,7 +526,9 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         string? BeforeEnv, string AfterConfigHash, string AfterAuthHash, string? AfterEnv,
         byte[]? BeforeTestBaseline = null, string? AfterTestBaselineHash = null,
         byte[]? BeforeBridge = null, string? AfterBridgeHash = null,
-        byte[]? BeforeDetails = null, string? AfterDetailsHash = null);
+        byte[]? BeforeDetails = null, string? AfterDetailsHash = null,
+        byte[]? BeforeCatalogIndex = null, string? AfterCatalogIndexHash = null, CatalogReference? BeforeCatalog = null, CatalogReference? AfterCatalog = null,
+        int AfterSnapshotVersion = 0, byte[]? AfterConfig = null, byte[]? AfterAuth = null);
 
 }
 

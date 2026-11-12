@@ -36,6 +36,8 @@ public partial class App : Application
             }
             if (smoke is not null)
             {
+                // Fixture windows close while the asynchronous regression is still running.
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
                 // Smoke runs can never load the user's actual Codex home or registry.
                 home = Path.Combine(smoke, "isolated-home-" + Guid.NewGuid().ToString("N"));
                 environment = new MemoryUserEnvironment();

@@ -17,12 +17,12 @@ public partial class MainWindow
     private int reviewChangeCount;
 
     private void UpdateSaveBarVisibility() => GlobalSaveBar.Visibility =
-        currentPage != "mobile" && !(currentPage == "templates" && (TemplateEditor.IsEditing || TemplateEditor.Current is not null))
+        currentPage is not ("mobile" or "gateways") && !(currentPage == "templates" && (TemplateEditor.IsEditing || TemplateEditor.Current is not null))
             ? Visibility.Visible : Visibility.Collapsed;
 
     private void OpenConfigurationReview()
     {
-        if (closing || loginInProgress || snapshot is null || store.HasPending(home)) return;
+        if (closing || desktopRestartBusy || officialLoginBusy || snapshot is null || store.HasPending(home)) return;
         previewTimer.Stop(); reviewPlan = null; reviewSaved = false; reviewWriteFailed = false;
         currentTab = Dirty ? "changes" : "config";
         Editor.Revalidate(); UpdatePreview();
@@ -39,6 +39,25 @@ public partial class MainWindow
         var original = new TomlDocument(before.Config).Model;
         var updated = new TomlDocument(preview.Config).Model;
         ReviewChanges.Children.Clear();
+        if (ConnectionChanged && !EditingMixedConnection)
+        {
+            var compatibility = new StackPanel();
+            compatibility.Children.Add(new TextBlock { Text = "Codex 桌面 Fast 入口", FontWeight = FontWeights.SemiBold });
+            compatibility.Children.Add(HelpContent.Note(DirectFastCompatibilityHint.Text, new(0, 6, 0, 0)));
+            var notice = new Border { Child = compatibility, Padding = new(14), CornerRadius = new(8), Margin = new(0, 0, 0, 8) };
+            notice.SetResourceReference(Border.BackgroundProperty, "AccentSoft"); ReviewChanges.Children.Add(notice);
+        }
+        if (ConnectionModeBox.SelectedIndex != (int)loadedSettings.Mode)
+        {
+            var change = new StackPanel();
+            change.Children.Add(new TextBlock { Text = "切换连接方式", FontWeight = FontWeights.SemiBold });
+            change.Children.Add(HelpContent.Note(SavedConnectionLabel + " → " + (EditingMixedConnection ? MixedConnectionLabel : DirectConnectionLabel), new(0, 6, 0, 0)));
+            change.Children.Add(HelpContent.Note(EditingMixedConnection
+                ? "保存后保留官方账号登录。到“网关管理”启动本机模型网关后，模型请求通过该网关使用服务凭据。"
+                : "保存后改用服务的 API Key 认证并直接连接模型；原官方登录会纳入加密备份。", new(0, 6, 0, 0)));
+            var notice = new Border { Child = change, Padding = new(14), CornerRadius = new(8), Margin = new(0, 0, 0, 8) };
+            notice.SetResourceReference(Border.BackgroundProperty, "AccentSoft"); ReviewChanges.Children.Add(notice);
+        }
         var targets = new List<string>();
         reviewChangeCount = 0;
         string Display(string path, object? value) => value is null ? "未设置 · 跟随其他配置层或 Codex 默认"
@@ -67,9 +86,14 @@ public partial class MainWindow
             targets.Add(Path.Combine(before.Home, file));
             Add(name, file, oldBytes is null ? "本地未设置" : "已设置（内容已隐藏）", newBytes is null ? "移除本地文件" : "更新本地文件（内容已隐藏）");
         }
-        FileChange(before.Auth, preview.Auth, "认证文件", "auth.json");
+        FileChange(before.Auth, preview.Auth, loadedSettings.NeedsApiKeyMigration && !EditingMixedConnection ? "认证文件 · 旧 PAT → API Key" : "认证文件", "auth.json");
         FileChange(before.Bridge, preview.Bridge, "加密模型连接", MixedConnection.FileName);
         FileChange(before.Details, preview.Details, "连接资料与 HTTP 确认", ConnectionDetails.FileName);
+        if (preview.CatalogUpdate is { } catalog)
+        {
+            targets.Add(catalog.Path); targets.Add(Path.Combine(home, ManagedModelCatalogStore.IndexFile));
+            Add("专用审核与模型目录", "Dock 管理的能力目录", "现有目录与审核策略", "固定 codex-auto-review；目录与策略同时备份，审核失败停止执行");
+        }
         var previousHttp = ConnectionDetails.Read(before.Details).HttpOrigin;
         var nextHttp = ConnectionDetails.Read(preview.Details).HttpOrigin;
         if (previousHttp != nextHttp)
@@ -83,11 +107,12 @@ public partial class MainWindow
         ReviewTitle.Text = editable ? "确认写入本地配置" : "查看当前配置";
         ReviewSummary.Text = editable ? $"待写入 {reviewChangeCount} 项 · " + (reviewSource is null ? "包含当前所有未保存的修改" : "来源：" + reviewSource + (reviewHadDraft ? "，包含此前未保存修改" : "")) : "当前本地配置 · 没有待写入的修改";
         ReviewTargets.Text = targets.Count > 0 ? "本次写入目标：\n" + string.Join("\n", targets) : "当前配置目录：\n" + before.Home;
+        ReviewTargets.Visibility = Visibility.Visible;
         ReviewHint.Text = editable ? "尚未写入 · 确认时自动加密备份 · 保存后重新打开 Codex" : "只读预览 · 凭据已隐藏";
         ClosePreviewButton.Content = editable ? "返回调整" : "关闭";
         ConfirmWriteButton.Content = $"确认写入 {reviewChangeCount} 项";
         ConfirmWriteButton.Visibility = editable ? Visibility.Visible : Visibility.Collapsed;
-        ConfirmWriteButton.IsEnabled = editable && reviewChangeCount > 0 && Editor.Errors.Count == 0 && !reviewWriteFailed && !closing && !loginInProgress;
+        ConfirmWriteButton.IsEnabled = editable && reviewChangeCount > 0 && Editor.Errors.Count == 0 && !reviewWriteFailed && !closing && !officialLoginBusy;
         if (!reviewWriteFailed) ReviewError.Visibility = Visibility.Collapsed;
         ReviewTabs.Visibility = Visibility.Visible; ReviewSuccess.Visibility = Visibility.Collapsed;
         ReviewScroll.Visibility = currentTab == "changes" ? Visibility.Visible : Visibility.Collapsed;
@@ -101,6 +126,7 @@ public partial class MainWindow
         ReviewTitle.Text = "请先调整配置";
         ReviewSummary.Text = "尚未写入本地文件，修改已保留。";
         ReviewTargets.Text = "当前配置：\n" + Path.Combine(home, "config.toml");
+        ReviewTargets.Visibility = Visibility.Visible;
         ReviewError.Text = message; ReviewError.Visibility = Visibility.Visible;
         ReviewTabs.Visibility = ReviewScroll.Visibility = PreviewBox.Visibility = ReviewSuccess.Visibility = Visibility.Collapsed;
         ConfirmWriteButton.Visibility = Visibility.Visible; ConfirmWriteButton.IsEnabled = false;
@@ -134,8 +160,12 @@ public partial class MainWindow
     private void RenderSavedConfigurationReview(int count, string targets)
     {
         reviewTemplate = null; reviewPlan = null; reviewSaved = true;
-        ReviewTitle.Text = "写入完成"; ReviewSummary.Text = $"已保存 {count} 项修改"; ReviewTargets.Text = targets;
-        ReviewSuccessMessage.Text = "本地文件已写入并重新读取核对，原内容已自动加密备份。\n可在下方重启 Codex 读取这份配置，再新建聊天核对。新字段需要相应内核版本；项目、Profile 或组织配置可能覆盖本文件。";
+        ReviewTitle.Text = "配置已保存"; ReviewSummary.Text = $"已保存 {count} 项修改 · 等待应用到 Codex"; ReviewTargets.Text = targets;
+        ReviewTargets.Visibility = Visibility.Visible;
+        ReviewSuccessMessage.Text = "本地配置已写入并核对，原内容已自动加密备份。\n点击下方按钮，统一打开或重启 Codex 并加载所需兼容。完成后请新建聊天核对。";
+        SavedGatewaysButton.Visibility = Visibility.Collapsed;
+        if (loadedSettings.Mode == ConnectionMode.OfficialWithApi)
+            ReviewSuccessMessage.Text += "\nDock 会先检查并启动本机模型网关，再打开 Codex。";
         PrepareDesktopRestart();
         ReviewSuccess.Visibility = Visibility.Visible;
         ReviewTabs.Visibility = ReviewScroll.Visibility = PreviewBox.Visibility = ReviewError.Visibility = Visibility.Collapsed;

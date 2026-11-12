@@ -31,7 +31,7 @@ internal static class GatewayTests
             var current = store.Load(home); store.Apply(store.Plan(current, read, new Dictionary<string, string?> { ["analytics.enabled"] = "false" }, updateConnection: false));
             Assert(store.Load(home).Auth!.SequenceEqual(before.Auth!) && store.Load(home).Bridge!.SequenceEqual(plan.Bridge!));
             var direct = store.Plan(store.Load(home), read with { Mode = ConnectionMode.Direct });
-            Assert(new TomlDocument(direct.Config).Get("features.enable_request_compression") is true && direct.Bridge is null && direct.AuthApiBaseUrl == "https://prior.invalid");
+            Assert(new TomlDocument(direct.Config).Get("features.enable_request_compression") is true && direct.Bridge is null && direct.AuthApiBaseUrl is null && new TomlDocument(direct.Config).Get("chatgpt_base_url") is null);
             store.Restore(store.Load(home)); Assert(current.SameContents(store.Load(home)));
         });
         Test("mixed save rejects unsupported credential stores and stale refreshed tokens", () =>
@@ -114,6 +114,17 @@ internal static class GatewayTests
             using var forbidden = await client.PostAsync($"http://127.0.0.1:{connection.Port}/codex-config/stop", null); Assert(forbidden.StatusCode == HttpStatusCode.Forbidden);
             client.DefaultRequestHeaders.Authorization = new("Bearer", "wrong");
             using var rejected = await client.GetAsync(connection.NativeBaseUrl + "/models"); Assert(rejected.StatusCode == HttpStatusCode.Unauthorized && calls == 3);
+        }));
+        tests.Add(("gateway identifies guardian requests and reports Ultrafast separately", async () =>
+        {
+            var connection = MixedConnection.Create(Settings());
+            using var handler = new FakeHandler(_ => new(HttpStatusCode.OK) { Content = new StringContent("data: {}\n\n", Encoding.UTF8, "text/event-stream") });
+            await using var bridge = new ModelBridge(() => connection, () => LegacyConnectionTests.Auth(), handler); await bridge.StartAsync();
+            using var client = new HttpClient(new HttpClientHandler { UseProxy = false }); client.DefaultRequestHeaders.Authorization = new("Bearer", connection.LocalToken);
+            foreach (var body in new[] { "{\"model\":\"main\",\"service_tier\":\"ultrafast\"}", "{\"model\":\"main\",\"service_tier\":\"priority\",\"client_metadata\":{\"x-openai-subagent\":\"guardian\"}}", "{\"model\":\"codex-auto-review\"}" })
+            { using var response = await client.PostAsync(connection.NativeBaseUrl + "/responses", new StringContent(body, Encoding.UTF8, "application/json")); Assert(response.IsSuccessStatusCode); }
+            var status = await BridgeProcess.StatusAsync(connection);
+            Assert(status is { Requests: 3, FastRequests: 2, UltrafastRequests: 1, AutoReviewRequests: 2 });
         }));
         tests.Add(("gateway reports upstream status and request ID without refreshing official identity", async () =>
         {

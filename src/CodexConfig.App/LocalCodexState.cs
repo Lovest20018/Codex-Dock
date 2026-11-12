@@ -27,7 +27,7 @@ public partial class MainWindow
 
     private async Task RefreshLocalCodexStateAsync()
     {
-        if (localStatePolling || closing) return;
+        if (localStatePolling || closing || desktopRestartBusy) return;
         localStatePolling = true;
         var expectedHome = home;
         var expectedSnapshot = snapshot;
@@ -36,12 +36,12 @@ public partial class MainWindow
             // Smoke runs only read their isolated home and never inspect real processes.
             codexRuntime = smokeOutput is null ? await Task.Run(CodexRuntimeStatus.Read) : new(true, 0);
             var current = await Task.Run(() => store.Load(expectedHome));
-            if (closing || home != expectedHome || !ReferenceEquals(snapshot, expectedSnapshot)) return;
+            if (closing || desktopRestartBusy || home != expectedHome || !ReferenceEquals(snapshot, expectedSnapshot)) return;
             localStateError = "";
-            var changed = snapshot is null || !snapshot.SameContents(current);
+            var changed = snapshot is null || !CodexApplySnapshot.Compare(snapshot, current).CanContinue;
             var previouslyChanged = externalConfigurationChanged;
             externalConfigurationChanged = changed;
-            if (changed && !Dirty && !busy && !TemplateEditor.IsEditing)
+            if (changed && !Dirty && stagedOfficialAuth is null && !officialLoginBusy && !busy && !TemplateEditor.IsEditing)
             {
                 // Parse before changing controls so partial writes never replace the current view.
                 _ = store.ReadSettings(current);
@@ -60,7 +60,7 @@ public partial class MainWindow
         finally
         {
             localStatePolling = false;
-            if (!closing) { RefreshOverview(); await RefreshGatewayAsync(); await RefreshGatewaySummaryAsync(); }
+            if (!closing) { RefreshOverview(); RefreshSpeedSettings(); RefreshModelBehavior(); await RefreshAllGatewaysAsync(); }
         }
     }
 
@@ -94,12 +94,12 @@ public partial class MainWindow
             startupFixture.ShowPage("connection");
             startupFixture.BaseUrlBox.Text = "https://typed.example.com/backend-api/codex";
             startupFixture.ApiKeyBox.Password = "fake-typed-pat";
-            Assert(startupFixture.SaveButton.IsEnabled && startupFixture.SaveCurrent(), "Edited address and PAT must save");
-            Assert(store.ReadSettings(store.Load(startupHome)).ApiKey == "fake-typed-pat" && !startupFixture.Dirty, "Saved PAT must reload without a draft");
+            Assert(startupFixture.SaveButton.IsEnabled && startupFixture.SaveCurrent(), "Edited address and API key must save");
+            Assert(store.ReadSettings(store.Load(startupHome)).ApiKey == "fake-typed-pat" && !startupFixture.Dirty && !startupFixture.loadedSettings.NeedsApiKeyMigration, "Saved API key must reload without a migration draft");
         }
         finally { startupFixture.Close(); environment.Write(startupEnvironment); }
         checks.Add("Saved address and PAT available on first open before tray or status polling");
-        checks.Add("Typed model, address and PAT enable saving and reload from disk");
+        checks.Add("Typed model, address and API key enable saving and reload from disk");
         var configPath = Path.Combine(home, "config.toml");
         var authPath = Path.Combine(home, "auth.json");
         var fixture = System.Text.Encoding.UTF8.GetBytes("model='existing-model'\nmodel_provider='existing.service'\n[model_providers.'existing.service']\nname='已有服务'\nbase_url='https://existing.example.com/v1'\nexperimental_bearer_token='fake-import-token'\n");

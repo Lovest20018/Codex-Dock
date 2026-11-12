@@ -6,10 +6,32 @@ using Tomlyn.Model;
 
 if (args is ["--model-bridge", var workerHome]) return await BridgeProcess.RunAsync(workerHome);
 if (args is ["--desktop-restart-fixture", var fixtureOutput]) return DesktopRestartTests.RunFixture(fixtureOutput);
+if (args is ["--desktop-store-launch-check"]) return DesktopRestartTests.CheckStoreLaunch();
+if (args is ["--speed-desktop-isolated", var isolatedSpeedRoot])
+{ await DesktopSpeedTests.DesktopAsync(isolatedSpeedRoot); return 0; }
+if (args is ["--speed-inspect", var speedExecutable])
+{
+    Console.WriteLine(JsonSerializer.Serialize(DesktopSpeedPatch.Inspect(speedExecutable))); return 0;
+}
+if (args is ["--speed-browser", var speedRoot, var speedBrowser]) { await DesktopSpeedTests.BrowserAsync(speedRoot, speedBrowser); Console.WriteLine("Speed browser PASS"); return 0; }
+if (args is ["--speed-browser-native", var nativeSpeedRoot, var nativeSpeedBrowser, var nativeSpeedAssets]) { await DesktopSpeedTests.BrowserAsync(nativeSpeedRoot, nativeSpeedBrowser, nativeSpeedAssets); Console.WriteLine("Speed native modules PASS"); return 0; }
+if (args is ["--speed-unit", var speedTestRoot])
+{
+    var speedTests = new List<(string Name, Func<Task> Run)>(); Directory.CreateDirectory(speedTestRoot); DesktopSpeedTests.Register(speedTests, speedTestRoot);
+    foreach (var test in speedTests) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
+}
+if (args is ["--catalog-unit", var catalogTestRoot])
+{
+    var catalogTests = new List<(string Name, Func<Task> Run)>(); Directory.CreateDirectory(catalogTestRoot); ManagedCatalogTests.Register(catalogTests, catalogTestRoot);
+    foreach (var test in catalogTests) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
+}
 if (args is ["--desktop-inventory"])
 {
     var desktopPlatform = new WindowsCodexDesktopPlatform();
-    Console.WriteLine(JsonSerializer.Serialize(new { target = new CodexDesktop(desktopPlatform).FindTarget(), installed = desktopPlatform.Installed() }));
+    var inventoryTarget = new CodexDesktop(desktopPlatform).FindTarget();
+    var inventoryStart = CodexDesktop.CreateStartInfo(inventoryTarget.Executable, Path.GetFullPath(".test-home"), null);
+    desktopPlatform.PrepareStart(inventoryStart);
+    Console.WriteLine(JsonSerializer.Serialize(new { target = inventoryTarget, installed = desktopPlatform.Installed(), launchExecutable = inventoryStart.FileName }));
     return 0;
 }
 if (args is ["--gateway-launch-once", var launcherHome])
@@ -48,18 +70,18 @@ Test("reject unsafe or non-compatibility addresses", () =>
     Throws<ArgumentException>(() => Settings(key: "a\nb").Normalize());
     Throws<ArgumentException>(() => Settings(key: "").Normalize());
 });
-Test("write PAT routing with three distinct endpoints", () =>
+Test("write API key routing without account endpoint overrides", () =>
 {
     var store = new ConfigStore(new FakeEnvironment());
     var plan = store.Plan(store.Load(Home()), Settings());
     var doc = new TomlDocument(plan.Config);
     Assert(doc.String("model_provider") == "openai");
     Assert(doc.String("openai_base_url") == "https://gateway.example.com/backend-api/codex");
-    Assert(doc.String("chatgpt_base_url") == "https://gateway.example.com/backend-api/");
-    Assert(plan.AuthApiBaseUrl == "https://gateway.example.com");
+    Assert(doc.String("chatgpt_base_url") is null);
+    Assert(plan.AuthApiBaseUrl is null);
     Assert(!doc.Text.Contains("experimental_bearer_token"));
     using var auth = JsonDocument.Parse(plan.Auth);
-    Assert(auth.RootElement.GetProperty("personal_access_token").GetString() == "ah-test-key");
+    Assert(auth.RootElement.GetProperty("auth_mode").GetString() == "apikey" && !auth.RootElement.TryGetProperty("personal_access_token", out _));
     Assert(auth.RootElement.GetProperty("OPENAI_API_KEY").GetString() == "ah-test-key");
     Assert(auth.RootElement.EnumerateObject().Count() == 2);
 });
@@ -130,13 +152,13 @@ Test("do not mistake multiline string content for assignments", () =>
     Assert(doc.Text.Contains("[features]\nmodel = 'literal content'\n'''"));
     Assert(doc.String("model") == "new");
 });
-Test("preserve active profile and login restrictions with notes", () =>
+Test("direct API key save releases local ChatGPT-only login while retaining profile notes", () =>
 {
     var home = Home();
     File.WriteAllText(Path.Combine(home, "config.toml"), "profile='work'\nforced_login_method='chatgpt'\nforced_chatgpt_workspace_id='original'\n[profiles.work]\nmodel='old'\n", utf8);
     var store = new ConfigStore(new FakeEnvironment()); var plan = store.Plan(store.Load(home), Settings());
     var doc = new TomlDocument(plan.Config);
-    Assert(doc.String("profile") == "work" && doc.String("forced_login_method") == "chatgpt" && doc.String("forced_chatgpt_workspace_id") == "original");
+    Assert(doc.String("profile") == "work" && doc.Get("forced_login_method") is null && doc.String("forced_chatgpt_workspace_id") == "original");
     Assert(doc.Model.ContainsKey("profiles")); Assert(plan.Notes.Count >= 3);
 });
 Test("reject invalid TOML and invalid auth without rewriting", () =>
@@ -161,7 +183,7 @@ Test("new install save, encrypted backup, restore to absent files", () =>
     var home = Home(); var env = new FakeEnvironment(); var store = new ConfigStore(env);
     var backup = store.Apply(store.Plan(store.Load(home), Settings()));
     Assert(File.Exists(Path.Combine(home, "config.toml")) && File.Exists(Path.Combine(home, "auth.json")));
-    Assert(env.Read() == "https://gateway.example.com");
+    Assert(env.Read() is null);
     Assert(!Encoding.UTF8.GetString(File.ReadAllBytes(backup)).Contains("ah-test-key"));
     Assert(!store.HasPending(home));
     store.Restore(store.Load(home));
@@ -180,25 +202,26 @@ Test("restore original auth and config byte-for-byte", () =>
 Test("reject concurrent changes before save", () =>
 {
     var home = Home(); var env = new FakeEnvironment(); var store = new ConfigStore(env); var plan = store.Plan(store.Load(home), Settings());
-    File.WriteAllText(Path.Combine(home, "config.toml"), "# external edit\n", utf8);
+    File.WriteAllText(Path.Combine(home, "config.toml"), "model='external-edit'\n", utf8);
     Throws<InvalidOperationException>(() => store.Apply(plan));
-    Assert(File.ReadAllText(Path.Combine(home, "config.toml")) == "# external edit\n"); Assert(env.Read() is null);
+    Assert(File.ReadAllText(Path.Combine(home, "config.toml")) == "model='external-edit'\n"); Assert(env.Read() is null);
 });
 Test("reject restore after external changes", () =>
 {
     var home = Home(); var store = new ConfigStore(new FakeEnvironment()); store.Apply(store.Plan(store.Load(home), Settings()));
-    File.AppendAllText(Path.Combine(home, "config.toml"), "# user edit\n", utf8);
+    var external = new TomlDocument(store.Load(home).Config); external.Set("service_tier", "ultrafast");
+    File.WriteAllBytes(Path.Combine(home, "config.toml"), external.Bytes);
     Throws<InvalidOperationException>(() => store.Restore(store.Load(home)));
 });
 Test("roll back files on environment write failure", () =>
 {
     var home = Home(); var config = Bytes("model='old'\n"); var auth = Bytes("{\"OPENAI_API_KEY\":\"fake-old\"}");
     File.WriteAllBytes(Path.Combine(home, "config.toml"), config); File.WriteAllBytes(Path.Combine(home, "auth.json"), auth);
-    var env = new FakeEnvironment { ThrowOnce = true }; var store = new ConfigStore(env);
+    var env = new FakeEnvironment { Value = "https://old-auth.example", ThrowOnce = true }; var store = new ConfigStore(env);
     Throws<IOException>(() => store.Apply(store.Plan(store.Load(home), Settings())));
     Assert(File.ReadAllBytes(Path.Combine(home, "config.toml")).SequenceEqual(config));
     Assert(File.ReadAllBytes(Path.Combine(home, "auth.json")).SequenceEqual(auth));
-    Assert(env.Read() is null && !store.HasPending(home) && store.LatestBackup(home) is null);
+    Assert(env.Read() == "https://old-auth.example" && !store.HasPending(home) && store.LatestBackup(home) is null);
 });
 Test("roll back config when auth file is read-only", () =>
 {
@@ -238,39 +261,39 @@ Test("interrupted recovery refuses unexpected external edits", () =>
     var home = Home(); var store = new ConfigStore(new FakeEnvironment());
     var backup = store.Apply(store.Plan(store.Load(home), Settings()));
     File.WriteAllText(Path.Combine(home, "codex-config-backups", "pending.json"), Path.GetFileName(backup));
-    File.AppendAllText(Path.Combine(home, "config.toml"), "# external\n");
+    var external = new TomlDocument(File.ReadAllBytes(Path.Combine(home, "config.toml"))); external.Set("model", "external");
+    File.WriteAllBytes(Path.Combine(home, "config.toml"), external.Bytes);
     Throws<IOException>(() => store.Recover(home));
-    Assert(store.HasPending(home) && File.ReadAllText(Path.Combine(home, "config.toml")).Contains("# external"));
+    Assert(store.HasPending(home) && new TomlDocument(store.Load(home).Config).String("model") == "external");
 });
 
-Test("automatic auth falls back for generic URL, HTTP", () =>
+Test("all direct endpoint kinds use API key authentication", () =>
 {
     Assert((Settings("https://gateway.example.com/v1") with { Kind = ConnectionKind.ResponsesApi }).Decide().Mode == AuthenticationMode.ApiKey);
     Assert(Settings("http://127.0.0.1:9988").Decide().Mode == AuthenticationMode.ApiKey);
     Assert((Settings("https://gateway.example.com/custom").Decide().Mode == AuthenticationMode.ApiKey));
-    Throws<ArgumentException>(() => (Settings("http://127.0.0.1:9988") with { Authentication = AuthenticationChoice.Pat }).Decide());
+    Assert(Settings().Decide().Mode == AuthenticationMode.ApiKey);
 });
-Test("API Key rendering has no PAT and preserves auth URL/environment", () =>
+Test("API Key rendering has no PAT and clears old account URL/environment", () =>
 {
     var home = Home(); File.WriteAllText(Path.Combine(home, "config.toml"), "chatgpt_base_url='https://old.example/backend-api/'\n");
     var env = new FakeEnvironment { Value = "https://old-auth.example" }; var store = new ConfigStore(env);
     var plan = store.Plan(store.Load(home), Settings("https://gateway.example.com/v1") with { Kind = ConnectionKind.ResponsesApi });
     using var auth = JsonDocument.Parse(plan.Auth);
     Assert(auth.RootElement.GetProperty("auth_mode").GetString() == "apikey" && !auth.RootElement.TryGetProperty("personal_access_token", out _));
-    Assert(plan.AuthApiBaseUrl == env.Value && new TomlDocument(plan.Config).String("chatgpt_base_url") == "https://old.example/backend-api/");
+    Assert(plan.AuthApiBaseUrl is null && new TomlDocument(plan.Config).String("chatgpt_base_url") is null);
 });
-Test("Krill official lines and legacy origins produce current PAT endpoints", () =>
+Test("Krill official lines and legacy origins produce current API key endpoints", () =>
 {
     foreach (var line in KrillLines.All)
         foreach (var origin in new[] { line.Origin }.Concat(line.LegacyOrigins))
         {
-            var settings = Settings(origin + "/backend-api/codex") with { Authentication = AuthenticationChoice.Pat };
+            var settings = Settings(origin + "/backend-api/codex");
             var normalized = settings.Normalize(); var decision = normalized.Decide();
-            Assert(decision.Mode == AuthenticationMode.Pat && decision.ModelBaseUrl == line.Origin + "/backend-api/codex");
-            Assert(decision.ChatGptBaseUrl == line.Origin + "/backend-api/" && decision.AuthApiOrigin == line.Origin);
+            Assert(decision.Mode == AuthenticationMode.ApiKey && decision.ModelBaseUrl == line.Origin + "/backend-api/codex");
             Assert(KrillLines.Find(origin)?.Id == line.Id);
             using var auth = JsonDocument.Parse(normalized.RenderAuth());
-            Assert(auth.RootElement.TryGetProperty("personal_access_token", out _) && !auth.RootElement.TryGetProperty("auth_mode", out _));
+            Assert(!auth.RootElement.TryGetProperty("personal_access_token", out _) && auth.RootElement.GetProperty("auth_mode").GetString() == "apikey");
         }
     Assert(KrillLines.Cdn.Origin == "https://api.kbsfdxc.com");
     Assert(KrillLines.Find("https://api.kbsfdxc.com.attacker.example") is null);
@@ -363,10 +386,10 @@ tests.Add(("model retrieval only reads chosen model endpoint and keeps auth deci
         Assert(request.Headers.Authorization?.Parameter == "ah-test-key");
         return new(HttpStatusCode.OK) { Content = new StringContent("{\"models\":[{\"slug\":\"one\"},{\"id\":\"two\"},{\"model\":\"one\"}]}") };
     }));
-    var settings = Settings() with { Authentication = AuthenticationChoice.Pat };
+    var settings = Settings();
     var result = await probe.ReadModelsAsync(settings);
     Assert(result.Models.SequenceEqual(new[] { "one", "two" }));
-    Assert(requests.SequenceEqual(new[] { "/backend-api/codex/models" }) && settings.Decide().Mode == AuthenticationMode.Pat);
+    Assert(requests.SequenceEqual(new[] { "/backend-api/codex/models" }) && settings.Decide().Mode == AuthenticationMode.ApiKey);
     var withoutModel = await probe.ReadModelsAsync(settings with { Model = "" });
     Assert(withoutModel.Models.Count == 2 && requests.Count == 2);
 }));
@@ -581,13 +604,20 @@ GatewayTests.Register(tests, runRoot);
 GatewayProcessTests.Register(tests, runRoot);
 NativeBridgeTests.Register(tests, runRoot);
 CodexDiscoveryTests.Register(tests, runRoot);
+OfficialLoginTests.Register(tests, runRoot);
 DetailsAndStartupTests.Register(tests, runRoot);
+GatewayStartupTests.Register(tests, runRoot);
 UpdateTests.Register(tests, runRoot);
 CodexConfig.Tests.MobileGatewayTests.Register(tests, runRoot);
 LocalStateTests.Register(tests, runRoot);
+ApiKeyMigrationTests.Register(tests, runRoot);
 ConfigurationOptimizationTests.Register(tests, runRoot);
 SuperbaReuseTests.Register(tests, runRoot);
 DesktopRestartTests.Register(tests, runRoot);
+DesktopSpeedTests.Register(tests, runRoot);
+ManagedCatalogTests.Register(tests, runRoot);
+CodexApplyTests.Register(tests, runRoot);
+ConfigWriteConcurrencyTests.Register(tests, runRoot);
 var filters = Environment.GetEnvironmentVariable("CODEX_CONFIG_TEST_FILTER")?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
 if (filters.Length > 0)
 {

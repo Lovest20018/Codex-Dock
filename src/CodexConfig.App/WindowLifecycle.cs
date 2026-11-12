@@ -77,7 +77,7 @@ public partial class MainWindow
     private void RequestExit(bool stopGateways = false)
     {
         if (closing) return;
-        if (mobileBusy || gatewayPolling || tray?.GatewayActionInProgress == true)
+        if (mobileBusy || gatewayPolling || gatewayLaunchInProgress || tray?.GatewayActionInProgress == true)
         { RestoreWindow(); SetStatus("网关正在处理操作，请完成后再退出。", true); return; }
         stopGatewaysOnExit = stopGateways;
         exitRequested = true; RestoreWindow(); Close();
@@ -89,7 +89,7 @@ public partial class MainWindow
         if (exitReady || smokeOutput is not null && !smokeLifecycle)
         {
             closing = true; lifetime.Cancel(); previewTimer.Stop(); localStateTimer.Stop();
-            loginCancellation?.Cancel(); ClearStagedLogin();
+            ClearStagedLogin();
             SystemEvents.UserPreferenceChanged -= SystemPreferenceChanged;
             if (!busy) probe.Dispose();
             return;
@@ -103,6 +103,7 @@ public partial class MainWindow
         try
         {
             using var verifiedFile = pendingInstaller?.OpenVerified();
+            await StopSpeedSessionAsync();
             if (stopGatewaysOnExit || pendingInstaller is not null)
             {
                 SetStatus("正在停止手机和模型网关，并等待后台进程退出…");

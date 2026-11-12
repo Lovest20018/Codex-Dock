@@ -27,7 +27,7 @@ public partial class MainWindow
             "Legacy PAT must be available for explicit conversion");
         Assert(before.SameContents(store.Load(home)), "Opening an old connection must not change files");
         ConnectionModeBox.SelectedIndex = 0;
-        Assert(!OfficialPanel.IsVisible && !GatewayPanel.IsVisible && SaveButton.IsEnabled, "PAT mode hides optional account and gateway controls");
+        Assert(!OfficialPanel.IsVisible && !MixedGatewayOptions.IsVisible && !GatewayPanel.IsVisible && SaveButton.IsEnabled, "Direct draft keeps gateway lifecycle separate from the connection editor");
         PreviewClicked(PreviewButton, new());
         Assert(!PreviewBox.Text.Contains("fake-legacy") && !PreviewBox.Text.Contains(localToken), "Conversion preview must mask old credentials");
         CloseOverlay();
@@ -35,7 +35,7 @@ public partial class MainWindow
         var saved = store.Load(home);
         Assert(saved.Bridge is null && loadedSettings.Mode == ConnectionMode.Direct && !Dirty && !LegacyConnectionHint.IsVisible, "Legacy conversion must remove gateway routing and reset the draft");
         using (var auth = JsonDocument.Parse(saved.Auth!))
-            Assert(auth.RootElement.GetProperty("personal_access_token").GetString() == "fake-legacy-pat" && !auth.RootElement.TryGetProperty("tokens", out _), "PAT save replaces old login authentication");
+            Assert(auth.RootElement.GetProperty("OPENAI_API_KEY").GetString() == "fake-legacy-pat" && auth.RootElement.GetProperty("auth_mode").GetString() == "apikey" && auth.RootElement.EnumerateObject().Count() == 2, "API key save replaces old login authentication without PAT");
         store.Restore(saved); Reload();
         Assert(before.SameContents(store.Load(home)) && ApiKeyBox.Password == "fake-legacy-pat" && !Dirty, "Encrypted backup restores the original old connection without creating a draft");
         ConnectionModeBox.SelectedIndex = 0;
@@ -63,7 +63,7 @@ public partial class MainWindow
             finally { handler.Release.TrySetResult(); await fetching; }
         }
         await Settle(); Capture(output, "pat-editor.png");
-        checks.AddRange(["Old connection opens without writing and converts to PAT without login", "Conversion masks credentials and creates a reversible encrypted backup", "PAT saves require no gateway or reachable model service", "Invalid save keeps its draft and shows an error beside save", "Corrected PAT saves and reloads from disk", "Pending model requests do not block local saving"]);
+        checks.AddRange(["Old connection opens without writing and converts to API key without login", "Conversion masks credentials and creates a reversible encrypted backup", "API key saves require no gateway or reachable model service", "Invalid save keeps its draft and shows an error beside save", "Corrected API key saves and reloads from disk", "Pending model requests do not block local saving"]);
 
         var fixture = new MainWindow(store, home, output, environment) { smokeLifecycle = true };
         fixture.Loaded -= fixture.WindowLoaded;

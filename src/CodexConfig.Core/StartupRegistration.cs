@@ -41,6 +41,8 @@ public static class StartupCommand
         return command;
     }
     public static bool Targets(string? command, string executable) => command?.StartsWith(Quote(Path.GetFullPath(executable)) + " ", StringComparison.OrdinalIgnoreCase) == true;
+    public static bool Targets(string? command, string executable, string home) => string.Equals(command,
+        Quote(Path.GetFullPath(executable)) + " --start-in-tray --home " + Quote(Path.GetFullPath(home)), StringComparison.OrdinalIgnoreCase);
     // CommandLineToArgvW requires trailing backslashes to be doubled inside quotes.
     private static string Quote(string path)
     {

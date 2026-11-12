@@ -29,6 +29,12 @@ dotnet run --project src/CodexConfig.App/CodexConfig.App.csproj -c Release -- --
 
 定向检查可设置 `CODEX_CONFIG_TEST_FILTER='desktop'`（多个名称片段用分号分隔）；输出会注明筛选范围，不替代完整回归。`CODEX_CONFIG_UI_TEST_FILTER='desktop-restart'` 仅验证已保存结果页的重启操作和布局，使用已存在的明文夹具及模拟生命周期，可在无法使用用户加密的环境运行；完整 WPF 检查仍负责真实加密保存链路。两种筛选默认均关闭，完整验证脚本会暂时清除并在结束时恢复它们。
 
+连接和网关专项使用 `CODEX_CONFIG_UI_TEST_FILTER='connection-mode'` 或 `'gateways'`。前者覆盖双向切换、暂存登录、确认写入、备份和布局；后者实际启动与停止两个隔离后台进程，覆盖独立自动启动、草稿保留、手动停止、失败隔离与窗口布局。`'login'` 验证官方文件读取、显式恢复加密备份、令牌优先级与草稿保留，不启动登录进程或设备码流程。启动设置按配置目录保存于 `%LOCALAPPDATA%\CodexConfig\gateways\<目录标识>\startup.json`，仅含两个布尔选项；测试改用输出目录中的 `gateway-preferences`，Windows 启动项使用内存替身。
+
+`CODEX_CONFIG_UI_TEST_FILTER='api-key-migration'` 验证旧 PAT 读取、差异确认、API Key 写入、旧认证地址清理、加密恢复、外部冲突与最小窗口缩放。核心 `ApiKeyMigrationTests` 使用虚构认证和内存环境变量；新直连只生成 API Key，旧加密网关中服务类型的数字保持兼容。
+
+`CODEX_CONFIG_UI_TEST_FILTER='runtime-conflicts'` 验证预览后管道轮换、确认保存、保留新注释、备份恢复，以及真实设置变化仍阻止覆盖。`ConfigWriteConcurrencyTests` 覆盖同账号令牌刷新、写入前重试、写入后复核和中断恢复。只对已核对的本机管道轮换及相同身份刷新合并，目录内容、索引和实际设置冲突继续拒绝。新加密备份携带写入前后快照，旧备份仅在摘要能够证明一致时恢复。
+
 ## 目录与字段维护
 
 - `src/`：桌面应用与配置核心。
@@ -62,7 +68,7 @@ GitHub 的 `release.yml` 按平台独立构建和发布。`vX.Y.Z` 只构建 Win
 
 2026-11-02 配置优化的目录来源、独立 profile 保存、原生配置层读取、模型能力和网关诊断边界见 [实施记录](configuration-implementation-2026-11-02.md)。`ConfigurationOptimizationTests.cs` 和 `ConfigurationOptimizationSmoke.cs` 覆盖对应回归。诊断只保留进程内计数和耗时；单个响应事件的检查缓存上限为 2 MiB，超限会显示检查不全并继续转发。
 
-进程与主程序集使用 CodexDock；内部命名空间、用户数据目录和原有加密参数保留兼容。0.12.0 恢复可选混合连接，默认 PAT 编辑流程保持。网关使用 ASP.NET Core 共享运行时并随自包含发布一起打包；每个配置目录一个独立 worker，管理端点与模型路由分别鉴权。实现与真实线路边界见 [0.12.0 审查](review-0.12.0.md)。
+进程与主程序集使用 CodexDock；内部命名空间、用户数据目录和原有加密参数保留兼容。当前开发构建默认 API Key 直连，官方账号加独立模型入口仍为可选模式；旧 PAT 迁移需经过差异确认，见 [迁移记录](api-key-auth-migration-2026-11-12.md)。网关使用 ASP.NET Core 共享运行时并随自包含发布一起打包；每个配置目录一个独立 worker，管理端点与模型路由分别鉴权。原始实现与真实线路边界见 [0.12.0 审查](review-0.12.0.md)。
 
 历史界面设计与审查记录保留在 docs 中，用于维护参考，不代表额外承诺的产品能力。
 

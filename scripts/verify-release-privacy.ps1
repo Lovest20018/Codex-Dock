@@ -29,7 +29,7 @@ foreach ($taskName in @('config.toml','auth.json','codex-config-connection.dat',
     }
 }
 function Check-Bytes([string]$Name, [byte[]]$Bytes) {
-    if ($Name.Replace('\','/') -match '(^|/)(auth\.json|config\.toml|codex-config-connection\.dat|codex-dock-details\.dat|mobile-settings\.dat|auth-sessions\.json|operations\.json|worker\.lock|manager\.lock|codex-config-backups|\.env(?:\..*)?|[^/]+\.backup)(/|$)') { throw "Private configuration path in release input: $Name" }
+    if ($Name.Replace('\','/') -match '(^|/)(auth\.json|config\.toml|codex-config-connection\.dat|codex-dock-details\.dat|codex-dock-catalog\.json|codex-dock-models|codex-dock-model-catalog-[^/]+\.json|mobile-settings\.dat|auth-sessions\.json|operations\.json|worker\.lock|manager\.lock|codex-config-backups|\.env(?:\..*)?|[^/]+\.backup)(/|$)') { throw "Private configuration path in release input: $Name" }
     if ($Bytes.Length -gt 0 -and $taskPrivateHashes.Contains([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($Bytes)))) { throw "Personal configuration bytes found: $Name" }
     $taskUtf8 = [Text.Encoding]::UTF8.GetString($Bytes); $taskUnicode = [Text.Encoding]::Unicode.GetString($Bytes)
     foreach ($taskSecret in $taskSecrets) {
@@ -37,7 +37,10 @@ function Check-Bytes([string]$Name, [byte[]]$Bytes) {
     }
 }
 $taskFiles = git -C $taskRoot -c core.quotepath=false ls-files --cached --others --exclude-standard
-foreach ($taskName in $taskFiles) { Check-Bytes $taskName ([IO.File]::ReadAllBytes((Join-Path $taskRoot $taskName))) }
+foreach ($taskName in $taskFiles) {
+    $taskInput = Join-Path $taskRoot $taskName
+    if (Test-Path -LiteralPath $taskInput -PathType Leaf) { Check-Bytes $taskName ([IO.File]::ReadAllBytes($taskInput)) }
+}
 if ($History) {
     foreach ($taskObject in (git -C $taskRoot -c core.quotepath=false rev-list --objects --all)) {
         if ($taskObject -notmatch '^([0-9a-f]+) (.+)$') { continue }

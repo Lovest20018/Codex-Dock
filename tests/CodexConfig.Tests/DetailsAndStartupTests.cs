@@ -39,6 +39,7 @@ internal static class DetailsAndStartupTests
             File.WriteAllBytes(Path.Combine(home, ConnectionDetails.FileName), new ConnectionDetails("External").Protect()!);
             Throws<InvalidOperationException>(() => store.Apply(pending));
             File.WriteAllBytes(Path.Combine(home, ConnectionDetails.FileName), first.Details!);
+            env.Value = "https://legacy-auth.example"; first = store.Load(home);
             env.ThrowOnce = true;
             Throws<IOException>(() => store.Apply(store.Plan(first, settings with { BaseUrl = "https://other.example", Details = new("After", "") }, updateDetails: true)));
             var rolledBack = store.Load(home);
