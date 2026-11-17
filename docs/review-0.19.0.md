@@ -6,6 +6,8 @@
 
 本版汇总 0.18.0 之后的共享应用层迁移、任务导航、增强与旧聊天接续、HTTP 响应头等待、模型能力保留、实验功能观察、手机协议和连接恢复、审查修复以及新图标。不是将旧 WPF 二进制改名为新版。
 
+发布前补齐 Web 图标：页头、favicon、Apple touch 和 Web 主屏幕图标由同一矢量生成，在 Dock 自有 UI 资源目录维护；请求沿用既有静态路径，固定上游图标与 Codex 提供商图标不变。HTML 和 manifest 引用使用实际新资源摘要，HTML 的样式 nonce/CSP 继续保留，新增 HTTP 与浏览器检查覆盖这些行为。
+
 正式发布使用干净提交；安装器、便携包与源码包的提交、版本、摘要和实际测试报告绑定。发布脚本要求 WinUI 报告和 manifest 声明一致，不接受 WPF 结果替代；Windows 和安卓独立标签、独立附件，发布后 Windows 保持仓库 latest。
 
 WinUI 发布明确包含同次编译的 XBF 与 PRI 页面资源，并直接生成 `CodexDock.exe`。包内包含 .NET / ASP.NET Core、Windows App SDK 与手机服务运行时；配置、认证、日志、聊天和签名材料均排除。

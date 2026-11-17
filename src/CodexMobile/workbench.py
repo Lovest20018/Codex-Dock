@@ -1,5 +1,9 @@
 """Dock lifecycle adapter for the pinned upstream Codex workbench."""
 import html
+import hashlib
+import json
+import re
+import secrets
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -67,7 +71,32 @@ class CodexSessions(DesktopSessions):
 
 
 class CodexHandler(Handler):
+    _brand_icons = frozenset(('/icon-ui.png', '/icon-favicon.png', '/icon-touch.png', '/icon-192.png', '/icon.png'))
+
+    @classmethod
+    def brand_asset(cls, path):
+        if path in cls._brand_icons:
+            return (Path(__file__).resolve().parent / 'ui' / 'brand' / path[1:]).read_bytes()
+        icons = [{'src': route + '?v=' + hashlib.sha256(cls.brand_asset(route)).hexdigest(),
+                  'sizes': str(size) + 'x' + str(size), 'type': 'image/png', 'purpose': 'any'}
+                 for route, size in (('/icon-192.png', 192), ('/icon.png', 512))]
+        return json.dumps({'name': 'Codex Dock', 'short_name': 'Dock', 'start_url': '/', 'display': 'standalone',
+                           'background_color': '#EEF2ED', 'theme_color': '#EEF2ED', 'icons': icons}, separators=(',', ':')).encode()
+
     def static_output(self, path, content_type):
+        if path in self._brand_icons or path == '/manifest.webmanifest':
+            return self.output(200, self.brand_asset(path), content_type)
+        if path == '/':
+            data = served_asset_bytes(self.server.web_dir, path)
+            # New content hashes prevent old immutable upstream icon URLs from
+            # surviving an upgrade in a browser or installed Web shortcut.
+            for route in (*self._brand_icons, '/manifest.webmanifest'):
+                url = route + '?v=' + hashlib.sha256(self.brand_asset(route)).hexdigest()
+                pattern = rb'(?P<prefix>\b(?:src|href)=["\'])' + re.escape(route.encode()) + rb'(?:\?[^"\']*)?(?P<suffix>["\'])'
+                data = re.sub(pattern, lambda match: match['prefix'] + url.encode() + match['suffix'], data)
+            nonce = secrets.token_urlsafe(24)
+            data = data.replace(b'<head>', ('<head><meta name="bridge-style-nonce" content="' + nonce + '">').encode(), 1)
+            return self.output(200, data, content_type, style_nonce=nonce)
         # Dock presentation shares the existing public URLs and upstream order.
         # output() retains request checks, CSP, compression and no-store headers.
         extra = {'/app.js': 'dock-ui.js', '/style.css': 'dock-ui.css'}.get(path)

@@ -1,10 +1,13 @@
 """Real adapter/HTTP regression using temporary homes, never real conversations."""
 import copy
+import hashlib
 import http.client
 import json
 import sys
 import tempfile
 import threading
+import re
+import struct
 import time
 import unittest
 from pathlib import Path
@@ -116,6 +119,34 @@ class WorkbenchTests(unittest.TestCase):
                 self.assertTrue(content.endswith((SOURCE / 'ui' / name).read_bytes()), path)
         for path in ('/ui/dock-ui.js', '/dock-ui.js'):
             self.assertEqual(self.request(path)[0], 404, path)
+
+    def test_owned_web_icons_replace_upstream_brand_and_invalidate_old_browser_cache(self):
+        code, page, headers = self.request('/')
+        self.assertEqual(code, 200)
+        nonce = re.search(rb'name="bridge-style-nonce" content="([^"]+)"', page).group(1).decode()
+        self.assertIn('nonce-' + nonce, headers['Content-Security-Policy'])
+        for route, size in (('/icon-ui.png', 64), ('/icon-favicon.png', 32), ('/icon-touch.png', 180), ('/icon-192.png', 192), ('/icon.png', 512)):
+            code, data, image_headers = self.request(route)
+            self.assertEqual(code, 200)
+            self.assertTrue(image_headers['Content-Type'].startswith('image/png'))
+            self.assertEqual(data[:8], b'\x89PNG\r\n\x1a\n')
+            self.assertEqual(struct.unpack('>II', data[16:24]), (size, size))
+            self.assertEqual(data, (SOURCE / 'ui' / 'brand' / route[1:]).read_bytes())
+            self.assertNotEqual(data, (UPSTREAM / 'web' / route[1:]).read_bytes())
+            if route in ('/icon-ui.png', '/icon-favicon.png', '/icon-touch.png'):
+                self.assertIn((route + '?v=' + hashlib.sha256(data).hexdigest()).encode(), page)
+                self.assertEqual(self.request(route + '?v=old-upstream-digest')[1], data)
+        _, manifest_bytes, manifest_headers = self.request('/manifest.webmanifest')
+        manifest = json.loads(manifest_bytes)
+        self.assertEqual(manifest['name'], 'Codex Dock')
+        self.assertEqual(manifest['theme_color'], '#EEF2ED')
+        self.assertIn(('/manifest.webmanifest?v=' + hashlib.sha256(manifest_bytes).hexdigest()).encode(), page)
+        for item in manifest['icons']:
+            self.assertEqual(self.request(item['src'])[0], 200)
+        self.assertEqual(self.request('/client-icons/codex.png')[1], (UPSTREAM / 'web/client-icons/codex.png').read_bytes())
+        self.assertEqual(self.request('/ui/brand/icon-ui.png')[0], 401)
+        self.login()
+        self.assertEqual(self.request('/ui/brand/icon-ui.png')[0], 404)
 
     def test_client_status_reads_stay_responsive_during_native_inspection(self):
         self.login()

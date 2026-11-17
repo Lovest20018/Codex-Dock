@@ -15,7 +15,7 @@
 | Windows · Codex Dock | **[0.19.0](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.19.0)** | WinUI 3 成为默认界面，五个任务入口、统一保存与应用流程、旧聊天接续和增强、网关等待设置、实验功能读取，以及手机网关兼容与恢复修复。 |
 | Android · Lovest Code | **[0.2.5](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.5)** | 更换为“接入 · 浅绿”图标，适配自适应启动器、Android 13+ 单色图标和通知；沿用原包名和签名，可覆盖升级。 |
 
-Windows 与 Android 现在使用同一套开口 D、接入箭头和浅绿配色。两个应用独立构建与发布；Windows 的更新入口只跟踪 `v*`，安卓应用内更新只跟踪 `android-v*`。
+Windows、Android 与 Web 现在使用同一套开口 D、接入箭头和浅绿配色，Web 页头、浏览器及添加到主屏幕图标随 Windows 手机后台更新。两个应用独立构建与发布；Windows 的更新入口只跟踪 `v*`，安卓应用内更新只跟踪 `android-v*`。
 
 ## 安装与覆盖升级
 

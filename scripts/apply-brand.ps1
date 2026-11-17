@@ -16,6 +16,36 @@ Copy-Item -LiteralPath (Join-Path $taskBrand 'app.ico') -Destination (Join-Path 
 Copy-Item -LiteralPath (Join-Path $taskBrand 'app.ico') -Destination (Join-Path $taskRoot 'src\CodexConfig.App\Assets\app.ico') -Force
 Copy-Item -LiteralPath (Join-Path $taskBrand 'mono-dark-32.png') -Destination (Join-Path $taskRoot 'src\CodexConfig.App\Assets\tray-dark.png') -Force
 Copy-Item -LiteralPath (Join-Path $taskBrand 'mono-light-32.png') -Destination (Join-Path $taskRoot 'src\CodexConfig.App\Assets\tray-light.png') -Force
+$taskWebBrand = Join-Path $taskRoot 'src\CodexMobile\ui\brand'
+New-Item -ItemType Directory -Path $taskWebBrand -Force | Out-Null
+foreach ($taskWebIcon in @{ 'icon-ui.png' = 64; 'icon-favicon.png' = 32; 'icon.png' = 512 }.GetEnumerator()) {
+    Copy-Item -LiteralPath (Join-Path $taskBrand "app-$($taskWebIcon.Value).png") -Destination (Join-Path $taskWebBrand $taskWebIcon.Key) -Force
+}
+# Render browser installation sizes from the same selected vectors.
+$taskWebDrawing = [Windows.Media.DrawingGroup]::new()
+$taskWebBackground = [Windows.Media.SolidColorBrush]::new([Windows.Media.ColorConverter]::ConvertFromString($taskSelected.background))
+$taskWebDrawing.Children.Add([Windows.Media.GeometryDrawing]::new($taskWebBackground,$null,[Windows.Media.RectangleGeometry]::new([Windows.Rect]::new(0,0,128,128),30,30)))
+foreach ($taskShape in $taskSelected.shapes) {
+    $taskBrush = [Windows.Media.SolidColorBrush]::new([Windows.Media.ColorConverter]::ConvertFromString($taskSelected.($taskShape.fill)))
+    $taskWebDrawing.Children.Add([Windows.Media.GeometryDrawing]::new($taskBrush,$null,[Windows.Media.Geometry]::Parse($taskShape.path)))
+}
+function Write-TaskWebPng([int]$Size, [string]$Path) {
+    $taskVisual = [Windows.Media.DrawingVisual]::new()
+    $taskContext = $taskVisual.RenderOpen()
+    try {
+        $taskContext.PushTransform([Windows.Media.ScaleTransform]::new($Size / 128.0,$Size / 128.0))
+        $taskContext.DrawDrawing($taskWebDrawing)
+        $taskContext.Pop()
+    } finally { $taskContext.Close() }
+    $taskBitmap = [Windows.Media.Imaging.RenderTargetBitmap]::new($Size,$Size,96,96,[Windows.Media.PixelFormats]::Pbgra32)
+    $taskBitmap.Render($taskVisual)
+    $taskEncoder = [Windows.Media.Imaging.PngBitmapEncoder]::new()
+    $taskEncoder.Frames.Add([Windows.Media.Imaging.BitmapFrame]::Create($taskBitmap))
+    $taskStream = [IO.File]::Create($Path)
+    try { $taskEncoder.Save($taskStream) } finally { $taskStream.Dispose() }
+}
+Write-TaskWebPng 180 (Join-Path $taskWebBrand 'icon-touch.png')
+Write-TaskWebPng 192 (Join-Path $taskWebBrand 'icon-192.png')
 $taskXaml = [Collections.Generic.List[string]]::new()
 $taskXaml.Add('<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">')
 $taskXaml.Add('  <DrawingImage x:Key="BrandMark"><DrawingImage.Drawing><DrawingGroup>')
@@ -59,4 +89,4 @@ foreach ($taskApi in @(26,33)) {
     $taskLines += '</adaptive-icon>'
     [IO.File]::WriteAllText((Join-Path $taskFolder 'ic_launcher.xml'),($taskLines -join "`n") + "`n",[Text.UTF8Encoding]::new($false))
 }
-Write-Output 'Applied PORT geometry with light sage palette to owned Windows and Android assets.'
+Write-Output 'Applied PORT geometry with light sage palette to owned Windows, Android and Web assets.'
