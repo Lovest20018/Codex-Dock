@@ -355,7 +355,7 @@ internal sealed class WindowsCodexDesktopPlatform(string? fixtureExecutable = nu
         {
             // Electron's window close hides Codex to its tray. Use the bundled
             // native Quit command, which also preserves Codex's save prompts.
-            await RestoreHiddenForQuitAsync(process, expected, home, cancellation).ConfigureAwait(false);
+            await PrepareWindowForQuitAsync(process, expected, home, cancellation).ConfigureAwait(false);
             await new CodexDesktopQuitClient().RequestAsync(expected, cancellation).ConfigureAwait(false);
             return;
         }
@@ -369,7 +369,7 @@ internal sealed class WindowsCodexDesktopPlatform(string? fixtureExecutable = nu
             throw new IOException("无法请求 Codex 正常退出，请在 Codex 菜单中完成退出后重试。");
     }
 
-    private async Task RestoreHiddenForQuitAsync(Process process, CodexDesktopProcess expected, string? home, CancellationToken cancellation)
+    private async Task PrepareWindowForQuitAsync(Process process, CodexDesktopProcess expected, string? home, CancellationToken cancellation)
     {
         var candidates = new List<IntPtr>();
         EnumWindows((window, _) =>
@@ -388,14 +388,18 @@ internal sealed class WindowsCodexDesktopPlatform(string? fixtureExecutable = nu
         }, IntPtr.Zero);
         if (candidates.Count != 1) return; // Report ambiguity without changing any window.
         var selected = candidates[0];
-        if (IsWindowVisible(selected) && !IsIconic(selected) || !IsWindowEnabled(selected)) return;
+        if (!IsWindowEnabled(selected)) return;
         GetWindowThreadProcessId(selected, out var actual);
         if (actual != expected.Id || process.HasExited || process.StartTime.ToFileTimeUtc() != expected.Started) return;
         if (home is null || expected.Arguments.UserDataDirectory is not { } profile || !Directory.Exists(profile))
+        {
+            if (IsWindowVisible(selected) && !IsIconic(selected)) return;
             throw new IOException("请先从 Codex 托盘打开所选实例，再点击重启；尚未提交退出命令。");
+        }
         // Native ShowWindow cannot restore Electron's internal hidden state.
         // Its profile-specific single-instance activation asks that same owner
-        // to show itself, without navigating a chat or creating another profile.
+        // to show itself and also refreshes a newly opened renderer before UIA,
+        // without navigating a chat or creating another profile.
         var before = CodexDesktop.Group(Running());
         if (before.Any(target => target.MainProcess is { } root && !CodexDesktop.SameProcess(root, expected) &&
                 (target.UserDataDirectory is null || CodexDesktop.SameDirectory(target.UserDataDirectory, profile))))
@@ -419,7 +423,17 @@ internal sealed class WindowsCodexDesktopPlatform(string? fixtureExecutable = nu
                 target.UserDataDirectory is { } directory && CodexDesktop.SameDirectory(directory, profile)) ||
             current.Any(target => target.MainProcess is { } root && !before.Any(old => old.MainProcess is { } prior && CodexDesktop.SameProcess(prior, root))))
             throw new IOException("Codex 实例在唤回时已变化，尚未提交退出命令，请重新核对。");
-        await Task.Delay(250, cancellation).ConfigureAwait(false);
+        var showing = Stopwatch.StartNew();
+        while (!IsWindowVisible(selected) || IsIconic(selected))
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (process.HasExited || process.StartTime.ToFileTimeUtc() != expected.Started)
+                throw new IOException("Codex 实例在唤回时已变化，尚未提交退出命令。");
+            if (showing.Elapsed >= TimeSpan.FromSeconds(5))
+                throw new IOException("Codex 尚未从托盘打开，请先打开所选实例后重试；尚未提交退出命令。");
+            await Task.Delay(100, cancellation).ConfigureAwait(false);
+        }
+        await Task.Delay(300, cancellation).ConfigureAwait(false);
     }
 
     public bool Activate(CodexDesktopProcess expected)
