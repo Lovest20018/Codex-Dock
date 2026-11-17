@@ -102,6 +102,7 @@ public static class BuiltInTemplates
     public static ConfigTemplate Deep { get; } = new("deep-xhigh", "复杂任务 · xhigh", "Codex Dock", "",
         "只将推理强度设为 xhigh；需要当前模型支持，不代表自动使用 Fast 档位。", [new("model_reasoning_effort", "\"xhigh\"")]);
     public static IReadOnlyList<ConfigTemplate> All { get; } = Array.AsReadOnly(new[] { Daily, Deep, KrillCommunity, DisableLegacyContext });
+    public static IReadOnlyList<ConfigTemplate> Defaults { get; } = Array.AsReadOnly(new[] { Daily, Deep, DisableLegacyContext });
 
     public static bool IsCustomized(ConfigTemplate template) => All.FirstOrDefault(item => item.Id == template.Id) is { } builtIn &&
         (template.Name != builtIn.Name || template.Description != builtIn.Description || !template.Settings.SequenceEqual(builtIn.Settings));

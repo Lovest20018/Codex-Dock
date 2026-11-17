@@ -32,6 +32,10 @@ class CatalogError(RuntimeError):
     pass
 
 
+class CatalogIdentityChanged(CatalogError):
+    code = 'model_identity_changed'
+
+
 class SkillPathChanged(ValueError):
     pass
 
@@ -387,7 +391,16 @@ class Catalog:
                      or name.endswith(('_API_KEY', '_AUTH_TOKEN', '_BEARER_TOKEN', '_BASE_URL'))}
         # Do not reuse catalogs cached before desktop requests stopped borrowing
         # gateway environment credentials.
-        return ModelStore.key('codex-desktop-v2', str(self.home.resolve()), str(Path(cwd).resolve()), provider, files, variables)
+        project_files = []
+        directory = Path(cwd).resolve()
+        for parent in (directory, *directory.parents):
+            path = parent / '.codex/config.toml'
+            try:
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            except OSError:
+                digest = None
+            project_files.append((str(path), digest))
+        return ModelStore.key('codex-desktop-v3', str(self.home.resolve()), str(directory), provider, files, variables, project_files)
 
     def _start_model_refresh(self, cwd, provider, identity):
         if not self.allow_background_refresh:
@@ -526,7 +539,12 @@ class Catalog:
         env['CODEX_HOME'] = str(self.home)
         options = {'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {}
         try:
-            process = subprocess.Popen([str(executable), 'app-server', '--listen', 'stdio://'], cwd=cwd, env=env,
+            # Only the read-only helper's launch cwd may fall back. RPCs and
+            # cache identities continue to use the original project directory.
+            launch_cwd = Path(cwd)
+            while not launch_cwd.is_dir() and launch_cwd != launch_cwd.parent:
+                launch_cwd = launch_cwd.parent
+            process = subprocess.Popen([str(executable), 'app-server', '--listen', 'stdio://'], cwd=launch_cwd, env=env,
                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                        text=True, encoding='utf-8', **options)
         except OSError as exc:
@@ -869,20 +887,24 @@ class Catalog:
                 try:
                     raw = self._fetch(cwd, provider, kind)
                 except CatalogError as exc:
+                    if self.model_identity(cwd, provider) != identity:
+                        raise CatalogIdentityChanged('模型接入已变化，请重试') from exc
                     if persisted:
                         return {**persisted[1], 'modelError': str(exc),
                                 'cache': {'state': 'stale', 'updatedAt': persisted[0], 'identity': identity}}
-                    raise
+                    return {'models': [], 'kind': 'models', 'modelError': str(exc), 'fastMode': {'allowed': False},
+                            'cache': {'state': 'unavailable', 'identity': identity}}
                 models = self.normalize_models(raw['models'])
                 value = {'models': models, 'kind': 'models', 'modelSource': raw.get('modelSource', 'codex'),
                          'fastMode': raw.get('fastMode', {'allowed': False}),
                          'modelError': raw.get('modelError'), 'currentModel': raw.get('currentModel'),
                          'currentEffort': raw.get('currentEffort')}
                 if self.model_identity(cwd, provider) != identity:
-                    raise CatalogError('模型接入已变化，请重试')
-                if value.get('modelError'):
+                    raise CatalogIdentityChanged('模型接入已变化，请重试')
+                if value.get('modelError') or not models:
+                    value['modelError'] = value.get('modelError') or '模型目录暂不可用，可手动填写模型'
                     return ({**persisted[1], 'modelError': value['modelError'],
-                             'cache': {'state': 'stale', 'updatedAt': persisted[0], 'identity': identity}} if persisted else value)
+                             'cache': {'state': 'stale', 'updatedAt': persisted[0], 'identity': identity}} if persisted else {**value, 'cache': {'state': 'unavailable', 'identity': identity}})
                 try:
                     updated_at = self.model_store.write(identity, value)
                 except (OSError, sqlite3.DatabaseError):

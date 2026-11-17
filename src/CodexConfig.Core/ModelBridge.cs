@@ -19,12 +19,13 @@ public sealed record BridgeStatus(long Requests, long FastRequests, long AutoRev
 // A narrow inference bridge. Account, plugin and login endpoints are intentionally absent.
 public sealed class ModelBridge : IAsyncDisposable
 {
-    public const int ProtocolVersion = 6;
+    public const int ProtocolVersion = 8;
     private readonly Func<MixedConnection> readConnection;
     private readonly Func<byte[]?> readAuth;
     private readonly HttpClient client;
     private readonly HttpClient proxyClient;
     private readonly IWebProxy proxy;
+    private readonly TimeProvider time;
     private readonly SemaphoreSlim slots = new(16);
     private readonly ConcurrentDictionary<HttpContext, byte> activeRequests = new();
     private WebApplication? app;
@@ -38,12 +39,13 @@ public sealed class ModelBridge : IAsyncDisposable
     private static readonly HashSet<string> ExcludedHeaders = new(StringComparer.OrdinalIgnoreCase)
     { "Connection", "Keep-Alive", "Transfer-Encoding", "TE", "Trailer", "Upgrade", "Proxy-Authenticate", "Proxy-Authorization", "Set-Cookie", "Content-Length" };
 
-    public ModelBridge(Func<MixedConnection> readConnection, Func<byte[]?> readAuth, HttpMessageHandler? handler = null, IWebProxy? proxy = null)
+    public ModelBridge(Func<MixedConnection> readConnection, Func<byte[]?> readAuth, HttpMessageHandler? handler = null, IWebProxy? proxy = null, TimeProvider? timeProvider = null)
     {
         this.readConnection = readConnection; this.readAuth = readAuth;
+        time = timeProvider ?? TimeProvider.System;
         this.proxy = proxy ?? new SystemHttpProxy();
-        client = handler is null ? new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = false }) : new(handler);
-        proxyClient = handler is null ? new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = true, Proxy = this.proxy }) : client;
+        client = handler is null ? new(new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = false, ConnectTimeout = TimeSpan.FromSeconds(30) }) : new(handler);
+        proxyClient = handler is null ? new(new SocketsHttpHandler { AllowAutoRedirect = false, UseCookies = false, UseProxy = true, Proxy = this.proxy, ConnectTimeout = TimeSpan.FromSeconds(30) }) : client;
         client.Timeout = Timeout.InfiniteTimeSpan;
         proxyClient.Timeout = Timeout.InfiniteTimeSpan;
     }
@@ -126,6 +128,13 @@ public sealed class ModelBridge : IAsyncDisposable
             }
             finally { slots.Release(); }
         }
+        catch (HttpPhaseTimeoutException error)
+        {
+            transfer?.End(error.Headers ? "headers_timeout" : "stream_idle_timeout");
+            if (context.RequestAborted.IsCancellationRequested || context.Response.HasStarted) context.Abort();
+            else await WriteErrorAsync(context, 504, error.Headers ? "model_response_headers_timeout" : "model_stream_idle_timeout",
+                error.Headers ? "等待模型入口响应头超过 " + error.Seconds + " 秒，可在连接设置中调整网关等待。" : "模型入口连续 5 分钟未返回数据，连接已结束。", null, null);
+        }
         catch (OperationCanceledException)
         {
             transfer?.End(context.RequestAborted.IsCancellationRequested ? "client_disconnected" : "timeout");
@@ -166,22 +175,27 @@ public sealed class ModelBridge : IAsyncDisposable
             if (context.Request.Headers.TryGetValue("Content-Encoding", out var encoding))
                 request.Content.Headers.TryAddWithoutValidation("Content-Encoding", encoding.ToArray());
         }
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
-        timeout.CancelAfter(TimeSpan.FromSeconds(60));
+        if (settings.HeaderTimeoutSeconds is < 60 or > 3600) throw new InvalidDataException("模型网关等待设置无效。");
+        using var headerDeadline = new HttpDeadline(time, TimeSpan.FromSeconds(settings.HeaderTimeoutSeconds), context.RequestAborted);
         transfer.Upstream();
-        using var response = await (HttpConnectionPolicy.CanUseProxy(settings.BaseUrl, settings.UseSystemProxy) ? proxyClient : client).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        HttpResponseMessage received;
+        try { received = await (HttpConnectionPolicy.CanUseProxy(settings.BaseUrl, settings.UseSystemProxy) ? proxyClient : client).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, headerDeadline.Token); }
+        catch (OperationCanceledException) when (!context.RequestAborted.IsCancellationRequested && headerDeadline.Expired)
+        { throw new HttpPhaseTimeoutException(true, settings.HeaderTimeoutSeconds); }
+        using var response = received;
+        headerDeadline.Stop();
+        using var timeout = new HttpDeadline(time, TimeSpan.FromMinutes(5), context.RequestAborted);
         transfer.Headers();
         observer.SetSse(string.Equals(response.Content.Headers.ContentType?.MediaType, "text/event-stream", StringComparison.OrdinalIgnoreCase));
         var requestId = response.Headers.TryGetValues("x-request-id", out var ids) ? SafeValue(ids.FirstOrDefault(), settings) : null;
         if (!response.IsSuccessStatusCode)
         {
-            transfer.End("upstream_error");
             var status = (int)response.StatusCode;
             var authFailure = status is 401 or 403;
             string? upstreamCode = null;
             try
             {
-                var errorBytes = await ReadBoundedAsync(response.Content, 32 * 1024, timeout.Token);
+                var errorBytes = await ReadBoundedAsync(response.Content, 32 * 1024, timeout);
                 using var errorJson = JsonDocument.Parse(errorBytes);
                 if (errorJson.RootElement.TryGetProperty("error", out var detail) && detail.ValueKind == JsonValueKind.Object &&
                     detail.TryGetProperty("code", out var codeValue) && codeValue.ValueKind == JsonValueKind.String)
@@ -189,6 +203,7 @@ public sealed class ModelBridge : IAsyncDisposable
             }
             catch (Exception error) when (error is JsonException or InvalidDataException) { }
             // Keep upstream auth failures separate from the native account's refresh path.
+            transfer.End("upstream_error");
             await WriteErrorAsync(context, authFailure || status is >= 300 and < 400 ? 502 : status,
                 authFailure ? "model_authentication_failed" : "model_upstream_error",
                 authFailure ? $"模型入口鉴权失败（HTTP {status}），请检查 API Key。" : $"模型入口返回 HTTP {status}。", status, requestId, upstreamCode);
@@ -197,7 +212,7 @@ public sealed class ModelBridge : IAsyncDisposable
         diagnostics = diagnostics with { LastError = null, LastUpstreamStatus = (int)response.StatusCode, LastRequestId = requestId, LastUpstreamCode = null };
         if (HttpMethods.IsGet(context.Request.Method))
         {
-            var bytes = await ReadBoundedAsync(response.Content, 2 * 1024 * 1024, timeout.Token);
+            var bytes = await ReadBoundedAsync(response.Content, 2 * 1024 * 1024, timeout);
             byte[] catalog;
             try { catalog = NativeModelCatalog.Convert(bytes); }
             catch (Exception error) when (error is InvalidDataException or JsonException)
@@ -213,17 +228,21 @@ public sealed class ModelBridge : IAsyncDisposable
         context.Response.StatusCode = (int)response.StatusCode;
         foreach (var header in response.Headers.Concat(response.Content.Headers))
             if (!ExcludedHeaders.Contains(header.Key)) context.Response.Headers[header.Key] = header.Value.ToArray();
-        await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
-        timeout.CancelAfter(TimeSpan.FromMinutes(5));
         var chunk = new byte[16384];
         int count;
-        while ((count = await stream.ReadAsync(chunk, timeout.Token)) > 0)
+        try
         {
-            transfer.Data(); observer.Feed(chunk.AsSpan(0, count));
-            timeout.CancelAfter(TimeSpan.FromMinutes(5));
-            await context.Response.Body.WriteAsync(chunk.AsMemory(0, count), timeout.Token);
-            await context.Response.Body.FlushAsync(timeout.Token);
+            await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
+            while ((count = await stream.ReadAsync(chunk, timeout.Token)) > 0)
+            {
+                transfer.Data(); observer.Feed(chunk.AsSpan(0, count));
+                timeout.Reset(TimeSpan.FromMinutes(5));
+                await context.Response.Body.WriteAsync(chunk.AsMemory(0, count), timeout.Token);
+                await context.Response.Body.FlushAsync(timeout.Token);
+            }
         }
+        catch (OperationCanceledException) when (!context.RequestAborted.IsCancellationRequested && timeout.Expired)
+        { throw new HttpPhaseTimeoutException(false, 300); }
         observer.Finish();
     }
 
@@ -252,20 +271,72 @@ public sealed class ModelBridge : IAsyncDisposable
         transfer.Headers();
         lifetime.CancelAfter(TimeSpan.FromMinutes(5));
         using var downstream = await context.WebSockets.AcceptWebSocketAsync();
-        var send = PumpAsync(downstream, upstream, lifetime, true, observer, transfer, context.Request.Headers["x-openai-subagent"] == "guardian");
-        var receive = PumpAsync(upstream, downstream, lifetime, false, observer, transfer);
-        var ended = await Task.WhenAny(send, receive);
+        var route = new BridgeSocketRoute(BridgeSocketRoute.Fingerprint(settings), () =>
+        {
+            var current = readConnection();
+            if (!HttpConnectionPolicy.IsAuthorized(current.BaseUrl, current.HttpOrigin)) throw new IOException("站点授权已改变。");
+            return BridgeSocketRoute.Fingerprint(current);
+        });
+        var send = PumpAsync(downstream, upstream, lifetime, true, observer, transfer, context.Request.Headers["x-openai-subagent"] == "guardian", route);
+        var receive = PumpAsync(upstream, downstream, lifetime, false, observer, transfer, route: route);
+        var retire = RetireChangedSocketAsync(route, lifetime.Token);
+        var ended = await Task.WhenAny(send, receive, retire);
         var endReason = context.RequestAborted.IsCancellationRequested ? "client_disconnected" : lifetime.IsCancellationRequested ? "timeout" : ended.IsFaulted ? "transport_error" : "peer_closed";
+        if (endReason == "peer_closed" && route.TryRetire())
+        {
+            // The route is already fenced against new requests and its final
+            // response was forwarded before it became idle. Complete a bounded
+            // close handshake instead of resetting TCP as soon as the timer ends.
+            using var closing = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); closing.CancelAfter(TimeSpan.FromSeconds(2));
+            try
+            {
+                await downstream.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Model connection updated", closing.Token);
+                if (upstream.State is WebSocketState.Open or WebSocketState.CloseReceived)
+                    try { await upstream.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Model connection updated", closing.Token); }
+                    catch (Exception error) when (error is WebSocketException or OperationCanceledException) { }
+                await send.WaitAsync(closing.Token);
+                // A late client message can cause the fenced send pump to end
+                // before reading the acknowledgement. Drain only until Close;
+                // none of these messages may reach the retired upstream route.
+                var closingBuffer = new byte[4096];
+                while (downstream.State == WebSocketState.CloseSent)
+                    if ((await downstream.ReceiveAsync(closingBuffer.AsMemory(), closing.Token)).MessageType == WebSocketMessageType.Close) break;
+                await receive.WaitAsync(closing.Token);
+            }
+            catch (Exception error) when (error is WebSocketException or OperationCanceledException) { }
+        }
+        else if (endReason == "peer_closed" && (ReferenceEquals(ended, send) || ReferenceEquals(ended, receive)))
+        {
+            var source = ReferenceEquals(ended, receive) ? (WebSocket)upstream : downstream;
+            var destination = ReferenceEquals(ended, receive) ? downstream : (WebSocket)upstream;
+            var other = ReferenceEquals(ended, receive) ? send : receive;
+            // The destination may still be receiving already-forwarded frames.
+            // Propagate the close and allow its acknowledgement before Abort;
+            // an immediate TCP reset can otherwise discard the final message.
+            if (source.State == WebSocketState.CloseReceived && destination.State == WebSocketState.Open)
+            {
+                using var closing = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); closing.CancelAfter(TimeSpan.FromSeconds(2));
+                try
+                {
+                    await destination.CloseOutputAsync(source.CloseStatus ?? WebSocketCloseStatus.NormalClosure, source.CloseStatusDescription, closing.Token);
+                    try { await source.CloseOutputAsync(source.CloseStatus ?? WebSocketCloseStatus.NormalClosure, source.CloseStatusDescription, closing.Token); }
+                    catch (Exception error) when (error is WebSocketException or OperationCanceledException) { }
+                    await other.WaitAsync(closing.Token);
+                }
+                catch (Exception error) when (error is WebSocketException or OperationCanceledException) { }
+            }
+        }
         lifetime.Cancel(); downstream.Abort(); upstream.Abort();
-        try { await Task.WhenAll(send, receive); } catch (Exception error) when (error is OperationCanceledException or WebSocketException) { }
+        try { await Task.WhenAll(send, receive, retire); } catch (Exception error) when (error is OperationCanceledException or WebSocketException) { }
         transfer.End(endReason);
     }
 
-    private async Task PumpAsync(WebSocket source, WebSocket destination, CancellationTokenSource lifetime, bool inspect, BridgeTelemetry.Observer observer, BridgeTelemetry.Transfer transfer, bool guardian = false)
+    private async Task PumpAsync(WebSocket source, WebSocket destination, CancellationTokenSource lifetime, bool inspect, BridgeTelemetry.Observer observer, BridgeTelemetry.Transfer transfer, bool guardian = false, BridgeSocketRoute? route = null)
     {
         var cancellation = lifetime.Token;
         var buffer = new byte[16384];
         using var message = new MemoryStream();
+        using var serverMessage = new MemoryStream(); var beginning = true;
         while (!cancellation.IsCancellationRequested)
         {
             var result = await source.ReceiveAsync(buffer.AsMemory(), cancellation);
@@ -273,16 +344,31 @@ public sealed class ModelBridge : IAsyncDisposable
             if (result.MessageType == WebSocketMessageType.Close) return;
             if (inspect)
             {
+                if (beginning && route is not null && !route.BeginMessage()) return;
                 if (message.Length + result.Count > MaxBody) throw new InvalidDataException("Model message too large.");
                 message.Write(buffer, 0, result.Count);
-                if (result.EndOfMessage) { var bytes = message.ToArray(); CountRequest(bytes, guardian); observer.Request(bytes); message.SetLength(0); }
+                if (result.EndOfMessage) { var bytes = message.ToArray(); CountRequest(bytes, guardian); observer.Request(bytes); route?.ClientMessage(bytes); message.SetLength(0); }
             }
             else if (result.MessageType == WebSocketMessageType.Text)
             {
+                // Completion/control frames are small. Oversized output fragments
+                // need no duplicate multi-megabyte buffer for route retirement.
+                if (serverMessage.Length + result.Count <= 1024 * 1024) serverMessage.Write(buffer, 0, result.Count);
                 transfer.Data(); observer.Feed(buffer.AsSpan(0, result.Count));
                 if (result.EndOfMessage) observer.Finish();
             }
             await destination.SendAsync(buffer.AsMemory(0, result.Count), result.MessageType, result.EndOfMessage, cancellation);
+            if (!inspect && result.EndOfMessage) { route?.ServerMessage(serverMessage.ToArray()); serverMessage.SetLength(0); }
+            beginning = result.EndOfMessage;
+        }
+    }
+
+    private static async Task RetireChangedSocketAsync(BridgeSocketRoute route, CancellationToken cancellation)
+    {
+        while (!cancellation.IsCancellationRequested)
+        {
+            if (route.TryRetire()) return;
+            await Task.Delay(200, cancellation);
         }
     }
 
@@ -320,18 +406,50 @@ public sealed class ModelBridge : IAsyncDisposable
     private static string? SafeValue(string? value, MixedConnection settings) => string.IsNullOrEmpty(value) || value.Length > 150 ||
         value.Any(c => !(char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '.' or ':')) || value.Contains(settings.ApiKey, StringComparison.Ordinal) || value.Contains(settings.LocalToken, StringComparison.Ordinal) ? null : value;
 
-    private static async Task<byte[]> ReadBoundedAsync(HttpContent content, int limit, CancellationToken cancellation)
+    private static async Task<byte[]> ReadBoundedAsync(HttpContent content, int limit, HttpDeadline timeout)
     {
-        await using var input = await content.ReadAsStreamAsync(cancellation); using var output = new MemoryStream();
-        var bytes = new byte[8192]; int count;
-        while ((count = await input.ReadAsync(bytes, cancellation)) > 0) { if (output.Length + count > limit) throw new InvalidDataException("模型目录过大。"); await output.WriteAsync(bytes.AsMemory(0, count), cancellation); }
-        return output.ToArray();
+        try
+        {
+            await using var input = await content.ReadAsStreamAsync(timeout.Token); using var output = new MemoryStream();
+            var bytes = new byte[8192]; int count;
+            while ((count = await input.ReadAsync(bytes, timeout.Token)) > 0)
+            {
+                if (output.Length + count > limit) throw new InvalidDataException("模型响应过大。");
+                timeout.Reset(TimeSpan.FromMinutes(5));
+                await output.WriteAsync(bytes.AsMemory(0, count), timeout.Token);
+            }
+            return output.ToArray();
+        }
+        catch (OperationCanceledException) when (timeout.Expired)
+        { throw new HttpPhaseTimeoutException(false, 300); }
+    }
+
+    private sealed class HttpPhaseTimeoutException(bool headers, int seconds) : TimeoutException
+    { internal bool Headers => headers; internal int Seconds => seconds; }
+    private sealed class HttpDeadline : IDisposable
+    {
+        private readonly CancellationTokenSource deadline = new(), linked;
+        private readonly ITimer timer;
+        internal HttpDeadline(TimeProvider time, TimeSpan duration, CancellationToken cancellation)
+        {
+            linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, deadline.Token);
+            timer = time.CreateTimer(_ => { try { deadline.Cancel(); } catch (ObjectDisposedException) { } }, null, duration, Timeout.InfiniteTimeSpan);
+        }
+        internal CancellationToken Token => linked.Token;
+        internal bool Expired => deadline.IsCancellationRequested;
+        internal void Reset(TimeSpan duration) => timer.Change(duration, Timeout.InfiniteTimeSpan);
+        internal void Stop() => timer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        public void Dispose() { timer.Dispose(); linked.Dispose(); deadline.Dispose(); }
     }
 
     public async ValueTask DisposeAsync()
     {
         Volatile.Write(ref stopRequested, 1);
-        foreach (var context in activeRequests.Keys) context.Abort();
+        foreach (var context in activeRequests.Keys)
+        {
+            try { context.Abort(); }
+            catch (ObjectDisposedException) { } // A disconnected request can leave this snapshot while Kestrel disposes it.
+        }
         if (app is not null) { await app.StopAsync(); await app.DisposeAsync(); }
         if (!ReferenceEquals(proxyClient, client)) proxyClient.Dispose();
         client.Dispose(); slots.Dispose();

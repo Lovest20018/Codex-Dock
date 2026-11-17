@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using CodexConfig.Core;
+using CodexConfig.Application;
 
 namespace CodexConfig.App;
 
@@ -20,12 +21,15 @@ internal sealed class ProfileWindow : Window
     private readonly byte[]? inherited;
     private ProfileSnapshot? snapshot;
     private ProfilePlan? plan;
+    private ProfileSaveReview? saveReview;
+    private readonly ProfileApplicationService profileService;
     private readonly bool isolatedTest;
 
     internal ProfileWindow(string home, string model, bool isolatedTest = false)
     {
         this.isolatedTest = isolatedTest;
         this.home = home; defaultModel = model;
+        profileService = new(store, new(new WorkspaceSession(home)));
         var basePath = Path.Combine(home, "config.toml");
         inherited = File.Exists(basePath) && new FileInfo(basePath).Length <= 8 * 1024 * 1024 ? File.ReadAllBytes(basePath) : null;
         Title = "独立 Profile 文件"; Width = 920; Height = 790; MinWidth = 650; MinHeight = 550;
@@ -61,8 +65,14 @@ internal sealed class ProfileWindow : Window
         restore.Click += (_, _) =>
         {
             if (snapshot is null || !ResolveDraft()) return;
-            if (MessageBox.Show(this, "恢复此 Profile 上次保存前的内容？当前内容也会加密备份。", "恢复 Profile", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
-            try { store.Restore(store.Load(home, snapshot.Name)); LoadProfile(snapshot.Name); } catch (Exception ex) { status.Text = ex.Message; }
+            try
+            {
+                var review = profileService.PrepareRestore(store.Load(home, snapshot.Name));
+                var description = string.Join("\n\n", review.Changes.Select(change => change.Name + "\n" + change.Path + "\n当前：" + change.Previous + "\n恢复为：" + change.Next));
+                if (MessageBox.Show(this, "目标：" + review.Target + "\n来源：" + review.Source + "\n\n" + description + "\n\n当前内容也会加密备份，主配置不切换。", "恢复 Profile", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+                var result = profileService.Save(review, () => (home, snapshot.Name), () => { }); if (!result.Succeeded) throw new IOException(result.Message); LoadProfile(snapshot.Name);
+            }
+            catch (Exception ex) { status.Text = ex.Message; }
         };
         editor.Changed += Invalidate; Closing += (_, e) => { if (!ResolveDraft()) e.Cancel = true; };
         LoadProfile();
@@ -72,14 +82,14 @@ internal sealed class ProfileWindow : Window
         try
         {
             var name = selected ?? names.Text.Trim(); snapshot = store.Load(home, name); names.Text = name;
-            changes.Clear(); plan = null; save.IsEnabled = false; preview.Text = "先编辑，再预览所选字段。";
+            changes.Clear(); plan = null; saveReview = null; save.IsEnabled = false; preview.Text = "先编辑，再预览所选字段。";
             editor.Configure(snapshot.Config, changes); editor.SetContext(home, defaultModel, inherited);
             status.Text = ProfileStore.FilePath(home, name) + "\n使用：codex --profile " + name + "；当前聊天和主配置未切换。";
             restore.IsEnabled = store.LatestBackup(home, name) is not null;
         }
         catch (Exception ex) { snapshot = null; save.IsEnabled = false; status.Text = ex.Message; }
     }
-    private void Invalidate() { plan = null; save.IsEnabled = false; preview.Text = "有草稿修改；请预览后保存。"; }
+    private void Invalidate() { plan = null; saveReview = null; save.IsEnabled = false; preview.Text = "有草稿修改；请预览后保存。"; }
     private void Preview()
     {
         try
@@ -87,14 +97,15 @@ internal sealed class ProfileWindow : Window
             if (snapshot is null) throw new InvalidOperationException("请先读取或新建 Profile。");
             editor.Revalidate(); if (editor.Errors.Count > 0) throw new ArgumentException(string.Join("\n", editor.Errors.Values.Distinct()));
             plan = store.Plan(snapshot, changes); preview.Text = plan.Preview + (plan.Warnings.Count > 0 ? "\n\n" + string.Join("\n", plan.Warnings) : "");
+            saveReview = profileService.PrepareReview(snapshot, changes);
             save.IsEnabled = changes.Count > 0;
         }
         catch (Exception ex) { plan = null; save.IsEnabled = false; preview.Text = ex.Message; }
     }
     private void SaveProfile()
     {
-        if (plan is null || snapshot is null) return;
-        try { store.Save(plan); names.ItemsSource = store.List(home); LoadProfile(snapshot.Name); status.Text += "\n已保存，原内容已加密备份。"; }
+        if (plan is null || saveReview is null || snapshot is null) return;
+        try { var result = profileService.Save(saveReview, () => (home, snapshot.Name), () => { }); if (!result.Succeeded) throw new IOException(result.Message); names.ItemsSource = store.List(home); LoadProfile(snapshot.Name); status.Text += "\n已保存，原内容已加密备份。"; }
         catch (Exception ex) { status.Text = ex.Message; }
     }
     private bool ResolveDraft()

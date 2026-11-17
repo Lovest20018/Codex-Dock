@@ -35,6 +35,7 @@ public partial class MainWindow
         {
             // Smoke runs only read their isolated home and never inspect real processes.
             codexRuntime = smokeOutput is null ? await Task.Run(CodexRuntimeStatus.Read) : new(true, 0);
+            workspaceCoordinator.Runtime(codexRuntime);
             var current = await Task.Run(() => store.Load(expectedHome));
             if (closing || desktopRestartBusy || home != expectedHome || !ReferenceEquals(snapshot, expectedSnapshot)) return;
             localStateError = "";
@@ -60,7 +61,7 @@ public partial class MainWindow
         finally
         {
             localStatePolling = false;
-            if (!closing) { RefreshOverview(); RefreshSpeedSettings(); RefreshModelBehavior(); await RefreshAllGatewaysAsync(); }
+            if (!closing) { RefreshOverview(); RefreshSpeedSettings(); RefreshModelBehavior(); await RefreshAllGatewaysAsync(); if (smokeOutput is null) await TryAutomaticEnhancementsAsync(); }
         }
     }
 

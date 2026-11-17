@@ -7,5 +7,6 @@
   <ItemGroup>
     <EmbeddedResource Include="..\..\config\config-schema.json" LogicalName="CodexConfig.Core.config-schema.json" />
     <EmbeddedResource Include="..\..\config\config-help.json" LogicalName="CodexConfig.Core.config-help.json" />
+    <EmbeddedResource Include="desktop-connections.js" LogicalName="CodexConfig.Core.desktop-connections.js" />
   </ItemGroup>
 </Project>

@@ -10,8 +10,9 @@ public sealed record SessionObservation(string File, string? Model, string? Reas
 // Read only a user-selected rollout from this home, retaining whitelisted metadata, never conversation text.
 public static class SessionDiagnostics
 {
-    public static IReadOnlyList<SessionDiagnosticFile> List(string home)
+    public static IReadOnlyList<SessionDiagnosticFile> List(string home, CancellationToken cancellation = default)
     {
+        cancellation.ThrowIfCancellationRequested();
         var root = Path.Combine(Path.GetFullPath(home), "sessions");
         if (!Directory.Exists(root)) return [];
         var files = new List<SessionDiagnosticFile>();
@@ -19,18 +20,23 @@ public static class SessionDiagnostics
         var directories = 0;
         while (pending.Count > 0 && directories++ < 600)
         {
+            cancellation.ThrowIfCancellationRequested();
             var (path, depth) = pending.Pop();
             if (File.GetAttributes(path).HasFlag(FileAttributes.ReparsePoint)) continue;
             foreach (var file in Directory.EnumerateFiles(path, "rollout-*.jsonl").Take(1000))
+            {
+                cancellation.ThrowIfCancellationRequested();
                 if (!File.GetAttributes(file).HasFlag(FileAttributes.ReparsePoint)) files.Add(new(Path.GetFileName(file), file, File.GetLastWriteTimeUtc(file)));
+            }
             if (depth < 3) foreach (var directory in Directory.EnumerateDirectories(path).OrderDescending().Take(40)) pending.Push((directory, depth + 1));
         }
         return files.OrderByDescending(file => file.UpdatedAt).Take(30).ToArray();
     }
-    public static SessionObservation Read(string home, string path)
+    public static SessionObservation Read(string home, string path, CancellationToken cancellation = default)
     {
+        cancellation.ThrowIfCancellationRequested();
         var root = Path.GetFullPath(Path.Combine(home, "sessions")); path = Path.GetFullPath(path);
-        if (!Path.GetRelativePath(root, path).StartsWith("..", StringComparison.Ordinal) && Path.GetFileName(path).StartsWith("rollout-", StringComparison.Ordinal) && path.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase)) { }
+        if (path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) && Path.GetFileName(path).StartsWith("rollout-", StringComparison.Ordinal) && path.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase)) { }
         else throw new InvalidDataException("请选择当前配置目录中的聊天记录。");
         for (var check = path; check.Length >= root.Length; check = Path.GetDirectoryName(check)!)
         {
@@ -39,21 +45,26 @@ public static class SessionDiagnostics
         }
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         // The current tail is enough for recent settings. No recursive parsing of prompts or tool arguments.
-        var tail = stream.Length > 8 * 1024 * 1024;
-        if (tail) stream.Seek(-8 * 1024 * 1024, SeekOrigin.End);
-        using var reader = new StreamReader(stream, Encoding.UTF8, true, 8192);
+        var length = stream.Length; var count = (int)Math.Min(length, 8 * 1024 * 1024); var tail = length > count;
+        stream.Seek(length - count, SeekOrigin.Begin);
+        var bytes = new byte[count]; var read = 0;
+        while (read < count)
+        { cancellation.ThrowIfCancellationRequested(); var received = stream.Read(bytes, read, Math.Min(8192, count - read)); if (received == 0) break; read += received; }
+        using var buffer = new MemoryStream(bytes, 0, read, false);
+        using var reader = new StreamReader(buffer, Encoding.UTF8, true, 8192);
         if (tail) reader.ReadLine();
         string? model = null, reasoning = null, tier = null, reviewer = null, reviewStatus = null;
         DateTimeOffset? time = null; var updates = false;
         while (reader.ReadLine() is { } line)
         {
+            cancellation.ThrowIfCancellationRequested();
             if (line.Length > 1024 * 1024) continue;
             try
             {
                 using var json = JsonDocument.Parse(line); var item = json.RootElement;
-                if (!item.TryGetProperty("payload", out var payload) || payload.ValueKind != JsonValueKind.Object) continue;
-                string? Value(JsonElement source, string name) => source.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-                if (Value(item, "type") == "event_msg" && Value(payload, "type") == "thread_settings_applied" && payload.TryGetProperty("thread_settings", out var settings))
+                if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty("payload", out var payload) || payload.ValueKind != JsonValueKind.Object) continue;
+                string? Value(JsonElement source, string name) => source.ValueKind == JsonValueKind.Object && source.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+                if (Value(item, "type") == "event_msg" && Value(payload, "type") == "thread_settings_applied" && payload.TryGetProperty("thread_settings", out var settings) && settings.ValueKind == JsonValueKind.Object)
                 {
                     model = Value(settings, "model"); reasoning = Value(settings, "reasoning_effort"); tier = Value(settings, "service_tier"); reviewer = Value(settings, "approvals_reviewer");
                     if (DateTimeOffset.TryParse(Value(item, "timestamp"), out var stamp)) time = stamp;
@@ -63,7 +74,7 @@ public static class SessionDiagnostics
                     model = Value(payload, "model") ?? model; reasoning = Value(payload, "effort") ?? reasoning; reviewer = Value(payload, "approvals_reviewer") ?? reviewer;
                     if (DateTimeOffset.TryParse(Value(item, "timestamp"), out var stamp)) time = stamp;
                 }
-                else if (Value(item, "type") == "response_item" && Value(payload, "type") == "configuration_update" && payload.TryGetProperty("reasoning", out var update))
+                else if (Value(item, "type") == "response_item" && Value(payload, "type") == "configuration_update" && payload.TryGetProperty("reasoning", out var update) && update.ValueKind == JsonValueKind.Object)
                 { reasoning = Value(update, "effort") ?? reasoning; updates = true; }
                 else if (Value(item, "type") == "event_msg" && Value(payload, "type") == "auto_approval_review_completed") reviewStatus = Value(payload, "status");
             }

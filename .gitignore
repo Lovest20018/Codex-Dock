@@ -15,6 +15,7 @@ artifacts/
 **/codex-dock-details.dat
 **/codex-dock-catalog.json
 **/codex-dock-models/
+**/codex-dock-thread-backups/
 **/codex-dock-model-catalog-*.json
 **/codex-config-backups/
 **/*.backup

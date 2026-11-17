@@ -9,7 +9,7 @@
 | Windows | `src/CodexConfig.App/CodexConfig.App.csproj` | `vX.Y.Z`，例如 `v0.18.0` | 安装器 EXE、便携 ZIP、源码、SHA-256、安装验证报告、release manifest。 |
 | Android | `src/CodexAndroid/android.json` | `android-vX.Y.Z`，例如 `android-v0.2.4` | APK、源码、签名 manifest、SHA-256、release manifest。 |
 
-Web 页面、手机后台和模型网关属于 Windows 包。只有安卓原生客户端改动时才递增 Android 的 versionName 与 versionCode，保留原包名及证书。本轮 API Key 与网关管理更新仅发布 Windows 0.18.0；Android 保持 0.2.4。
+Web 页面、手机后台和模型网关属于 Windows 包。只有安卓原生客户端改动时才递增 Android 的 versionName 与 versionCode，保留原包名及证书。本轮 Windows 0.19.0 使用 WinUI 默认界面，Android 0.2.5 更新图标，两端独立构建发布。
 
 Windows 的 [稳定版入口](https://github.com/Lovest20018/Codex-Dock/releases/latest) 指向 Windows Release；Android 从 README 中独立的 [Android 发布页](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.4) 下载。Android 0.2.4 起在应用内检查仓库的 `android-v*` 正式发布，按完全匹配的 APK 附件下载并校验后交给系统安装器。旧 APK 首次需要手动覆盖升级。Android 发布不会替换 Windows 的 latest，已有 Windows 自更新继续可用。
 
@@ -36,7 +36,7 @@ git push origin android-v0.2.4
 
 ## 独立验证与附件
 
-- Windows：核心与网关回归、锁定 Python 构建工具、冻结手机后台、自包含 WPF 发布、实际 EXE 界面检查，以及运行中手机网关的覆盖安装、不同安装目录隔离、逐文件比较、卸载和用户设置保持。
+- Windows：核心与网关回归、锁定 Python 构建工具、冻结手机后台、自包含 WinUI 发布、实际 EXE 界面检查，以及运行中手机网关的覆盖安装、不同安装目录隔离、逐文件比较、卸载和用户设置保持。`InstalledBuild=true` 直接编译为原安装入口 `CodexDock.exe`；普通开发构建继续生成 `CodexDock.WinUI.exe`。
 - Android：固定 SDK 和依赖、既有密钥签名，校验非调试 APK 的 v2 / v3 签名、固定证书及对应源码输入。
 - 发布：只下载所选平台产物，核对其源码提交、校验和与验证报告。单独生成 `release-manifest.json`，包含 `platform`、`version`、`sourceCommit` 以及该平台附件的大小和 SHA-256。
 

@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using CodexConfig.Core;
+using CodexConfig.Application;
 
 namespace CodexConfig.App;
 
@@ -13,7 +14,7 @@ public sealed class TemplateBrowser : UserControl
     private readonly TextBlock selectedCount = HelpContent.Note("");
     private readonly StackPanel footerActions = new() { Orientation = Orientation.Horizontal };
     private readonly List<(ComboBox Path, TextBox Value, CheckBox Default)> editRows = [];
-    private TemplateRepository? repository;
+    private TemplateLibraryService? repository;
     private bool testMode;
     private Tomlyn.Model.TomlTable original = new();
     private IReadOnlyDictionary<string, string?> draft = new Dictionary<string, string?>();
@@ -70,7 +71,7 @@ public sealed class TemplateBrowser : UserControl
         AddRowButton.Click += (_, _) => { AddEditRow(new("", "")); scroll.ScrollToBottom(); };
     }
 
-    internal void Initialize(TemplateRepository value, bool isolatedTest = false) { repository = value; testMode = isolatedTest; }
+    internal void Initialize(TemplateRepository value, bool isolatedTest = false) { repository = new(value); testMode = isolatedTest; }
     internal void Configure(byte[]? config, IReadOnlyDictionary<string, string?> edits)
     {
         original = new TomlDocument(config).Model; draft = edits;
@@ -111,7 +112,7 @@ public sealed class TemplateBrowser : UserControl
         actions.Children.Add(NewTemplateButton); actions.Children.Add(CaptureTemplateButton); body.Children.Add(actions);
         try
         {
-            var templates = repository?.Load() ?? BuiltInTemplates.All;
+            var templates = repository?.Read().Templates ?? BuiltInTemplates.Defaults;
             if (templates.Count == 0) body.Children.Add(HelpContent.Note("还没有模板，新增一个或恢复内置模板。", new(0, 20, 0, 20)));
             foreach (var template in templates)
             {

@@ -9,6 +9,7 @@ using System.Threading.Channels;
 namespace CodexConfig.Core;
 
 public sealed class DesktopSpeedNotReadyException(string message, Exception? inner = null) : IOException(message, inner);
+public sealed class DesktopEnhancementResumeException(string message) : IOException(message);
 
 // A session only touches modules before their native registration callback executes.
 // CDP evaluation uses function literals; no CSP bypass, import maps, file patches or eval hooks.
@@ -19,22 +20,39 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
     private readonly Func<bool> eligible;
     private readonly Process owner;
     private readonly Uri moduleBase;
+    private readonly DesktopConnectionBackend? connections;
+    private readonly string scope;
+    private readonly string bindingName = "__dockConnections_" + Guid.NewGuid().ToString("N");
+    private readonly List<Task> bindingTasks = [];
+    private readonly SemaphoreSlim bindingSlots = new(1, 1);
     private readonly CancellationTokenSource stopping = new();
     private readonly TaskCompletionSource applied = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly HashSet<string> observed = [];
     private readonly Dictionary<string, SpeedRuntimeLocation> breakpoints = [];
     private Task? loop;
     private string? leaseScript;
+    private string? connectionScript;
+    private bool resumeOnly;
+    private bool ownsPage;
+    private const string State = "globalThis.__codexDockEnhancement";
+    public static string PlanHash(DesktopSpeedPlan plan) => ManagedModelCatalogStore.Hash(System.Text.Encoding.UTF8.GetBytes(
+        "Dock runtime lifecycle 2\n" + JsonSerializer.Serialize(new { plan.SpeedEnabled, plan.ConnectionsEnabled, plan.Runtimes }) + DesktopConnectionPatch.Controller("plan")));
     public string Status { get; private set; } = "正在核对速度兼容模块…";
     public bool IsApplied { get; private set; }
+    public bool HasSpeed => plan.SpeedEnabled;
+    public bool HasConnections => plan.ConnectionsEnabled;
     public bool IsRunning => loop is { IsCompleted: false };
-    private DesktopSpeedSession(SpeedCdp client, DesktopSpeedPlan plan, Func<bool> eligible, Process owner, Uri moduleBase)
-    { this.client = client; this.plan = plan; this.eligible = eligible; this.owner = owner; this.moduleBase = moduleBase; }
+    public string ConnectionStatus => connections?.Status ?? "旧聊天接续未启用。";
+    private int RequiredCount => (plan.SpeedEnabled ? DesktopSpeedPatch.RequiredGateCount : 0) + (plan.ConnectionsEnabled ? 1 : 0);
+    private DesktopSpeedSession(SpeedCdp client, DesktopSpeedPlan plan, Func<bool> eligible, Process owner, Uri moduleBase, DesktopConnectionBackend? connections, string scope)
+    { this.client = client; this.plan = plan; this.eligible = eligible; this.owner = owner; this.moduleBase = moduleBase; this.connections = connections; this.scope = scope; }
 
     public static async Task<DesktopSpeedSession> StartAsync(int port, string expectedExecutable, DesktopSpeedPlan plan,
-        Func<bool> eligible, CancellationToken cancellation = default)
+        Func<bool> eligible, CancellationToken cancellation = default, DesktopConnectionBackend? connections = null,
+        CodexDesktopProcess? expectedOwner = null, string scope = "", bool resumeOnly = false)
     {
-        if (!eligible()) throw new InvalidOperationException("请先保存 API Key 直连配置，再应用速度兼容。");
+        if (!eligible()) throw new InvalidOperationException("请先保存适用的连接，再应用客户端兼容。");
+        if (plan.ConnectionsEnabled && connections is null) throw new ArgumentException("旧聊天接续缺少当前配置目录。");
         Process owner;
         try { owner = GatewayWorkerProcess.Capture(port) ?? throw new IOException("调试端口没有独立的桌面进程。"); }
         catch (IOException error) { throw new DesktopSpeedNotReadyException("正在等待 Codex 调试端口。", error); }
@@ -42,6 +60,8 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
         try
         {
             if (!CodexDesktop.SamePath(owner.MainModule!.FileName, expectedExecutable)) throw new IOException("调试端口不属于本次 Codex 桌面进程。");
+            if (expectedOwner is not null && (owner.Id != expectedOwner.Id || owner.StartTime.ToFileTimeUtc() != expectedOwner.Started))
+                throw new IOException("调试端口不属于此前确认的 Codex 实例，已取消接入。");
             using var http = new HttpClient(new SocketsHttpHandler { UseProxy = false, AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(3) };
             var bytes = await http.GetByteArrayAsync($"http://127.0.0.1:{port}/json/list", cancellation).ConfigureAwait(false);
             if (bytes.Length > 1024 * 1024) throw new InvalidDataException("Codex 调试目标列表过大。");
@@ -56,7 +76,7 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
             client = await SpeedCdp.ConnectAsync(socket, cancellation).ConfigureAwait(false);
             var document = new Uri(pages[0].GetProperty("url").GetString()!);
             var moduleBase = document.Scheme == "app" ? new Uri(document.GetLeftPart(UriPartial.Authority) + "/") : new Uri(document, ".");
-            var session = new DesktopSpeedSession(client, plan, eligible, owner, moduleBase);
+            var session = new DesktopSpeedSession(client, plan, eligible, owner, moduleBase, connections, scope) { resumeOnly = resumeOnly };
             try { await session.InitializeAsync(cancellation).ConfigureAwait(false); return session; }
             catch { await session.DisposeAsync().ConfigureAwait(false); client = null; throw; }
         }
@@ -66,20 +86,46 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
     private async Task InitializeAsync(CancellationToken cancellation)
     {
         await client.CallAsync("Page.enable", new { }, cancellation);
+        await client.CallAsync("Runtime.enable", new { }, cancellation);
         Status = "Codex 已打开，正在等待主页面完成启动…";
         await WaitForDocumentAsync(cancellation);
+        if (resumeOnly)
+        {
+            var marker = await client.CallAsync("Runtime.evaluate", new { expression = "(()=>{const s=" + State + ";return !!s&&s.plan===" + JsonSerializer.Serialize(PlanHash(plan)) +
+                "&&s.scope===" + JsonSerializer.Serialize(scope) + "&&s.until<=Date.now()})()", returnByValue = true }, cancellation);
+            if (!marker.GetProperty("result").TryGetProperty("value", out var valid) || valid.ValueKind != JsonValueKind.True)
+                throw new DesktopEnhancementResumeException("此页面尚不能自动接回，请使用增强启动；已有页面保持不变。");
+        }
         while (client.Events.TryRead(out _)) { } // Discard startup load events before our first reload.
+        if (plan.ConnectionsEnabled)
+        {
+            await client.CallAsync("Runtime.addBinding", new { name = bindingName }, cancellation);
+            if (resumeOnly)
+            {
+                var resumed = await client.CallAsync("Runtime.evaluate", new { expression = DesktopConnectionPatch.Controller(bindingName, resumeOnly: true), returnByValue = true }, cancellation);
+                if (!resumed.GetProperty("result").TryGetProperty("value", out var connected) || connected.ValueKind != JsonValueKind.True)
+                {
+                    await client.CallAsync("Runtime.removeBinding", new { name = bindingName }, cancellation);
+                    throw new DesktopEnhancementResumeException("聊天接续仍在处理操作，稍后自动重试；本次未刷新页面。");
+                }
+                ownsPage = true;
+            }
+            connectionScript = (await client.CallAsync("Page.addScriptToEvaluateOnNewDocument", new { source = DesktopConnectionPatch.Controller(bindingName) }, cancellation)).GetProperty("identifier").GetString();
+        }
+        ownsPage = true;
         await client.CallAsync("Debugger.enable", new { maxScriptsCacheSize = 0 }, cancellation);
         foreach (var runtime in plan.Runtimes)
         {
             var table = runtime.Chunk + ".__webpack_modules__";
-            var condition = "Object.values(" + table + ").some(f=>typeof f===\"function\"&&/serviceTierAccess:|readServiceTier|Failed to read service tier for request/.test(Function.prototype.toString.call(f)))";
+            var anchors = (plan.SpeedEnabled ? "serviceTierAccess:|readServiceTier|Failed to read service tier for request" : "") +
+                (plan.ConnectionsEnabled ? (plan.SpeedEnabled ? "|" : "") + "this\\.requestClient\\.sendRequest" : "");
+            var condition = "Object.values(" + table + ").some(f=>typeof f===\"function\"&&/" + anchors + "/.test(Function.prototype.toString.call(f)))";
             var result = await client.CallAsync("Debugger.setBreakpointByUrl", new { lineNumber = runtime.Line, columnNumber = runtime.Column,
                 urlRegex = "^" + Regex.Escape(new Uri(moduleBase, runtime.Path).AbsoluteUri) + "$", condition }, cancellation);
             breakpoints.Add(result.GetProperty("breakpointId").GetString()!, runtime);
         }
         loop = RunAsync();
-        await client.CallAsync("Page.reload", new { ignoreCache = false }, cancellation);
+        if (!resumeOnly) await client.CallAsync("Page.reload", new { ignoreCache = false }, cancellation);
     }
 
     private async Task WaitForDocumentAsync(CancellationToken cancellation)
@@ -109,20 +155,34 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
     private async Task RunAsync()
     {
         var token = stopping.Token; var refreshed = DateTimeOffset.MinValue;
-        var activated = false; var loaded = false; var reloadIssued = false;
+        var activated = resumeOnly; var loaded = resumeOnly; var reloadIssued = resumeOnly;
         var checkedPolicy = DateTimeOffset.MinValue; long ownedPause = 0;
         try
         {
+            if (resumeOnly)
+            {
+                IsApplied = true; Status = "已自动接回客户端增强，Codex 页面保持不变。";
+                await RenewLeaseAsync(token).ConfigureAwait(false); applied.TrySetResult();
+            }
             while (!token.IsCancellationRequested && !owner.HasExited)
             {
                 if (DateTimeOffset.UtcNow - checkedPolicy > TimeSpan.FromSeconds(1))
                 {
-                    if (!eligible()) { Status = "速度兼容已停用：已保存的连接或开关发生变化。"; break; }
+                    if (!eligible()) { Status = "客户端兼容已停用：配置目录或开关发生变化。"; break; }
                     checkedPolicy = DateTimeOffset.UtcNow;
                 }
                 while (client.Events.TryRead(out var notification))
                 {
                     var message = notification.Message;
+                    if (message.GetProperty("method").GetString() == "Runtime.executionContextsCleared")
+                    { observed.Clear(); IsApplied = false; loaded = false; continue; }
+                    if (message.GetProperty("method").GetString() == "Runtime.bindingCalled")
+                    {
+                        if (plan.ConnectionsEnabled && bindingTasks.Count(task => !task.IsCompleted) < 32)
+                            bindingTasks.Add(HandleBindingAsync(message.GetProperty("params").Clone(), token));
+                        bindingTasks.RemoveAll(task => task.IsCompleted);
+                        continue;
+                    }
                     if (message.GetProperty("method").GetString() == "Page.loadEventFired") { loaded = true; continue; }
                     if (message.GetProperty("method").GetString() != "Debugger.paused") continue;
                     // Navigation can resume a pause before the queued notification is consumed.
@@ -142,7 +202,7 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
                         throw;
                     }
                     await ResumeOwnedPauseAsync(ownedPause, token).ConfigureAwait(false); ownedPause = 0;
-                    if (!activated && observed.Count == DesktopSpeedPatch.RequiredGateCount)
+                    if (!activated && observed.Count == RequiredCount)
                     {
                         activated = true;
                         await RenewLeaseAsync(token).ConfigureAwait(false);
@@ -155,10 +215,11 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
                     reloadIssued = true; loaded = false; observed.Clear();
                     await client.CallAsync("Page.reload", new { ignoreCache = false }, token).ConfigureAwait(false);
                 }
-                else if (activated && loaded && reloadIssued && observed.Count == DesktopSpeedPatch.RequiredGateCount && !IsApplied)
+                else if (activated && loaded && reloadIssued && observed.Count == RequiredCount && !IsApplied)
                 {
                     IsApplied = true;
-                    Status = "已应用：本机 API 的四处速度门控及当前模型档位读取已核对。档位仍由模型目录与服务决定。";
+                    Status = plan.SpeedEnabled ? "已应用：本机 API 速度门控及当前模型档位读取已核对。档位仍由模型目录与服务决定。" : "已应用：旧聊天接续入口已核对。";
+                    await RenewLeaseAsync(token).ConfigureAwait(false);
                     applied.TrySetResult();
                 }
                 if (activated && DateTimeOffset.UtcNow - refreshed > TimeSpan.FromSeconds(3))
@@ -182,7 +243,11 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
             try
             {
                 await client.CallAsync("Runtime.evaluate", new { expression = DesktopSpeedPatch.Lease + "=0" }, cleanup.Token).ConfigureAwait(false);
+                await client.CallAsync("Runtime.evaluate", new { expression = "if(" + State + "){" + State + ".until=0}" }, cleanup.Token).ConfigureAwait(false);
+                if (plan.ConnectionsEnabled) await client.CallAsync("Runtime.evaluate", new { expression = "globalThis.__codexDockConnection?.stop?.()" }, cleanup.Token).ConfigureAwait(false);
                 if (leaseScript is not null) await client.CallAsync("Page.removeScriptToEvaluateOnNewDocument", new { identifier = leaseScript }, cleanup.Token).ConfigureAwait(false);
+                if (connectionScript is not null) await client.CallAsync("Page.removeScriptToEvaluateOnNewDocument", new { identifier = connectionScript }, cleanup.Token).ConfigureAwait(false);
+                if (plan.ConnectionsEnabled) await client.CallAsync("Runtime.removeBinding", new { name = bindingName }, cleanup.Token).ConfigureAwait(false);
                 await client.CallAsync("Debugger.disable", new { }, cleanup.Token).ConfigureAwait(false);
             }
             catch { } // A disconnected page also loses its heartbeat within 15 seconds.
@@ -202,19 +267,25 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
         if (ids.Length != 1) throw new InvalidDataException("速度兼容暂停位置无法唯一核对。");
         var frame = parameters.GetProperty("callFrames")[0].GetProperty("callFrameId").GetString()!;
         var table = breakpoints[ids[0]].Chunk + ".__webpack_modules__";
-        var result = await EvaluateFrameAsync(frame, "Object.entries(" + table + ").filter(([k,f])=>typeof f===\"function\"&&/serviceTierAccess:|readServiceTier|Failed to read service tier for request/.test(Function.prototype.toString.call(f))).map(([key,f])=>({key,source:Function.prototype.toString.call(f)}))", token);
+        var anchors = (plan.SpeedEnabled ? "serviceTierAccess:|readServiceTier|Failed to read service tier for request" : "") +
+            (plan.ConnectionsEnabled ? (plan.SpeedEnabled ? "|" : "") + "this\\.requestClient\\.sendRequest" : "");
+        var result = await EvaluateFrameAsync(frame, "Object.entries(" + table + ").filter(([k,f])=>typeof f===\"function\"&&/" + anchors + "/.test(Function.prototype.toString.call(f))).map(([key,f])=>({key,source:Function.prototype.toString.call(f)}))", token);
         var assignments = new List<string>(); var gates = new HashSet<string>();
         foreach (var factory in result.EnumerateArray())
         {
             var key = factory.GetProperty("key").GetString()!; var source = factory.GetProperty("source").GetString()!;
             if (!Regex.IsMatch(key, @"^[A-Za-z_$][\w$]*$") || !source.StartsWith(key + "(", StringComparison.Ordinal))
                 throw new InvalidDataException("Codex 模块工厂结构无法核对。");
-            if (source.Contains("__codexDockSpeedUntil", StringComparison.Ordinal)) continue;
-            var rewrite = DesktopSpeedPatch.Rewrite(source); if (rewrite.Gates.Count == 0) continue;
+            if (source.Contains("__codexDockSpeedUntil", StringComparison.Ordinal) || source.Contains(DesktopConnectionPatch.Marker, StringComparison.Ordinal)) continue;
+            var rewrite = plan.SpeedEnabled ? DesktopSpeedPatch.Rewrite(source) : new SpeedRewrite(source, []);
+            var rewritten = rewrite.Source; var found = rewrite.Gates.ToList();
+            if (plan.ConnectionsEnabled && DesktopConnectionPatch.Count(rewritten) > 0)
+            { rewritten = DesktopConnectionPatch.Rewrite(rewritten); found.Add("connections"); }
+            if (found.Count == 0) continue;
             if (Regex.IsMatch(source, @"\bimport\s*[.(]")) throw new InvalidDataException("此速度模块包含不支持的模块引用。");
             var quoted = JsonSerializer.Serialize(key);
-            assignments.Add("p[" + quoted + "]=({" + rewrite.Source + "})[" + quoted + "];");
-            gates.UnionWith(rewrite.Gates);
+            assignments.Add("p[" + quoted + "]=({" + rewritten + "})[" + quoted + "];");
+            gates.UnionWith(found);
         }
         if (assignments.Count == 0) return;
         // All literals parse before any assignment; a malformed replacement leaves the table unchanged.
@@ -232,8 +303,12 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
 
     private async Task RenewLeaseAsync(CancellationToken token)
     {
-        var expression = DesktopSpeedPatch.Lease + "=" + (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 15000);
-        await client.CallAsync("Runtime.evaluate", new { expression }, token);
+        var until = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + 15000;
+        var expression = DesktopSpeedPatch.Lease + "=" + (plan.SpeedEnabled && (connections is null || connections.SpeedEligible) ? until : 0);
+        if (plan.ConnectionsEnabled)
+            expression += ";if(globalThis.__codexDockConnection){globalThis.__codexDockConnection.until=" + until + ";globalThis.__codexDockConnection.enabled=" + (connections!.Enabled ? "true" : "false") + "}";
+        var currentExpression = expression + (IsApplied ? ";" + State + "=" + JsonSerializer.Serialize(new { plan = PlanHash(plan), scope, until }) : "");
+        await client.CallAsync("Runtime.evaluate", new { expression = currentExpression }, token);
         if (leaseScript is not null) await client.CallAsync("Page.removeScriptToEvaluateOnNewDocument", new { identifier = leaseScript }, token);
         leaseScript = (await client.CallAsync("Page.addScriptToEvaluateOnNewDocument", new { source = "if(window.top===window){" + expression + "}" }, token)).GetProperty("identifier").GetString();
     }
@@ -242,7 +317,48 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
     {
         stopping.Cancel();
         if (loop is not null) await loop.ConfigureAwait(false);
+        else if (ownsPage)
+        {
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            try
+            {
+                await client.CallAsync("Runtime.evaluate", new { expression = DesktopSpeedPatch.Lease + "=0;if(" + State + "){" + State + ".until=0}" }, cleanup.Token);
+                if (plan.ConnectionsEnabled) await client.CallAsync("Runtime.evaluate", new { expression = "globalThis.__codexDockConnection?.stop?.()" }, cleanup.Token);
+                if (connectionScript is not null) await client.CallAsync("Page.removeScriptToEvaluateOnNewDocument", new { identifier = connectionScript }, cleanup.Token);
+                if (plan.ConnectionsEnabled) await client.CallAsync("Runtime.removeBinding", new { name = bindingName }, cleanup.Token);
+                await client.CallAsync("Debugger.disable", new { }, cleanup.Token);
+            }
+            catch { }
+        }
+        await Task.WhenAll(bindingTasks).ConfigureAwait(false);
         await client.DisposeAsync().ConfigureAwait(false); owner.Dispose();
+    }
+
+    private async Task HandleBindingAsync(JsonElement value, CancellationToken token)
+    {
+        if (value.GetProperty("name").GetString() != bindingName || value.GetProperty("payload").GetString() is not { Length: <= 8192 } payload) return;
+        var context = value.GetProperty("executionContextId").GetInt32();
+        JsonElement request;
+        try { using var document = JsonDocument.Parse(payload); request = document.RootElement.Clone(); }
+        catch (JsonException) { return; }
+        if (request.ValueKind != JsonValueKind.Object || !request.TryGetProperty("id", out var id) || !id.TryGetInt32(out var number) || number <= 0) return;
+        try
+        {
+            await bindingSlots.WaitAsync(token);
+            object response;
+            try
+            {
+                var main = await client.CallAsync("Runtime.evaluate", new { contextId = context, expression = "window.top===window&&(location.protocol==='app:'||location.protocol==='file:')", returnByValue = true }, token);
+                if (!main.TryGetProperty("result", out var result) || !result.TryGetProperty("value", out var valid) || valid.ValueKind != JsonValueKind.True) return;
+                response = new { ok = true, value = await Task.Run(() => connections!.Handle(request), token) };
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            { response = new { ok = false, error = error is IOException or InvalidOperationException ? error.Message : "聊天接续请求无法核对，历史保持不变。" }; }
+            finally { bindingSlots.Release(); }
+            var json = JsonSerializer.Serialize(response, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            await client.CallAsync("Runtime.evaluate", new { contextId = context, expression = "globalThis.__codexDockConnection?.settle(" + number + "," + json + ")" }, token);
+        }
+        catch (Exception) { } // A navigated or closed document has no request left to settle.
     }
 }
 
@@ -307,6 +423,8 @@ internal sealed class SpeedCdp : IAsyncDisposable
                             events.Writer.TryWrite(new(message.Clone(), pause)); break;
                         case "Debugger.resumed": Volatile.Write(ref activePause, 0); break;
                         case "Page.loadEventFired": events.Writer.TryWrite(new(message.Clone(), 0)); break;
+                        case "Runtime.executionContextsCleared": events.Writer.TryWrite(new(message.Clone(), 0)); break;
+                        case "Runtime.bindingCalled": events.Writer.TryWrite(new(message.Clone(), 0)); break;
                     }
                 }
             }

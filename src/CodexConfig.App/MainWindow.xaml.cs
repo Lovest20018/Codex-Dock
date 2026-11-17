@@ -11,12 +11,25 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using CodexConfig.Core;
 using Microsoft.Win32;
+using CodexConfig.Application;
 
 namespace CodexConfig.App;
 
 public partial class MainWindow : Window
 {
     private readonly ConfigStore store;
+    private readonly WorkspaceCoordinator workspaceCoordinator;
+    private readonly WorkspaceApplyCoordinator workspaceApply;
+    private readonly ConfigurationSaveService configurationSave;
+    private readonly ConfigurationRecoveryService configurationRecovery;
+    private readonly OfficialLoginService officialLoginReader;
+    private readonly GatewayManagementService gatewayManagement;
+    private readonly MobileConnectionService mobileConnection;
+    private readonly DesktopEnhancementRuntime desktopEnhancements;
+    private readonly AutomaticEnhancementService automaticEnhancements;
+    private readonly DesktopApplicationService desktopApplication;
+    private readonly WorkspaceViewModel workspace;
+    private readonly ClientEnhancementsViewModel enhancements;
     private readonly string? smokeOutput;
     private readonly IUserEnvironment environment;
     private readonly ModelCatalogClient probe = new();
@@ -44,12 +57,30 @@ public partial class MainWindow : Window
     public MainWindow(ConfigStore store, string home, string? smokeOutput, IUserEnvironment environment, IStartupRegistration? startup = null)
     {
         this.store = store; this.home = home; this.smokeOutput = smokeOutput; this.environment = environment;
+        workspaceCoordinator = new WorkspaceCoordinator(store, home);
+        workspaceApply = new WorkspaceApplyCoordinator(workspaceCoordinator.Session);
+        configurationSave = new(store, workspaceApply);
+        configurationRecovery = new(store, workspaceApply);
+        officialLoginReader = new(store);
+        gatewayManagement = new(new NativeGatewayManagementRuntime(store, smokeOutput is null ? null : Path.Combine(smokeOutput, "mobile-state")),
+            workspaceApply, smokeOutput is null ? null : Path.Combine(smokeOutput, "gateway-preferences"));
+        mobileConnection = new(new NativeMobileConnectionRuntime(smokeOutput is null ? null : Path.Combine(smokeOutput, "mobile-state")), workspaceApply);
+        workspace = new WorkspaceViewModel(workspaceCoordinator.Session);
+        enhancements = new ClientEnhancementsViewModel(new ClientEnhancementPreferencesService(home,
+            smokeOutput is null ? null : Path.Combine(smokeOutput, "connection-preferences"),
+            smokeOutput is null ? null : Path.Combine(smokeOutput, "speed-preferences"),
+            smokeOutput is null ? null : Path.Combine(smokeOutput, "enhancement-preferences")));
+        desktopEnhancements = new(store, enhancements.Storage, () => this.home, () => closing);
+        automaticEnhancements = new(store, enhancements.Storage, new WpfAutomaticRuntime(this));
+        desktopApplication = new(store, workspaceApply, enhancements.Storage, new WpfDesktopApplyRuntime(this));
         this.startup = startup ?? (smokeOutput is null ? new WindowsStartupRegistration() : new MemoryStartupRegistration());
+        startupRegistrationService = new(this.startup, Environment.ProcessPath!);
         InitializeComponent();
+        automaticEnhancements.Changed += (_, _) => { automaticEnhancementStatus = automaticEnhancements.Status; if (!closing) RefreshSpeedSettings(); };
+        desktopEnhancements.StatusChanged += (_, _) => { speedFeedback = desktopEnhancements.Status; RefreshSpeedSettings(); };
         configurationTools = new(lifetime.Token) { RefreshCapabilities = () => Editor.SetContext(home, ModelBox.Text) };
         Editor.SetHeader(configurationTools);
         InitializeModelBehavior();
-        LinePresetBox.ItemsSource = KrillLines.All.Select(line => line with { Name = line.Name[(line.Name.IndexOf('·') + 1)..].Trim() }).ToArray();
         ModelBox.AddHandler(TextBox.TextChangedEvent, new TextChangedEventHandler(FieldChanged));
         Editor.Changed += MarkDirty;
         Editor.ConnectionRequested += () => ShowPage("connection");
@@ -95,19 +126,53 @@ public partial class MainWindow : Window
                 else if (filter == "desktop-restart") await RunDesktopRestartUiSmokeAsync(smokeOutput);
                 else if (filter == "login") await RunOfficialLoginUiSmokeAsync(smokeOutput);
                 else if (filter == "connection-mode") await RunConnectionModeUiSmokeAsync(smokeOutput);
+                else if (filter == "connection-editor")
+                {
+                    Directory.CreateDirectory(home);
+                    var checks = new List<string>(); await RunPatEditorSmokeAsync(smokeOutput, checks);
+                    await File.WriteAllTextAsync(Path.Combine(smokeOutput, "report.json"), JsonSerializer.Serialize(new { status = "PASS", tests = checks }));
+                }
                 else if (filter == "api-key-migration") await RunApiKeyMigrationUiSmokeAsync(smokeOutput);
                 else if (filter == "gateways") await RunGatewayManagementUiSmokeAsync(smokeOutput);
+                else if (filter == "gateway-lifecycle")
+                {
+                    var checks = new List<string>(); await RunGatewayLifecycleSmokeAsync(smokeOutput, checks);
+                    await File.WriteAllTextAsync(Path.Combine(smokeOutput, "report.json"), JsonSerializer.Serialize(new { status = "PASS", tests = checks }));
+                }
+                else if (filter == "mobile-connection")
+                {
+                    Directory.CreateDirectory(home);
+                    await File.WriteAllTextAsync(Path.Combine(home, "config.toml"), "model='mobile-ui-fixture'\nopenai_base_url='https://mobile-ui.invalid/v1'\n");
+                    await File.WriteAllTextAsync(Path.Combine(home, "auth.json"), "{\"auth_mode\":\"apikey\",\"OPENAI_API_KEY\":\"fake-mobile-ui-key\"}");
+                    Reload();
+                    var checks = new List<string>(); await RunMobileSmokeAsync(smokeOutput, checks);
+                    await RunSharedMobileSaveSmokeAsync(smokeOutput, checks);
+                    await File.WriteAllTextAsync(Path.Combine(smokeOutput, "report.json"), JsonSerializer.Serialize(new { status = "PASS", tests = checks }));
+                }
                 else if (filter == "desktop-speed") await RunDesktopSpeedUiSmokeAsync(smokeOutput);
+                else if (filter == "connection-recovery") await RunConnectionRecoveryUiSmokeAsync(smokeOutput);
+                else if (filter == "automatic-enhancements") await RunAutomaticEnhancementsSmokeAsync(smokeOutput);
                 else if (filter == "model-behavior") await RunModelBehaviorSmokeAsync(smokeOutput);
+                else if (filter == "configuration-save")
+                {
+                    Directory.CreateDirectory(home);
+                    await File.WriteAllTextAsync(Path.Combine(home, "config.toml"), "model='save-ui-fixture'\nopenai_base_url='https://save-ui.invalid/v1'\n");
+                    await File.WriteAllTextAsync(Path.Combine(home, "auth.json"), "{\"auth_mode\":\"apikey\",\"OPENAI_API_KEY\":\"fake-save-ui-key\"}");
+                    Reload();
+                    var checks = new List<string>();
+                    await RunConfigurationReviewSmokeAsync(smokeOutput, checks);
+                    await RunConnectionDetailsSmokeAsync(smokeOutput, checks);
+                    await File.WriteAllTextAsync(Path.Combine(smokeOutput, "report.json"), JsonSerializer.Serialize(new { status = "PASS", tests = checks }));
+                }
                 else if (filter == "runtime-conflicts") await RunRuntimeConflictSmokeAsync(smokeOutput);
                 else throw new ArgumentException("Unknown CODEX_CONFIG_UI_TEST_FILTER.");
-                Application.Current.Shutdown(0);
+                System.Windows.Application.Current.Shutdown(0);
             }
             catch (Exception error)
             {
                 Directory.CreateDirectory(smokeOutput);
                 await File.WriteAllTextAsync(Path.Combine(smokeOutput, "failure.txt"), error.ToString());
-                Application.Current.Shutdown(1);
+                System.Windows.Application.Current.Shutdown(1);
             }
         }
     }
@@ -126,7 +191,16 @@ public partial class MainWindow : Window
         if (!StartInTray) InitializeTray();
         localStateTimer.Start();
         await RefreshLocalCodexStateAsync();
+            workspaceCoordinator.Runtime(codexRuntime);
         await StartGatewaysOnDockLaunchAsync();
+        desktopInitializationReady = true;
+        var requested = pendingEnhancedHome;
+        if (requested is not null || EnhancedLaunchRequested)
+        {
+            pendingEnhancedHome = null;
+            await RequestEnhancedLaunchAsync(requested ?? home);
+        }
+        else await TryAutomaticEnhancementsAsync();
     }
 
     private bool Reload(ConfigSnapshot? source = null)
@@ -136,11 +210,14 @@ public partial class MainWindow : Window
         ResetGatewaySummary();
         try
         {
-            var loaded = source ?? store.Load(home);
+            var loaded = source ?? workspaceCoordinator.Load(home).Snapshot;
             loadedSettings = store.ReadSettings(loaded);
             migratingLegacyPat = false;
             ClearStagedLogin();
             snapshot = loaded;
+            if (source is not null) workspaceCoordinator.Session.Loaded(home, loaded);
+            try { enhancements.SetHome(home); var preferences = enhancements.Reload(); workspaceCoordinator.Enhancements(preferences.ConnectionRecoveryEnabled, preferences.SpeedCompatibilityEnabled, preferences.AutomaticReconnectEnabled); }
+            catch { workspaceCoordinator.Enhancements(false, false, false); }
             externalConfigurationChanged = false; localStateError = "";
             HomePath.Text = home;
             CurrentDirectoryText.Text = home; CurrentDirectoryText.ToolTip = home;
@@ -155,7 +232,7 @@ public partial class MainWindow : Window
             RefreshHttpUi();
             LegacyConnectionHint.Visibility = new TomlDocument(loaded.Config).String("model_provider") == MixedConnection.Provider ? Visibility.Visible : Visibility.Collapsed;
             RefreshMixedUi();
-            SynchronizeLinePreset();
+            UpdateCredentialHint();
             detailedChanges.Clear();
             ReloadModelBehavior();
             Editor.Configure(snapshot.Config, detailedChanges);
@@ -180,7 +257,7 @@ public partial class MainWindow : Window
     }
 
     private bool DetailsChanged => ConnectionNameBox.Text != loadedSettings.Details.Name || ConnectionNoteBox.Text.Replace("\r\n", "\n") != loadedSettings.Details.Note || draftHttpOrigin != loadedSettings.Details.HttpOrigin;
-    private string Fields() => JsonSerializer.Serialize(new { url = BaseUrlBox.Text, key = ApiKeyBox.Password, model = ModelBox.Text, kind = KindBox.SelectedIndex, mode = ConnectionModeBox.SelectedIndex, proxy = EditingMixedConnection ? GatewayProxyBox.IsChecked == true : loadedSettings.UseSystemProxy, details = new ConnectionDetails(ConnectionNameBox.Text, ConnectionNoteBox.Text.Replace("\r\n", "\n"), draftHttpOrigin) });
+    private string Fields() => JsonSerializer.Serialize(new { url = BaseUrlBox.Text, key = ApiKeyBox.Password, model = ModelBox.Text, kind = KindBox.SelectedIndex, mode = ConnectionModeBox.SelectedIndex, proxy = EditingMixedConnection ? GatewayProxyBox.IsChecked == true : loadedSettings.UseSystemProxy, details = loadedSettings.Details with { Name = ConnectionNameBox.Text, Note = ConnectionNoteBox.Text.Replace("\r\n", "\n"), HttpOrigin = draftHttpOrigin } });
     private ConnectionSettings Settings(bool placeholder = false) => loadedSettings with
     {
         BaseUrl = placeholder && string.IsNullOrWhiteSpace(BaseUrlBox.Text) ? "https://relay.example.com" : BaseUrlBox.Text,
@@ -188,7 +265,7 @@ public partial class MainWindow : Window
         Model = ModelBox.Text,
         Kind = (ConnectionKind)Math.Max(0, KindBox.SelectedIndex),
         Mode = (ConnectionMode)Math.Max(0, ConnectionModeBox.SelectedIndex), UseSystemProxy = GatewayProxyBox.IsChecked == true,
-        Details = new(ConnectionNameBox.Text, ConnectionNoteBox.Text, draftHttpOrigin),
+        Details = loadedSettings.Details with { Name = ConnectionNameBox.Text, Note = ConnectionNoteBox.Text, HttpOrigin = draftHttpOrigin },
         PreservePreferenceValues = true
     };
 
@@ -206,6 +283,9 @@ public partial class MainWindow : Window
         var previousPage = currentPage;
         currentPage = page;
         ConnectionPage.Visibility = page == "connection" ? Visibility.Visible : Visibility.Collapsed;
+        EnhancementsPage.Visibility = page == "enhancements" ? Visibility.Visible : Visibility.Collapsed;
+        GatewaySummaryBar.Visibility = page == "enhancements" ? Visibility.Collapsed : Visibility.Visible;
+        if (page == "enhancements") RefreshSpeedSettings();
         Editor.Visibility = page is "preferences" or "catalog" ? Visibility.Visible : Visibility.Collapsed;
         configurationTools.Visibility = page == "catalog" ? Visibility.Visible : Visibility.Collapsed;
         ModelLayout.Visibility = Editor.Visibility;
@@ -233,12 +313,13 @@ public partial class MainWindow : Window
             "overview" => ("概览", "当前已保存的连接与本地运行状态。"),
             "mobile" => ("手机连接", "通过自己的 HTTPS 域名，在安卓 App 继续电脑上的 Codex 聊天。"),
             "gateways" => ("网关管理", "分别管理本机模型网关、手机网关和自动启动。"),
+            "enhancements" => ("客户端增强", "旧聊天接续与速度入口，统一在这里开启和应用。"),
             "preferences" => ("模型与行为", "模型、速度和常用行为，修改后统一保存。"), "catalog" => ("全部配置", "搜索完整字段、查看说明和未收录配置。"),
             "templates" or "backup" => ("模板与备份", "复用配置，或恢复上次保存前的状态。"),
             "app" => ("应用设置与帮助", "窗口、托盘与软件更新。"), _ => ("连接与账号", "管理 API Key 服务、官方账号登录与默认模型，保存后重新打开 Codex。")
         };
         PageTitle.Text = title; PageSubtitle.Text = subtitle;
-        var nav = page switch { "overview" => OverviewNav, "mobile" => MobileNav, "gateways" => GatewayNav, "preferences" => CatalogNav, "catalog" => AdvancedNav, "templates" or "backup" => TemplatesNav, "app" => AppNav, _ => ConnectionNav };
+        var nav = page switch { "overview" => OverviewNav, "mobile" => MobileNav, "gateways" => GatewayNav, "enhancements" => EnhancementsNav, "preferences" => CatalogNav, "catalog" => AdvancedNav, "templates" or "backup" => TemplatesNav, "app" => AppNav, _ => ConnectionNav };
         if (nav.IsChecked != true) { var before = initializing; initializing = true; nav.IsChecked = true; initializing = before; }
     }
 
@@ -250,7 +331,6 @@ public partial class MainWindow : Window
         UndoButton.IsEnabled = usable && Dirty && !closing && !officialLoginBusy;
         ProbeButton.IsEnabled = usable && !busy;
         TemplatesNav.IsEnabled = usable && !closing;
-        ServiceTemplateButton.IsEnabled = usable && !closing;
         Editor.IsEnabled = usable && !closing; TemplateEditor.IsEnabled = usable && !closing;
         DraftCountText.Text = snapshot is null ? "配置尚未读取，暂时无法保存" : store.HasPending(home) ? "请先恢复未完成的保存" : Dirty ? $"有 {DraftCount()} 项未保存" : "所有修改已保存";
         UpdateSaveBarVisibility();
@@ -261,8 +341,10 @@ public partial class MainWindow : Window
     private void MarkDirty()
     {
         if (initializing || !IsLoaded) return;
+        if (autoEnhancementBusy) automaticEnhancements.Cancel();
         ConnectionError.Visibility = Visibility.Collapsed; SaveFeedback.Visibility = Visibility.Collapsed;
         UpdateActions(); SetStatus(Dirty ? "有未保存的修改" : "配置已读取");
+        workspaceCoordinator.MarkDraft(Dirty);
         previewTimer.Stop(); previewTimer.Start();
     }
     private void TemplatesClicked(object sender, RoutedEventArgs e)
@@ -292,45 +374,14 @@ public partial class MainWindow : Window
         (ModelBox.Text != loadedSettings.Model ? 1 : 0) + (KindBox.SelectedIndex != (int)loadedSettings.Kind ? 1 : 0) +
         (MigratingPatInDraft ? 1 : 0);
 
-    private void ServiceProviderChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (initializing || LinePresetRow is null) return;
-        LinePresetRow.Visibility = ProviderBox.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
-        ServiceTemplateButton.Visibility = LinePresetRow.Visibility;
-        if (ProviderBox.SelectedIndex == 1)
-        {
-            if (LinePresetBox.SelectedIndex < 0) LinePresetBox.SelectedIndex = 0;
-            else LinePresetChanged(LinePresetBox, e);
-        }
-        else MoreConnection.IsExpanded = true;
-    }
     private void FieldChanged(object sender, TextChangedEventArgs e)
     {
-        if (!initializing && ReferenceEquals(sender, BaseUrlBox)) { SynchronizeLinePreset(); RefreshHttpUi(); }
+        if (!initializing && ReferenceEquals(sender, BaseUrlBox)) { UpdateCredentialHint(); RefreshHttpUi(); }
         if (!initializing && ReferenceEquals(sender, ModelBox)) Editor.SetContext(home, ModelBox.Text);
         MarkDirty();
     }
     private void ModelChanged(object sender, SelectionChangedEventArgs e) { if (!initializing) Editor.SetContext(home, ModelBox.Text); MarkDirty(); }
     private void ConnectionSelectionChanged(object sender, SelectionChangedEventArgs e) { if (!initializing) UpdateCredentialHint(); MarkDirty(); }
-    private void LinePresetChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (initializing || LinePresetBox.SelectedItem is not KrillLine line) return;
-        initializing = true;
-        BaseUrlBox.Text = line.Origin; KindBox.SelectedIndex = (int)ConnectionKind.CodexRelay;
-        ProviderBox.SelectedIndex = 1; LinePresetRow.Visibility = Visibility.Visible; ServiceTemplateButton.Visibility = Visibility.Visible;
-        initializing = false; UpdateCredentialHint(); MarkDirty();
-    }
-    private void SynchronizeLinePreset()
-    {
-        var before = initializing; initializing = true;
-        var line = KrillLines.Find(BaseUrlBox.Text);
-        LinePresetBox.SelectedValue = line?.Id;
-        ProviderBox.SelectedIndex = line is null ? 0 : 1;
-        LinePresetRow.Visibility = line is null ? Visibility.Collapsed : Visibility.Visible;
-        ServiceTemplateButton.Visibility = LinePresetRow.Visibility;
-        initializing = before;
-        UpdateCredentialHint();
-    }
     private void UpdateCredentialHint()
     {
         CredentialLabel.Text = "API Key";
@@ -375,12 +426,14 @@ public partial class MainWindow : Window
     {
         if (preview is null) return;
         RenderConfigurationReview();
+        var safe = ConfigurationPreviewService.Project(home, new(new(preview.Config), new(preview.Auth), preview.AuthApiBaseUrl));
+        if (currentTab != "changes") ReviewHint.Text += " · 脱敏副本不含原注释与排版";
         PreviewBox.Text = currentTab switch
         {
             "changes" => RenderChanges(),
-            "auth" => preview.AuthPreview,
-            "env" => "CODEX_AUTHAPI_BASE_URL\n" + (preview.AuthApiBaseUrl ?? "（未设置）"),
-            _ => preview.ConfigPreview
+            "auth" => safe.Auth.Text,
+            "env" => safe.Environment.Text,
+            _ => safe.Config.Text
         };
         foreach (var tab in new[] { ChangesTab, ConfigTab, AuthTab, EnvTab })
         {
@@ -392,20 +445,8 @@ public partial class MainWindow : Window
     private string RenderChanges()
     {
         if (snapshot is null || preview is null) return "请先读取有效配置。";
-        var before = new TomlDocument(preview.Before.Config).Model; var after = new TomlDocument(preview.Config).Model;
-        var lines = new List<string>();
-        string Display(string path, object? value) => value is null ? "本地未设置 · 跟随其他配置层或 Codex 默认" : ConfigReadClient.SafeValue(path, JsonSerializer.SerializeToElement(value));
-        foreach (var path in TomlDocument.ValuePaths(before).Concat(TomlDocument.ValuePaths(after)).Distinct(StringComparer.Ordinal).OrderBy(path => path, StringComparer.Ordinal))
-        {
-            var previous = TomlDocument.ValueAt(before, path); var next = TomlDocument.ValueAt(after, path);
-            if (ConfigSchema.Literal(previous) == ConfigSchema.Literal(next)) continue;
-            lines.Add(ConfigHelp.Name(path) + "\n" + path + "\n  " + Display(path, previous) + "\n→ " + Display(path, next));
-        }
-        if (!(snapshot.Auth ?? []).SequenceEqual(preview.Auth ?? [])) lines.Add("认证文件\n  将更新（凭据内容已隐藏）");
-        if (!(snapshot.Bridge ?? []).SequenceEqual(preview.Bridge ?? [])) lines.Add("模型连接\n  " + (preview.Bridge is null ? "将移除本地连接配置" : "将保存加密模型连接") + "（凭据已隐藏）");
-        if (!(snapshot.Details ?? []).SequenceEqual(preview.Details ?? [])) lines.Add("连接名称与备注\n  将更新本工具的连接信息（内容已隐藏）");
-        if (snapshot.AuthApiBaseUrl != preview.AuthApiBaseUrl) lines.Add("用户环境变量 CODEX_AUTHAPI_BASE_URL\n  " + (snapshot.AuthApiBaseUrl ?? "未设置") + "\n→ " + (preview.AuthApiBaseUrl ?? "移除"));
-        return lines.Count == 0 ? "没有需要保存的更改。" : string.Join("\n\n", lines) + "\n\n" + string.Join("\n", preview.Notes) + "\n\n保存后，重新打开 Codex 读取配置。";
+        var review = configurationSave.Review(preview);
+        return !review.HasChanges ? "没有需要保存的更改。" : review.Description + "\n\n" + string.Join("\n", review.Notes) + "\n\n保存后，重新打开 Codex 读取配置。";
     }
     private void PreviewTabClicked(object sender, RoutedEventArgs e) { currentTab = (string)((Button)sender).Tag; UpdatePreview(); }
     private void PreviewClicked(object sender, RoutedEventArgs e) => OpenConfigurationReview();
@@ -442,12 +483,9 @@ public partial class MainWindow : Window
             }
             if (confirmedPlan is not null && !ReferenceEquals(confirmedPlan.Before, snapshot)) throw new IOException("配置已重新读取，请返回调整后重新确认。");
             var plan = confirmedPlan ?? CreateConfigurationPlan();
-            store.Apply(plan);
-            var saved = store.Load(home);
-            var expected = new ConfigSnapshot(plan.Before.Home, plan.Config, plan.Auth, plan.AuthApiBaseUrl) { Bridge = plan.Bridge, Details = plan.Details,
-                CatalogIndex = plan.CatalogUpdate?.Index ?? plan.Before.CatalogIndex, Catalog = plan.CatalogUpdate is { } update ? new(update.Path, update.Content) : ManagedModelCatalogStore.Capture(home, plan.Config) };
-            var verification = CodexApplySnapshot.Compare(expected, saved);
-            if (!verification.CanContinue) throw new IOException("保存后的本地设置再次改变：" + string.Join("、", verification.Changes) + "。请重新读取并核对；当前修改已保留。");
+            var result = configurationSave.Save(configurationSave.Review(plan), snapshot, () => home,
+                () => { if (closing || officialLoginBusy) throw new OperationCanceledException("窗口正在关闭或读取登录。"); }, lifetime.Token);
+            if (!result.Succeeded || result.Saved is not { } saved) throw new IOException(result.Message);
             if (!Reload(saved)) return false;
             var note = plan.Notes.FirstOrDefault(n => n.StartsWith("保留现有", StringComparison.Ordinal));
             SetStatus("本地配置已保存；请重新打开 Codex，并在新聊天中核对。" + (note is null ? "" : " " + note));
@@ -469,13 +507,10 @@ public partial class MainWindow : Window
         {
             var settings = Settings();
             settings = (settings with { Model = string.IsNullOrWhiteSpace(settings.Model) ? "model-catalog" : settings.Model }).Normalize();
-            var fingerprint = settings.Fingerprint(); var expectedHome = home;
+            var expectedHome = home;
             busy = true; ProbeButton.Content = "正在获取…"; UpdateActions(); ModelHint.Text = "正在获取模型目录…";
-            var result = await client.ReadModelsAsync(settings, lifetime.Token);
+            var result = await new ModelDiscoveryService(client).ReadAsync(expectedHome, settings, () => (home, Settings()), lifetime.Token);
             if (closing || home != expectedHome) return;
-            string? latest;
-            try { latest = (Settings() with { Model = "model-catalog" }).Fingerprint(); } catch (ArgumentException) { latest = null; }
-            if (latest != fingerprint) { ModelHint.Text = "连接设置已更改，请重新获取模型。"; return; }
             var selected = ModelBox.Text; initializing = true;
             ModelBox.ItemsSource = result.Models; ModelBox.Text = selected;
             initializing = false;
@@ -501,15 +536,21 @@ public partial class MainWindow : Window
     private async void ChooseHomeClicked(object sender, RoutedEventArgs e)
     {
         if (closing || desktopRestartBusy || mobileBusy || gatewayPolling || gatewayLaunchInProgress) return;
+        automaticEnhancements.Cancel();
+        if (automaticEnhancementTask is { IsCompleted: false } pendingAutomatic) await pendingAutomatic;
         if (!ResolveUnsaved()) return;
         var dialog = new OpenFolderDialog { Title = "选择 Codex 配置目录", InitialDirectory = Directory.Exists(home) ? home : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) };
         if (dialog.ShowDialog(this) == true)
         {
             await StopSpeedSessionAsync();
-            home = dialog.FolderName; mobileLoadedHome = null; ClearMobileQr(); mobileDevices.Children.Clear();
-            mobilePassword.Clear(); mobileUrl.Clear(); mobileUsername.Text = "codex"; mobilePort.Text = MobileGatewayManager.DefaultPort.ToString();
-            CloseOverlay(); Reload(); if (currentPage == "mobile") _ = RefreshMobilePageAsync();
+            SwitchConfigurationHome(dialog.FolderName);
         }
+    }
+    private void SwitchConfigurationHome(string directory)
+    {
+        home = Path.GetFullPath(directory); mobileLoadedHome = null; ClearMobileQr(); mobileDevices.Children.Clear();
+        mobilePassword.Clear(); mobileUrl.Clear(); mobileUsername.Text = "codex"; mobilePort.Text = MobileGatewayManager.DefaultPort.ToString();
+        CloseOverlay(); Reload(); if (currentPage == "mobile") _ = RefreshMobilePageAsync();
     }
     private void ReloadClicked(object sender, RoutedEventArgs e)
     {
@@ -521,8 +562,8 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (!Directory.Exists(home)) { SetStatus("配置目录尚不存在，首次保存时会自动创建。"); return; }
-            Process.Start(new ProcessStartInfo("explorer.exe") { ArgumentList = { Path.GetFullPath(home) }, UseShellExecute = false });
+            var service = new WorkspaceDirectoryService(smokeOutput is null ? new NativeWorkspaceDirectoryRuntime() : new WpfDirectoryFixture(this));
+            if (!service.Open(home, () => home)) SetStatus("配置目录尚不存在，首次保存时会自动创建。");
         }
         catch (Exception error) { ShowError(error); }
     }
@@ -530,10 +571,14 @@ public partial class MainWindow : Window
     {
         if (closing || desktopRestartBusy) return;
         if (!ResolveUnsaved()) return;
-        if (smokeOutput is null && MessageBox.Show(this, "将恢复上次保存前的配置文件和相关用户环境变量。当前状态也会加密备份。继续？", "恢复配置", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         try
         {
-            if (store.HasPending(home)) store.Recover(home); else store.Restore(store.Load(home));
+            var review = configurationRecovery.PrepareReview(home);
+            var description = string.Join("\n\n", review.Changes.Select(change => change.Name + "\n" + change.Path + "\n当前：" + change.Previous + "\n恢复为：" + change.Next));
+            if (smokeOutput is null && MessageBox.Show(this, (review.Interrupted ? "恢复未完成保存前的状态并归档原记录。" : "恢复上次保存前的配置，并加密备份当前状态。") +
+                "\n\n" + description + "\n\n写入目标：\n" + string.Join("\n", review.Targets), "确认恢复本地配置", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            var result = configurationRecovery.Restore(review, () => home, () => { if (closing || officialLoginBusy) throw new OperationCanceledException(); }, lifetime.Token);
+            if (!result.Succeeded) throw new IOException(result.Message);
             if (Reload())
             {
                 SetStatus("已恢复本地配置，可在应用面板打开或重启 Codex。");
@@ -544,13 +589,15 @@ public partial class MainWindow : Window
         }
         catch (Exception error) { ShowError(error); }
     }
-    private void HelpClicked(object sender, RoutedEventArgs e) => MessageBox.Show(this,
-        "1. 调整设置，或在模板中选择一组设置。\n\n" +
-        "2. 点击“查看并确认修改”，核对目标文件与前后值，再点击“确认写入”。保存完成后可点击“重启 Codex 并应用”，再新建聊天核对。\n\n" +
-        "3. 保存前会自动备份，可在“备份恢复”中还原。\n\n" +
-        "Ctrl+S 查看并确认修改 · Ctrl+F 搜索 · Esc 返回调整\n\n" +
-        "配置目录可在“配置位置”查看或更换。模板单独保存在本机。",
-        "使用说明", MessageBoxButton.OK, MessageBoxImage.Information);
+    private string? smokeHelpText, smokeOpenedDirectory;
+    private void HelpClicked(object sender, RoutedEventArgs e)
+    {
+        var text = DockHelpCatalog.QuickStartText + "\n\nCtrl+S 查看并确认修改 · Ctrl+F 搜索 · Esc 返回调整\n\n配置目录可在“配置位置”查看或更换。";
+        if (smokeOutput is not null) { smokeHelpText = text; return; }
+        MessageBox.Show(this, text, "使用说明", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+    private sealed class WpfDirectoryFixture(MainWindow window) : IWorkspaceDirectoryRuntime
+    { public void Open(string path) => window.smokeOpenedDirectory = path; }
     private void SetStatus(string text, bool error = false)
     {
         StatusText.Text = text; StatusText.SetResourceReference(TextBlock.ForegroundProperty, error ? "Error" : "Muted");
@@ -602,7 +649,7 @@ public partial class MainWindow : Window
         ThemeManager.Apply(false);
         Assert(!SaveButton.IsEnabled && PreviewOverlay.Visibility == Visibility.Collapsed, "Initial state");
         Assert(currentPage == "connection" && ConnectionPage.IsVisible && ModelControls.IsVisible && GlobalSaveBar.IsVisible, "API key editor opens its connection and keeps save actions visible");
-        Assert(ProviderBox.SelectedIndex == 0 && LinePresetRow.Visibility == Visibility.Collapsed, "Blank home must not select a provider");
+        Assert(FindName("ProviderBox") is null && BaseUrlBox.Text.Length == 0 && !FindVisual<TextBlock>(ConnectionForm).Any(text => text.Text.Contains("Krill")), "Blank connection has no bundled commercial provider or endpoint");
         await Settle(); Capture(output, "main-window.png");
         ShowPage("connection"); await Settle(); Capture(output, "connection-custom.png");
         checks.AddRange(["Connection and model appear together with persistent save actions", "Blank custom connection without provider selection"]);
@@ -618,18 +665,14 @@ public partial class MainWindow : Window
         Assert(SaveCurrent() && new TomlDocument(store.Load(home).Config).Get("future_config.answer") is 43L, "Edit unlisted setting");
         Editor.Filter(""); ShowPage("connection");
         checks.AddRange(["Add and edit unlisted TOML setting", "Config-only save without credentials"]);
-        foreach (var line in KrillLines.All)
-        {
-            LinePresetBox.SelectedValue = line.Id;
-            Assert(BaseUrlBox.Text == line.Origin && KindBox.SelectedIndex == (int)ConnectionKind.CodexRelay && CredentialLabel.Text == "API Key", "Preset " + line.Id);
-        }
-        LinePresetBox.SelectedValue = KrillLines.Cdn.Id; ApiKeyBox.Password = "ah-fake-ui-smoke-key"; ModelBox.Text = "gpt-6.1-sol";
+        BaseUrlBox.Text = "https://fixture.example.com"; KindBox.SelectedIndex = (int)ConnectionKind.CodexRelay;
+        ApiKeyBox.Password = "fake-ui-smoke-key"; ModelBox.Text = "gpt-6.1-sol";
         ShowPage("connection");
         ModelBox.ApplyTemplate();
         Assert(ModelBox.Template.FindName("PART_EditableTextBox", ModelBox) is TextBox, "Editable model input");
         var editable = (TextBox)ModelBox.Template.FindName("PART_EditableTextBox", ModelBox);
         editable.Text = "typed-model"; Assert(ModelBox.Text == "typed-model", "Editable model binding"); editable.Text = "gpt-6.1-sol";
-        checks.Add("Presets and editable model binding");
+        checks.Add("Service-neutral address entry and editable model binding");
         ShowPage("preferences"); Editor.Search.Text = ""; Editor.SetMode(true);
         var commonSettingsCount = Editor.VisibleCount;
         Editor.Search.Text = "model_context_window";
@@ -652,10 +695,10 @@ public partial class MainWindow : Window
         var saved = store.Load(home); var document = new TomlDocument(saved.Config);
         Assert(document.Get("model_context_window") is long n && n == 500000 && document.String("model_reasoning_effort") == "high", "Unified save");
         Assert(document.Get("features.fast_mode") is null && document.Get("web_search") is null, "Absent defaults preserved");
-        using (var auth = JsonDocument.Parse(saved.Auth!)) Assert(auth.RootElement.GetProperty("OPENAI_API_KEY").GetString() == "ah-fake-ui-smoke-key" && auth.RootElement.GetProperty("auth_mode").GetString() == "apikey" && auth.RootElement.EnumerateObject().Count() == 2, "Auth format");
+        using (var auth = JsonDocument.Parse(saved.Auth!)) Assert(auth.RootElement.GetProperty("OPENAI_API_KEY").GetString() == "fake-ui-smoke-key" && auth.RootElement.GetProperty("auth_mode").GetString() == "apikey" && auth.RootElement.EnumerateObject().Count() == 2, "Auth format");
         Assert(environment.Read() is null && !SaveButton.IsEnabled, "Saved state");
         checks.AddRange(["Shared draft across pages", "Invalid draft retained and save blocked", "Search and empty state", "Unified settings save", "Absent preferences preserved", "Masked preview and authentication"]);
-        await Settle(); Capture(output, "connection-krill.png");
+        await Settle(); Capture(output, "connection-custom-saved.png");
         ShowPage("preferences"); Editor.Search.Text = ""; Editor.SetMode(true); await Settle(); Capture(output, "preferences.png");
         ShowPage("catalog"); Editor.Filter("model_context"); await Settle(); Capture(output, "detailed-settings.png");
         Editor.Filter(""); ShowPage("connection"); PreviewClicked(PreviewButton, new()); await Settle();
@@ -786,7 +829,7 @@ public partial class MainWindow : Window
         var copied = TemplateEditor.Current!;
         TemplateEditor.DeleteTemplate(copied); Assert(library.Load().All(template => template.Id != copied.Id), "Delete custom template");
         TemplateEditor.DeleteTemplate(BuiltInTemplates.KrillCommunity); Assert(library.Load().All(template => template.Id != BuiltInTemplates.KrillCommunity.Id), "Remove built-in template");
-        TemplateEditor.RestoreBuiltIns(); Assert(library.Load().Any(template => template.Id == custom.Id) && library.Load().Any(template => template.Id == BuiltInTemplates.KrillCommunity.Id), "Restore built-in preserves custom templates");
+        TemplateEditor.RestoreBuiltIns(); Assert(library.Load().Any(template => template.Id == custom.Id) && library.Load().All(template => template.Id != BuiltInTemplates.KrillCommunity.Id), "Restore default templates preserves custom entries without adding retired commercial presets");
         TemplateEditor.BeginEdit(custom); TemplateEditor.NameInput.Text = "尚未保存的名称";
         TemplateEditor.PendingTestChoice = MessageBoxResult.Cancel; ShowPage("connection");
         Assert(currentPage == "templates" && TemplateEditor.IsEditing && TemplatesNav.IsChecked == true, "Cancel navigation retains template edit");
@@ -843,7 +886,7 @@ public partial class MainWindow : Window
         var officialConfig = System.Text.Encoding.UTF8.GetBytes("# login fixture\nmodel='existing-login-model'\n");
         File.WriteAllBytes(Path.Combine(home, "auth.json"), loginAuth); File.WriteAllBytes(Path.Combine(home, "config.toml"), officialConfig);
         environment.Write(null); Reload();
-        Assert(!Dirty && ProviderBox.SelectedIndex == 0 && ApiKeyBox.Password.Length == 0, "Existing authentication is preserved until a new API key is saved");
+        Assert(!Dirty && ApiKeyBox.Password.Length == 0, "Existing authentication is preserved until a new API key is saved");
         ShowPage("connection"); await Settle(); Capture(output, "connection-no-pat.png");
         ShowPage("preferences"); Editor.Search.Text = ""; Editor.SetMode(true); SelectValue("analytics.enabled", "false");
         Assert(SaveCurrent() && store.Load(home).Auth!.SequenceEqual(loginAuth) && environment.Read() is null, "Config-only edit preserves login authentication");
@@ -854,6 +897,8 @@ public partial class MainWindow : Window
         await RunConnectionModeChecksAsync(output, checks);
         await RunGatewayManagementChecksAsync(output, checks);
         await RunDesktopSpeedChecksAsync(output, checks);
+        await RunConnectionRecoveryChecksAsync(output, checks);
+        await RunAutomaticEnhancementsChecksAsync(output, checks);
         await RunModelBehaviorChecksAsync(output, checks);
         await RunMixedRecoverySmokeAsync(output, checks);
         ShowPage("overview"); await Settle(); Capture(output, "dock-overview.png");
@@ -878,6 +923,7 @@ public partial class MainWindow : Window
         await RunRuntimeConflictChecksAsync(output, checks);
         await RunSuperbaReuseSmokeAsync(output, checks);
         await RunLayoutReviewAsync(output, checks);
+        await RunWorkspaceInformationSmokeAsync(output, checks);
         Assert(Environment.GetEnvironmentVariable(WindowsUserEnvironment.Variable, EnvironmentVariableTarget.User) == originalEnvironment, "Real environment changed");
         checks.AddRange(["External change conflict protection", "Reload after invalid source repair", "Real user environment unchanged"]);
         await File.WriteAllTextAsync(Path.Combine(output, "report.json"), JsonSerializer.Serialize(new

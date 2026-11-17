@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using CodexConfig.Core;
+using CodexConfig.Application;
 
 namespace CodexConfig.App;
 
@@ -61,6 +62,7 @@ public partial class MainWindow
         BackgroundModeHint.Text = saved
             ? "混合连接需要本地模型网关运行；退出 Dock 后网关继续服务。手机访问另需手机网关，两个网关均在“网关管理”中启停。"
             : "直连保存后由 Codex 读取配置。手机访问另需手机网关，可在“网关管理”中启停；退出 Dock 后已启动的手机网关继续运行。";
+        BackgroundModeHint.Text += " 旧聊天接续和速度兼容需保持 Dock 运行，可收起到托盘；在“客户端增强”中管理。";
         OfficialPanel.Visibility = mixed ? Visibility.Visible : Visibility.Collapsed;
         DirectFastCompatibilityHint.Visibility = mixed ? Visibility.Collapsed : Visibility.Visible;
         MixedGatewayOptions.Visibility = mixed ? Visibility.Visible : Visibility.Collapsed;
@@ -112,7 +114,10 @@ public partial class MainWindow
             }
             var status = await BridgeProcess.StatusAsync(connection, lifetime.Token);
             if ((status is null || status.ProtocolVersion != ModelBridge.ProtocolVersion) && start)
-                status = await BridgeProcess.EnsureAsync(home, bytes, cancellation: lifetime.Token);
+            {
+                await ExecuteSavedGatewayAsync(GatewayKind.Model, GatewayCommand.Start);
+                status = await BridgeProcess.StatusAsync(connection, lifetime.Token);
+            }
             if (closing || home != expectedHome || !ReferenceEquals(snapshot, expectedSnapshot)) return;
             gatewayStatus = status;
             GatewayStatusText.Text = status is null ? "网关已停止。点击启动可运行；需要随 Dock 启动时，请勾选自动启动。"
@@ -134,21 +139,8 @@ public partial class MainWindow
         finally { gatewayPolling = false; if (!closing) RefreshMixedUi(); }
     }
     private string BridgeMetricsText(BridgeStatus status)
-    {
-        var document = new TomlDocument(snapshot?.Config);
-        var provider = document.String("model_provider") ?? "openai";
-        var protocol = document.Get(TomlDocument.FormatPath(["model_providers", provider, "capabilities", "remote_compaction"])) as string;
-        var configured = protocol switch { "v2" => "文件允许 v2，服务支持需核对", "unsupported" => "文件选择普通摘要压缩", _ => "跟随执行端默认，能力未单独核实" };
-        if (status.Metrics is not { } m) return "\n压缩配置：" + configured + "\n此网关版本未返回压缩指标。";
-        string Ms(double? value) => value is { } ms ? $"{ms:N0} ms" : "未测得";
-        return $"\n压缩配置：{configured}\n客户端压缩请求：旧端点 {m.LegacyCompactionRequests} 次 · v2 {m.V2Requests} 次（trigger {m.V2Triggers} 个）" +
-            $"\n服务返回压缩条目 {m.CompactionItems} 个 · 确认完成 {m.SuccessfulCompactions} 次" +
-            (m.LastCompactionAt is { } time ? $" · 最近 {time.LocalDateTime:g}（{m.LastCompactionProtocol} / {m.LastCompactionTransport}）" : " · 尚无成功完成记录") +
-            (m.InspectionLimited > 0 ? $"\n{m.InspectionLimited} 段数据无法完整检查，计数可能不全。" : "") +
-            $"\n连接：排队 {m.Waiting} · 活跃 {m.Active}\n最近一次：队列 {Ms(m.LastQueueMs)} · 上游响应头 {Ms(m.LastHeadersMs)} · 首数据 {Ms(m.LastFirstDataMs)} · 总计 {Ms(m.LastDurationMs)}" +
-            (m.LastStreamEnd is { } end ? " · 结束：" + (end switch { "completed" => "完整转发", "upstream_error" => "上游错误", "client_disconnected" => "客户端断开", "timeout" => "等待超时", "peer_closed" => "连接关闭", "handshake_failed" => "握手失败", _ => "传输异常" }) : "") +
-            "\n仅统计经本地模型网关转发的本次进程流量；不保存聊天或压缩正文。";
-    }
+        => "\n" + CodexConfig.Application.ModelGatewayDiagnostics.FromStatus(status,
+            CodexConfig.Application.ModelGatewayDiagnostics.ReadPreference(snapshot?.Config)).MetricsText;
     private async void StartGatewayClicked(object sender, RoutedEventArgs e)
     {
         await ModelGatewayActionAsync(StartModelGatewayAsync);
@@ -166,7 +158,8 @@ public partial class MainWindow
                 throw new InvalidOperationException("请先在“连接与账号”保存“官方账号 + 独立模型入口”。");
             var connection = MixedConnection.Read(bytes);
             HttpConnectionPolicy.RequireAuthorization(connection.BaseUrl, connection.HttpOrigin);
-            var status = await BridgeProcess.EnsureAsync(expectedHome, bytes, cancellation: lifetime.Token);
+            await ExecuteSavedGatewayAsync(GatewayKind.Model, GatewayCommand.Start);
+            var status = await BridgeProcess.StatusAsync(connection, lifetime.Token);
             if (!closing && home == expectedHome) { stoppedGatewayHomes.Remove(expectedHome); gatewayStatus = status; }
         }
         finally { gatewayPolling = false; if (!closing) await RefreshAllGatewaysAsync(); }
@@ -189,8 +182,7 @@ public partial class MainWindow
         try
         {
             // Stop the saved connection, preserving any draft in the editor.
-            var saved = await Task.Run(() => store.Load(expectedHome), lifetime.Token);
-            if (saved.Bridge is { } bytes) await BridgeProcess.StopAsync(bytes, lifetime.Token);
+            await ExecuteSavedGatewayAsync(GatewayKind.Model, GatewayCommand.Stop);
             if (home == expectedHome) gatewayStatus = null;
         }
         finally
@@ -214,7 +206,8 @@ public partial class MainWindow
                 throw new InvalidOperationException("请先保存“官方账号 + 独立模型入口”，再重启本机模型网关。");
             var connection = MixedConnection.Read(bytes);
             HttpConnectionPolicy.RequireAuthorization(connection.BaseUrl, connection.HttpOrigin);
-            var status = await BridgeProcess.RestartAsync(expectedHome, bytes, cancellation: lifetime.Token);
+            await ExecuteSavedGatewayAsync(GatewayKind.Model, GatewayCommand.Restart);
+            var status = await BridgeProcess.StatusAsync(connection, lifetime.Token);
             if (home == expectedHome) { stoppedGatewayHomes.Remove(expectedHome); gatewayStatus = status; }
         }
         finally

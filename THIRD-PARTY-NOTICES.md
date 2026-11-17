@@ -1,5 +1,9 @@
 # Third-party notices
 
+## Windows App SDK and WebView2 SDK (WinUI preview only)
+
+The separate `CodexConfig.WinUI` preview pins Microsoft.WindowsAppSDK 1.8.260317003, including its WinUI component 1.8.260224000 and WebView2 SDK 1.0.3179.45 dependency. These are Microsoft components under their accompanying terms; they are not covered by this repository's MIT license. Self-contained Windows App SDK runtime files emitted by the NuGet build are included only with the WinUI preview. Full terms and notices: `third_party/WindowsAppSDK-LICENSE.txt`, `third_party/WindowsAppSDK-NOTICE.txt`, and `third_party/WebView2-SDK-LICENSE.txt`. The WPF release entry point remains independent of these preview-only package references.
+
 ## CodexPlusPlus native speed compatibility design reference
 
 Design reference: CodexPlusPlus 2.6.6, commit `fb3926fac4f9738941c57703a1fb47b7b0072cee`, https://github.com/BigPizzaV3/CodexPlusPlus . Upstream runtime sources are AGPL-3.0. No upstream runtime source files are included in this product. Dock independently implements the four authentication-gate mechanism in C# under this project's MIT license; implementation and validation boundaries are documented in `docs/desktop-speed-compatibility.md`.

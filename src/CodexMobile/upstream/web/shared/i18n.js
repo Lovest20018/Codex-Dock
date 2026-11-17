@@ -2,6 +2,16 @@
 // UI messages only. Never translate chat content, commands, model IDs or user input.
 const BridgeI18n=(()=>{
 const en={
+"沿用原生默认":"Keep native default",
+"可手动填写模型":"You can enter a model manually.",
+"模型目录暂不可用，可手动填写模型":"The model catalog is temporarily unavailable. You can enter a model manually.",
+"账号身份已变化，请重新读取模型列表":"The account identity changed. Reload the model list.",
+"模型接入已变化，请重试":"The model connection changed. Try again.",
+"无法核验当前 CLI 模型接入，请先恢复原连接":"The CLI model connection cannot be verified. Restore the original connection first.",
+"未能读取此模型的推理能力，请沿用原生默认或重新读取模型设置":"This model's reasoning options are unavailable. Keep the native default or reload model settings.",
+"Codex 会话同步格式已变化，请更新电脑端 Dock；历史和草稿仍可查看。":"The Codex session format changed. Update Dock on the computer. History and drafts remain available.",
+"已重建网关连接，但原桌面会话仍未恢复。可在应用管理中核对任务后重启 Codex；操作未发送。":"The gateway connection was rebuilt, but the desktop session is still unavailable. Review tasks in App management before restarting Codex. The operation was not sent.",
+"尚未连接原桌面会话。可再次重建连接；若仍失败，可在应用管理中核对任务后重启 Codex。":"The original desktop session is unavailable. Rebuild the connection again. If recovery fails, review tasks in App management before restarting Codex.",
 "纯文本":"Plain text",
 "Codex 恢复退出确认":"Confirm Codex recovery exit",
 "连接重建失败，可能无法核验全部任务。正常退出仍可能中断无法确认的任务；已知运行任务会阻止退出。请确认接受此风险，退出后再手动开启 Codex。":"The connection rebuild failed, so some tasks may be unavailable for verification. Normal exit may interrupt those tasks; known active tasks will still block exit. Confirm this risk, then manually start Codex after it exits.",

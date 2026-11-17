@@ -1,0 +1,49 @@
+{
+  "product": "Codex Dock",
+  "status": "Design candidates; existing application assets are unchanged",
+  "viewBox": "0 0 128 128",
+  "concepts": [
+    {
+      "id": "01-port",
+      "name": "接入",
+      "english": "PORT",
+      "description": "开口 D 与进入端口的箭头，保留 Dock 的含义。",
+      "recommended": true,
+      "background": "#171C1A",
+      "foreground": "#F6F8F5",
+      "accent": "#B8F28B",
+      "shapes": [
+        { "fill": "foreground", "path": "M45,27 L68,27 C92,27 108,42 108,64 C108,86 92,101 68,101 L45,101 L45,84 L67,84 C82,84 91,77 91,64 C91,51 82,44 67,44 L45,44 Z" },
+        { "fill": "accent", "path": "M24,55 L55,55 L64,64 L55,73 L24,73 C21,73 19,71 19,68 L19,60 C19,57 21,55 24,55 Z" }
+      ]
+    },
+    {
+      "id": "02-fold",
+      "name": "折叠",
+      "english": "FOLD",
+      "description": "折面构成字母 D，更锐利、更有工具感。",
+      "recommended": false,
+      "background": "#1B1921",
+      "foreground": "#F6F4FA",
+      "accent": "#B9A0FF",
+      "shapes": [
+        { "fill": "foreground", "path": "M29,26 L65,26 L65,44 L47,44 L47,84 L63,84 L84,72 L84,56 L101,46 L101,82 L68,102 L29,102 Z" },
+        { "fill": "accent", "path": "M65,26 L101,46 L84,56 L48,36 Z" }
+      ]
+    },
+    {
+      "id": "03-stack",
+      "name": "层栈",
+      "english": "STACK",
+      "description": "将连接与配置抽象成两层，浅色与单色均适用。",
+      "recommended": false,
+      "background": "#EEF2ED",
+      "foreground": "#23453C",
+      "accent": "#498E70",
+      "shapes": [
+        { "fill": "accent", "path": "M64,24 L105,46 L64,68 L23,46 Z" },
+        { "fill": "foreground", "path": "M23,64 L64,86 L105,64 L105,83 L64,105 L23,83 Z" }
+      ]
+    }
+  ]
+}

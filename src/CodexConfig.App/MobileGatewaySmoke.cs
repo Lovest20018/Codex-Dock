@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using CodexConfig.Core;
 
 namespace CodexConfig.App;
 
@@ -9,6 +10,7 @@ public partial class MainWindow
 {
     private async Task RunMobileSmokeAsync(string output, List<string> checks)
     {
+        smokeMobileConfirm = _ => false;
         static void Assert(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
         var before = store.Load(home); var previousModel = ModelBox.Text;
         ModelBox.Text += "-mobile-draft";
@@ -39,7 +41,7 @@ public partial class MainWindow
         mobilePassword.Clear(); mobileUrl.Clear(); mobileUsername.Text = "codex"; ModelBox.Text = previousModel;
         ClearMobileQr(); await RefreshMobilePageAsync();
         Assert(before.SameContents(store.Load(home)) && !File.Exists(manager.SettingsPath), "viewing mobile UI leaves native auth, config, and worker settings untouched");
-        var fixture = new MainWindow(store, home, output, environment);
+        var fixture = new MainWindow(store, home, output, environment) { allowSmokeGateway = true };
         fixture.Loaded -= fixture.WindowLoaded;
         var fixtureManager = fixture.MobileManager();
         try
@@ -86,5 +88,43 @@ public partial class MainWindow
         }
         ShowPage("connection"); await Settle();
         checks.AddRange(["Independent mobile navigation and save actions", "Mobile and model drafts survive navigation", "Mobile URL validation before process launch", "Mobile smoke isolates all device data", "Mobile minimum-size and dark layouts", "Device revocation and IP unblock controls", "Mobile UI leaves native login and model configuration unchanged", "Editable port 13090 without a proxy IP field; invalid port cannot start service", "Local Codex account and CLI enrollment entry"]);
+    }
+
+    private async Task RunSharedMobileSaveSmokeAsync(string output, List<string> checks)
+    {
+        void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); checks.Add(message); }
+        var directory = Path.Combine(output, "wpf-mobile-save-home"); Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "config.toml"), "model='unchanged-wpf-mobile'\n");
+        var fixture = new MainWindow(store, directory, output, environment) { allowSmokeGateway = true };
+        fixture.Loaded -= fixture.WindowLoaded; var manager = fixture.MobileManager(); var before = store.Load(directory);
+        try
+        {
+            fixture.Show(); fixture.ShowPage("mobile"); await fixture.RefreshMobilePageAsync();
+            using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0); listener.Start(); var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
+            fixture.mobileUrl.Text = "https://wpf-phone.invalid"; fixture.mobileUsername.Text = "fixture"; fixture.mobilePassword.Password = "fake-wpf-phone-password"; fixture.mobilePort.Text = port.ToString();
+            fixture.smokeMobileConfirm = review => { Check(!review.Description.Contains("fake-wpf-phone-password") && review.Description.Contains("wpf-phone.invalid"), "WPF shared phone confirmation hides the password and identifies the saved entry"); return false; };
+            await fixture.RunMobileActionAsync(fixture.SaveAndStartMobileAsync);
+            Check(manager.Load() is null && fixture.mobilePassword.Password.Length > 0, "Returning from WPF phone confirmation preserves draft and performs no write");
+            fixture.smokeMobileConfirm = _ => true;
+            fixture.ModelBox.Text = "separate-wpf-model-draft";
+            await fixture.RunMobileActionAsync(fixture.SaveAndStartMobileAsync);
+            Check(manager.Load() is not null && await manager.StatusAsync() is not null && fixture.mobilePassword.Password.Length == 0 &&
+                fixture.ModelBox.Text == "separate-wpf-model-draft" && before.SameContents(store.Load(directory)), "WPF shared phone save encrypts settings starts its worker and keeps model drafts untouched");
+            fixture.mobilePort.Text = (port == 65535 ? port - 1 : port + 1).ToString();
+            fixture.smokeMobileConfirm = _ => { var path = manager.SettingsPath; var bytes = File.ReadAllBytes(path); File.WriteAllBytes(path, bytes.Concat(new byte[] { 0 }).ToArray()); return true; };
+            await fixture.MobileActionAsync(fixture.SaveAndStartMobileAsync);
+            Check((fixture.mobileStatus.Text.Contains("变化") || fixture.mobileStatus.Text.Contains("读取")) && fixture.mobilePassword.Password.Length == 0 && before.SameContents(store.Load(directory)), "WPF shared phone save refuses a setting that changed after confirmation");
+        }
+        finally
+        {
+            // The deliberate corrupt-settings check needs the original encrypted
+            // record restored before the isolated worker can authenticate stop.
+            if (File.Exists(manager.SettingsPath))
+            {
+                var bytes = File.ReadAllBytes(manager.SettingsPath);
+                if (bytes.Length > 0 && bytes[^1] == 0) File.WriteAllBytes(manager.SettingsPath, bytes[..^1]);
+            }
+            await manager.StopAsync(); fixture.exitReady = true; fixture.Close();
+        }
     }
 }

@@ -29,7 +29,7 @@ foreach ($taskName in @('config.toml','auth.json','codex-config-connection.dat',
     }
 }
 function Check-Bytes([string]$Name, [byte[]]$Bytes) {
-    if ($Name.Replace('\','/') -match '(^|/)(auth\.json|config\.toml|codex-config-connection\.dat|codex-dock-details\.dat|codex-dock-catalog\.json|codex-dock-models|codex-dock-model-catalog-[^/]+\.json|mobile-settings\.dat|auth-sessions\.json|operations\.json|worker\.lock|manager\.lock|codex-config-backups|\.env(?:\..*)?|[^/]+\.backup)(/|$)') { throw "Private configuration path in release input: $Name" }
+    if ($Name.Replace('\','/') -match '(^|/)(auth\.json|config\.toml|codex-config-connection\.dat|codex-dock-details\.dat|codex-dock-catalog\.json|codex-dock-models|codex-dock-thread-backups|codex-dock-model-catalog-[^/]+\.json|mobile-settings\.dat|auth-sessions\.json|operations\.json|worker\.lock|manager\.lock|codex-config-backups|\.env(?:\..*)?|[^/]+\.backup)(/|$)') { throw "Private configuration path in release input: $Name" }
     if ($Bytes.Length -gt 0 -and $taskPrivateHashes.Contains([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($Bytes)))) { throw "Personal configuration bytes found: $Name" }
     $taskUtf8 = [Text.Encoding]::UTF8.GetString($Bytes); $taskUnicode = [Text.Encoding]::Unicode.GetString($Bytes)
     foreach ($taskSecret in $taskSecrets) {

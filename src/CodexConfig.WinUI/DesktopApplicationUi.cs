@@ -1,0 +1,203 @@
+﻿using CodexConfig.Application;
+using CodexConfig.Core;
+using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+
+namespace CodexConfig.WinUI;
+
+public sealed partial class MainWindow
+{
+    private bool applying, dialogOpen, closing, closePrompt, allowClose;
+    private DesktopApplyResult? lastApplication;
+    private Func<ContentDialog, Task<ContentDialogResult>>? smokeDialog;
+    private readonly DispatcherTimer runtimeTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private bool ManualApplicationBusy => applying || savingConfiguration || restoringConfiguration || savingProfile || restoringNativeClipboard || readingSavedPreview || readingSource || readingFeatures || readingDiagnostics || installingUpdate || readingOfficialLogin || discoveringModels || mobileAction || gatewayAction || gatewayLaunch || gatewayExit || desktopApplication.IsBusy;
+    private bool ApplicationBusy => ManualApplicationBusy || automaticEnhancements.IsBusy;
+
+    private async void ApplyClicked(object sender, RoutedEventArgs e) => await ApplyDesktopAsync();
+    private async void ForceExitClicked(object sender, RoutedEventArgs e) => await ApplyDesktopAsync(forceExit: true);
+
+    private async Task ApplyDesktopAsync(bool forceExit = false, bool enhancedLaunch = false)
+    {
+        if (ApplicationBusy || dialogOpen || closing || HasPendingRecovery || connectionDraft.HasDraft || !viewModel.PreferencesAvailable || !viewModel.CanApplyConfiguration || viewModel.Snapshot is not { } saved) return;
+        applying = true; ApplicationTargetDetails.Visibility = Visibility.Collapsed; RefreshView();
+        try
+        {
+            lastApplication = await desktopApplication.ApplyAsync(new(saved, ForceExit: forceExit, EnhancedLaunch: enhancedLaunch), new WinUiDesktopApplyInteraction(this), lifetime.Token);
+            viewModel.ApplicationFinished(lastApplication);
+            if (desktopEnhancements.AutomaticStatus is { } status) automaticStatus = status;
+        }
+        finally { applying = false; RefreshView(); }
+    }
+
+    private async Task ReloadWorkspaceAsync()
+    {
+        if (ApplicationBusy || dialogOpen || closing) return;
+        try
+        {
+            if (!await ResolveProfileDraftAsync() || !await ResolveTemplateEditAsync() || !await ResolveConnectionDraftAsync() || !await ResolveMobileDraftAsync()) return;
+            var current = store.Load(viewModel.Home);
+            if ((lastApplication?.Outcome == DesktopApplyOutcome.Conflict || configurationResult?.Outcome == ConfigurationSaveOutcome.Conflict) && viewModel.Snapshot is { } previous)
+            {
+                var changes = DesktopApplicationService.DescribeChanges(previous, current);
+                if (!await ConfirmDialogAsync("核对外部变更", changes.Length > 0 ? changes : "仅格式或相同账号的登录刷新，设置值未改变。", "读取最新配置")) return;
+            }
+            desktopApplication.Reset(); lastApplication = null;
+            configurationResult = null;
+            shellError = "";
+            LoadWorkspace(current); RefreshView();
+        }
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or System.Security.Cryptography.CryptographicException or System.Text.Json.JsonException or InvalidOperationException)
+        { desktopApplication.Reset(); lastApplication = null; configurationResult = null; shellError = ""; LoadWorkspace(viewModel.Home); RefreshView(); }
+    }
+
+    private void RefreshApplicationActions()
+    {
+        if (ApplyButton is null) return;
+        ChooseHomeButton.IsEnabled = ReloadButton.IsEnabled = !ApplicationBusy && !dialogOpen && !closing;
+        ApplyButton.IsEnabled = viewModel.PreferencesAvailable && viewModel.CanApplyConfiguration && !HasPendingRecovery && !connectionDraft.HasDraft && !ApplicationBusy && !dialogOpen && !closing;
+        ApplyButton.Content = automaticEnhancements.IsBusy ? "正在自动接回…" : ApplicationBusy ? "正在应用…" : desktopApplication.PendingRetry is not null ? "重试客户端增强" : "打开或重启 Codex 并应用";
+        ForceExitButton.Visibility = !ApplicationBusy && lastApplication?.Outcome == DesktopApplyOutcome.ExitBlocked && desktopApplication.BlockedExit is not null
+            ? Visibility.Visible : Visibility.Collapsed;
+        ForceExitButton.IsEnabled = !ApplicationBusy && !connectionDraft.HasDraft && !dialogOpen && !closing && viewModel.PreferencesAvailable && viewModel.CanApplyConfiguration;
+        if (lastApplication is null && !ApplicationBusy)
+        {
+            ApplicationStage.Text = connectionDraft.HasDraft ? "有未保存的配置修改" : !viewModel.CanApplyConfiguration ? viewModel.SetupGuide.Title : configurationResult?.Outcome == ConfigurationSaveOutcome.Saved ? "配置已保存，等待应用" : "准备应用";
+            ApplicationStatus.Text = connectionDraft.HasDraft ? "请先查看并确认修改，再应用到 Codex。" : !viewModel.CanApplyConfiguration ? "完成连接设置或修复后重新读取，再核对实例并应用。" : configurationResult?.Succeeded == true ? configurationResult.Message : "先核对当前目录，应用时会再次确认目标实例。";
+            ApplicationError.IsOpen = false; ApplicationStatus.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void StartRuntimeObservation()
+    {
+        if (options.SmokeOutput is not null) return;
+        runtimeTimer.Tick += async (_, _) =>
+        {
+            if (ApplicationBusy || dialogOpen || closing) return;
+            if (desktopEnhancements.Session is { } session && (!session.IsRunning || !session.IsApplied))
+            {
+                ApplicationStage.Text = "客户端增强需要重新核对";
+                ApplicationStatus.Text = session.Status;
+                ApplicationStatus.Visibility = Visibility.Visible;
+            }
+            await TryAutomaticEnhancementsAsync();
+            if (++gatewayTicks % 5 == 0) await RefreshGatewaysAsync();
+            if (IsPhonePage) await MobilePairTickAsync();
+        };
+        runtimeTimer.Start();
+    }
+
+    private async Task<CodexDesktopTarget?> ChooseDesktopAsync(IReadOnlyList<CodexDesktopTarget> targets, CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        var (dialog, choices, exitOthers) = CreateTargetPicker(targets);
+        if (await ShowDialogAsync(dialog) != ContentDialogResult.Primary || choices.SelectedIndex < 0) return null;
+        var target = targets[choices.SelectedIndex];
+        var others = targets.Where(candidate => !ReferenceEquals(candidate, target)).ToArray();
+        return exitOthers.IsChecked != true ? target : options.SmokeOutput is not null ? target with { AlsoExit = others } : target.WithOtherInstancesToExit(others);
+    }
+
+    private (ContentDialog Dialog, ListBox Choices, CheckBox ExitOthers) CreateTargetPicker(IReadOnlyList<CodexDesktopTarget> targets)
+    {
+        var body = new StackPanel { Spacing = 12 };
+        body.Children.Add(new TextBlock { Text = "选择重开后使用的资料目录。需要合并为一个实例时，可勾选同时退出其他实例。", TextWrapping = TextWrapping.Wrap });
+        var choices = new ListBox { SelectionMode = SelectionMode.Single, MaxHeight = 320, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        foreach (var target in targets)
+            choices.Items.Add(new ListBoxItem { Content = new TextBlock { Text = DesktopApplicationService.DescribeTarget(target), TextWrapping = TextWrapping.Wrap, Margin = new(8) } });
+        body.Children.Add(choices);
+        var exitOthers = new CheckBox { Content = new TextBlock { Text = "同时退出其他 " + (targets.Count - 1) + " 个实例，全部退出后仅打开一个 Codex", TextWrapping = TextWrapping.Wrap } };
+        body.Children.Add(exitOthers);
+        var dialog = new ContentDialog { Title = "选择本次 Codex 实例", Content = body, PrimaryButtonText = "继续核对", CloseButtonText = "取消",
+            DefaultButton = ContentDialogButton.Close, IsPrimaryButtonEnabled = false, XamlRoot = Root.XamlRoot };
+        choices.SelectionChanged += (_, _) => dialog.IsPrimaryButtonEnabled = choices.SelectedIndex >= 0;
+        return (dialog, choices, exitOthers);
+    }
+
+    private async Task<bool> ConfirmDialogAsync(string title, string message, string primary)
+    {
+        var dialog = new ContentDialog { Title = title, PrimaryButtonText = primary, CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close,
+            XamlRoot = Root.XamlRoot, Content = new ScrollViewer { MaxHeight = 400, Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true } } };
+        return await ShowDialogAsync(dialog) == ContentDialogResult.Primary;
+    }
+
+    private async Task<ContentDialogResult> ShowDialogAsync(ContentDialog dialog)
+    {
+        if (dialogOpen) throw new InvalidOperationException("请先完成当前确认。");
+        dialogOpen = true;
+        try
+        {
+            if (options.SmokeOutput is not null && !nativeAcceptanceInteractive)
+                return smokeDialog is not null ? await smokeDialog(dialog) : throw new InvalidOperationException("隔离检查没有提供确认操作，未操作真实桌面。");
+            return await dialog.ShowAsync();
+        }
+        finally { dialogOpen = false; }
+    }
+
+    private async void WindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        if (allowClose) return;
+        args.Cancel = true;
+        if (ManualApplicationBusy || dialogOpen)
+        {
+            ApplicationStatus.Text = "请先完成或取消当前确认与应用，再关闭窗口。";
+            return;
+        }
+        if (!exitRequested && TryHideToTray()) return;
+        await ExitWindowAsync();
+    }
+
+    private async Task<bool> StopBeforeCloseAsync()
+    {
+        if (ManualApplicationBusy || dialogOpen || closePrompt || closing) return false;
+        closePrompt = true;
+        try
+        {
+            if (!await ResolveProfileDraftAsync() || !await ResolveTemplateEditAsync() || !await ResolveConnectionDraftAsync() || !await ResolveMobileDraftAsync()) return false;
+            if (applicationRuntime.IsEnhancementRunning && !await ConfirmDialogAsync("退出 Codex Dock", "退出后，本窗口提供的客户端增强将停止。Codex 和已启动的模型网关继续运行。", "退出程序")) return false;
+            closing = true;
+            await automaticEnhancements.CancelAndWaitAsync();
+            await applicationRuntime.StopEnhancementsAsync();
+            return true;
+        }
+        catch (Exception error)
+        { closing = false; SetShellError("暂时无法退出", error.Message); return false; }
+        finally { closePrompt = false; if (!closing) RefreshView(); }
+    }
+
+    private void Dispatch(Action action)
+    {
+        if (DispatcherQueue.HasThreadAccess) { action(); return; }
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!DispatcherQueue.TryEnqueue(() =>
+        {
+            try { action(); completion.SetResult(); }
+            catch (Exception error) { completion.SetException(error); }
+        })) throw new OperationCanceledException("窗口已关闭。", lifetime.Token);
+        completion.Task.WaitAsync(lifetime.Token).GetAwaiter().GetResult();
+    }
+
+    private sealed class WinUiDesktopApplyInteraction(MainWindow window) : IDesktopApplyInteraction
+    {
+        public string ActiveHome => window.viewModel.Home;
+        public void ValidateContext()
+        { if (window.closing) throw new OperationCanceledException("窗口正在关闭。"); }
+        public Task<CodexDesktopTarget?> ChooseAsync(IReadOnlyList<CodexDesktopTarget> targets, CancellationToken cancellation) => window.ChooseDesktopAsync(targets, cancellation);
+        public Task<bool> ConfirmAsync(DesktopApplyConfirmation confirmation, CancellationToken cancellation)
+            => window.ConfirmDialogAsync(confirmation.Title, confirmation.Message, confirmation.ForceExit ? "结束所选实例并重开" : "确认并应用");
+        public void Report(DesktopApplyProgress progress)
+        {
+            window.ApplicationStage.Text = progress.Stage; window.ApplicationStatus.Text = progress.Message;
+            window.ApplicationError.Message = progress.Message; window.ApplicationError.IsOpen = progress.IsError;
+            window.ApplicationStatus.Visibility = progress.IsError ? Visibility.Collapsed : Visibility.Visible;
+            window.RefreshView();
+        }
+        public void TargetSelected(CodexDesktopTarget target, ConfigSnapshot saved)
+        {
+            window.ApplicationTarget.Text = DesktopApplicationService.DescribeTarget(target) + "\n配置目录：" + saved.Home;
+            window.ApplicationTargetDetails.Visibility = Visibility.Visible;
+        }
+        public void DesktopOpened(CodexDesktopTarget target, ConfigSnapshot saved)
+            => window.viewModel.Session.SetRuntime(new(true, target.Processes.Count) { DesktopProcesses = target.Processes });
+    }
+}

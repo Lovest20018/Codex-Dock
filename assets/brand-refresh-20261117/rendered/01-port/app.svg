@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Codex Dock PORT">
+  <title>Codex Dock · 接入</title>
+  <rect width="128" height="128" rx="30" fill="#171C1A"/>
+  <path d="M45,27 L68,27 C92,27 108,42 108,64 C108,86 92,101 68,101 L45,101 L45,84 L67,84 C82,84 91,77 91,64 C91,51 82,44 67,44 L45,44 Z" fill="#F6F8F5"/>
+  <path d="M24,55 L55,55 L64,64 L55,73 L24,73 C21,73 19,71 19,68 L19,60 C19,57 21,55 24,55 Z" fill="#B8F28B"/>
+</svg>

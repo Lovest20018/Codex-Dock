@@ -72,9 +72,10 @@ public partial class MainWindow
             detailedChanges["approvals_reviewer"] = TomlDocument.Quote("user");
             Editor.Configure(snapshot?.Config, detailedChanges); MarkDirty();
         };
-        ApplicationBody.Children.Remove(SpeedCompatibilityCard);
-        Editor.ModelSection = modelSection; Editor.SpeedSection = SpeedCompatibilityCard; Editor.ReviewSection = reviewSection;
-        var speedLink = new Button { Content = "管理模型与速度兼容", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 12, 0, 0) };
+        var compatibilityLink = new Button { Content = "速度入口未显示？管理客户端增强", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 10, 0, 0) };
+        compatibilityLink.Click += SpeedSettingsClicked;
+        Editor.ModelSection = modelSection; Editor.SpeedSection = compatibilityLink; Editor.ReviewSection = reviewSection;
+        var speedLink = new Button { Content = "管理客户端增强", HorizontalAlignment = HorizontalAlignment.Left, Margin = new(0, 12, 0, 0) };
         speedLink.Click += SpeedSettingsClicked; ApplicationBody.Children.Insert(0, speedLink);
     }
     private TomlDocument DraftDocument()
@@ -106,6 +107,8 @@ public partial class MainWindow
             catalogState.Text = info.ModelCount == 0 ? "尚无原生能力目录。可导入当前服务提供的目录。" :
                 $"{info.ModelCount} 个模型 · " + (info.Managed ? "Dock 管理" : info.ReviewModel == "codex-auto-review" ? "检测到已有专用审核配置，可同步纳入管理" : "本地能力目录") +
                 (info.HasUpdate ? " · 有更新待同步" : "") + (catalogDraft ? " · 同步待保存" : "");
+            if (!catalogDraft && snapshot.Catalog is not null && (lastAppliedSnapshot?.Catalog is null || !snapshot.Catalog.Same(lastAppliedSnapshot.Catalog)))
+                catalogState.Text += " · 当前内核是否加载未确认，应用时会重新打开 Codex";
             catalogState.ToolTip = info.SourcePath;
             reviewerState.Text = dedicatedReview.IsChecked == true ? "审核模型：codex-auto-review · 与主模型共用服务。审核不可用时停止执行。" :
                 automatic ? "当前由原生客户端选择审核模型。勾选后固定使用专用模型。" : "由你审批。开启专用审核不会修改现有沙箱与细分审批规则。";
@@ -132,19 +135,9 @@ public partial class MainWindow
     {
         if (PendingModelText) { modelTyping.Stop(); ModelBox.Text = behaviorModel.Text; }
         var before = snapshot ?? throw new InvalidOperationException("请先读取配置。");
-        var plan = store.Plan(before, Settings(), detailedChanges, updateConnection: ConnectionChanged,
-            updateModel: ModelBox.Text != loadedSettings.Model, updateDetails: DetailsChanged, officialAuth: OfficialAuthForDraft);
-        var doc = new TomlDocument(plan.Config);
-        if (catalogDraft || reviewDraft && doc.String("approvals_reviewer") == "auto_review")
-            return ManagedModelCatalogStore.Prepare(plan, new(), catalogSourceDraft);
-        if (before.CatalogIndex is not null && ManagedModelCatalogStore.Inspect(before).Managed && doc.String("approvals_reviewer") == "auto_review")
-        {
-            if (ManagedModelCatalogStore.ConnectionId(doc, plan.Bridge) != ManagedModelCatalogStore.ConnectionId(new TomlDocument(before.Config), before.Bridge))
-                throw new InvalidOperationException("模型服务已改变，请导入当前服务的能力目录后确认保存。");
-            // Validate coverage against the currently saved version; source changes wait for an explicit sync.
-            ManagedModelCatalogStore.ValidateCoverage(before, doc);
-        }
-        return plan;
+        return configurationSave.PreparePlan(new(before, Settings(), detailedChanges, UpdateConnection: ConnectionChanged,
+            UpdateModel: ModelBox.Text != loadedSettings.Model, UpdateDetails: DetailsChanged, OfficialAuth: OfficialAuthForDraft,
+            SynchronizeCatalog: catalogDraft, ReviewPolicyChanged: reviewDraft, CatalogSource: catalogSourceDraft));
     }
     private async void ApplySavedConfigurationClicked(object sender, RoutedEventArgs e)
     {

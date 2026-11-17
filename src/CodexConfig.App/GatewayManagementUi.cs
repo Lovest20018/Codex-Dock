@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using CodexConfig.Core;
+using CodexConfig.Application;
 
 namespace CodexConfig.App;
 
@@ -12,7 +13,7 @@ public partial class MainWindow
     private string? gatewayPreferencesHome;
     private Task? gatewayRefreshTask;
 
-    private GatewayStartupStore GatewayPreferences() => new(home, smokeOutput is null ? null : Path.Combine(smokeOutput, "gateway-preferences"));
+    private GatewayStartupStore GatewayPreferences() => gatewayManagement.Preferences(home);
 
     private void ReloadGatewayStartupSettings()
     {
@@ -47,11 +48,8 @@ public partial class MainWindow
         if (initializing || updatingGatewayStartup || closing) return;
         try
         {
-            var preferences = GatewayPreferences(); var settings = preferences.Load();
-            settings = ReferenceEquals(sender, ModelGatewayAutoStartBox)
-                ? settings with { ModelOnDockStart = ModelGatewayAutoStartBox.IsChecked == true }
-                : settings with { MobileOnDockStart = MobileGatewayAutoStartBox.IsChecked == true };
-            preferences.Save(settings);
+            gatewayManagement.SetAutomaticStart(home, ReferenceEquals(sender, ModelGatewayAutoStartBox) ? GatewayKind.Model : GatewayKind.Mobile,
+                ReferenceEquals(sender, ModelGatewayAutoStartBox) ? ModelGatewayAutoStartBox.IsChecked == true : MobileGatewayAutoStartBox.IsChecked == true);
             ReloadGatewayStartupSettings();
             SetGatewayFeedback(GatewayStartupFeedback, "已保存，下一次打开 Dock 时按此设置启动。需要立即运行或停止时，请使用下方按钮。");
         }
@@ -143,7 +141,7 @@ public partial class MainWindow
     private async Task StartMobileGatewayAsync()
     {
         var expectedHome = home;
-        await MobileManager().StartAsync(lifetime.Token);
+        await ExecuteSavedGatewayAsync(GatewayKind.Mobile, GatewayCommand.Start);
         if (!closing && home == expectedHome) await RefreshMobilePageAsync();
     }
 
@@ -154,12 +152,25 @@ public partial class MainWindow
         var expectedHome = home;
         try
         {
-            var preferences = GatewayPreferences().Load();
-            if (preferences.ModelOnDockStart) await ModelGatewayActionAsync(StartModelGatewayAsync);
-            if (!closing && home == expectedHome && preferences.MobileOnDockStart) await MobileGatewayActionAsync(StartMobileGatewayAsync);
+            var result = await gatewayManagement.StartOnLaunchAsync(expectedHome, () => !closing && home == expectedHome, lifetime.Token);
+            if (!closing && home == expectedHome)
+            {
+                if (result.Error is { } error) { ReloadGatewayStartupSettings(); SetGatewayFeedback(GatewayStartupFeedback, error, true); }
+                foreach (var outcome in result.Results)
+                    SetGatewayFeedback(outcome.Kind == GatewayKind.Model ? ModelGatewayOperationText : MobileGatewayOperationText, outcome.Message, !outcome.Succeeded);
+                await RefreshAllGatewaysAsync();
+            }
         }
         catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
         { if (!closing && home == expectedHome) SetGatewayFeedback(GatewayStartupFeedback, error.Message, true); }
         finally { gatewayLaunchInProgress = false; }
+    }
+
+    private async Task ExecuteSavedGatewayAsync(GatewayKind kind, GatewayCommand command)
+    {
+        if (smokeOutput is not null && !allowSmokeGateway) throw new InvalidOperationException("隔离检查未授权真实网关，只能使用专用夹具。");
+        var expectedHome = home;
+        var result = await gatewayManagement.ExecuteAsync(kind, command, expectedHome, () => !closing && home == expectedHome, lifetime.Token);
+        if (!result.Succeeded) throw new IOException(result.Message);
     }
 }

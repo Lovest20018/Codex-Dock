@@ -19,6 +19,7 @@ public sealed record MixedConnection
     public string LocalToken { get; init; } = "";
     public int Port { get; init; }
     public bool UseSystemProxy { get; init; }
+    public int HeaderTimeoutSeconds { get; init; } = ConnectionDetails.DefaultHeaderTimeoutSeconds;
     public string HttpOrigin { get; init; } = "";
     public bool NativeRoute { get; init; }
     public Dictionary<string, string?> OriginalValues { get; init; } = new(StringComparer.Ordinal);
@@ -36,7 +37,9 @@ public sealed record MixedConnection
         settings = settings.Normalize();
         var port = previous?.Port ?? FreePort();
         var token = previous?.LocalToken ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-        return new() { BaseUrl = settings.BaseUrl, ApiKey = settings.ApiKey, Kind = settings.Kind, Port = port, LocalToken = token, UseSystemProxy = settings.UseSystemProxy, HttpOrigin = settings.Details.HttpOrigin,
+        var details = settings.Details.Normalize();
+        return new() { BaseUrl = settings.BaseUrl, ApiKey = settings.ApiKey, Kind = settings.Kind, Port = port, LocalToken = token, UseSystemProxy = settings.UseSystemProxy, HttpOrigin = details.HttpOrigin,
+            HeaderTimeoutSeconds = details.GatewayHeaderTimeoutSeconds,
             NativeRoute = true, OriginalValues = previous?.OriginalValues ?? new(StringComparer.Ordinal), OriginalAuthApiBaseUrl = previous?.OriginalAuthApiBaseUrl };
     }
 
@@ -53,7 +56,7 @@ public sealed record MixedConnection
         try
         {
             var result = JsonSerializer.Deserialize<MixedConnection>(plain) ?? throw new InvalidDataException("本地连接数据无效。");
-            if (result.Port is < 1024 or > 65535 || result.LocalToken.Length != 64 || !result.LocalToken.All(Uri.IsHexDigit))
+            if (result.Port is < 1024 or > 65535 || result.LocalToken.Length != 64 || !result.LocalToken.All(Uri.IsHexDigit) || result.HeaderTimeoutSeconds is < 60 or > 3600)
                 throw new InvalidDataException("本地连接数据无效。");
             _ = new ConnectionSettings(result.BaseUrl, result.ApiKey, "connection") { Kind = result.Kind }.Normalize();
             if (new Uri(result.BaseUrl).IsLoopback && new Uri(result.BaseUrl).Port == result.Port)

@@ -31,8 +31,8 @@ internal static class ThemeManager
             ["ScrollThumbBrush"] = dark ? "#616875" : "#BFC5CE"
         };
         foreach (var (name, color) in colors)
-            Application.Current.Resources[name] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
-        foreach (Window window in Application.Current.Windows) UpdateTitleBar(window);
+            System.Windows.Application.Current.Resources[name] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(color));
+        foreach (Window window in System.Windows.Application.Current.Windows) UpdateTitleBar(window);
     }
     internal static void UpdateTitleBar(Window window)
     {

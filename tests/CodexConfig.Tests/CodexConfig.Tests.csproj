@@ -2,5 +2,6 @@
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/CodexConfig.Core/CodexConfig.Core.csproj" />
+    <ProjectReference Include="../../src/CodexConfig.Application/CodexConfig.Application.csproj" />
   </ItemGroup>
 </Project>

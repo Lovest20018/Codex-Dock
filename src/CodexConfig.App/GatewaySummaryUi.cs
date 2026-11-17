@@ -10,19 +10,6 @@ public partial class MainWindow
     private bool gatewaySummaryPolling;
     private Task? gatewaySummaryTask;
 
-    private static async Task<bool?> UnresponsiveGatewayStateAsync(int port, CancellationToken cancellation)
-    {
-        // Missing authenticated health is not proof of a stopped process.
-        // A refused loopback connection confirms the port is closed; an open,
-        // busy, unrelated or inaccessible listener leaves the result unknown.
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        timeout.CancelAfter(TimeSpan.FromSeconds(3));
-        using var client = new TcpClient();
-        try { await client.ConnectAsync(IPAddress.Loopback, port, timeout.Token); return null; }
-        catch (SocketException error) when (error.SocketErrorCode == SocketError.ConnectionRefused) { return false; }
-        catch { return null; }
-    }
-
     private void ModelGatewaySummaryClicked(object sender, RoutedEventArgs e) { ShowPage("gateways"); GatewayPanel.BringIntoView(); }
     private void MobileGatewaySummaryClicked(object sender, RoutedEventArgs e) { ShowPage("gateways"); MobileGatewayPanel.BringIntoView(); }
     private async void GatewaySummaryRefreshClicked(object sender, RoutedEventArgs e) => await RefreshAllGatewaysAsync();

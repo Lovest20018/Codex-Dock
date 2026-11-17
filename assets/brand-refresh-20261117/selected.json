@@ -1,0 +1,19 @@
+{
+  "product": "Codex Dock / Lovest Code",
+  "status": "Selected by user: combine 01 PORT geometry with 03 STACK palette",
+  "viewBox": "0 0 128 128",
+  "concepts": [
+    {
+      "id": "port-sage",
+      "name": "接入 · 浅绿",
+      "english": "PORT / SAGE",
+      "background": "#EEF2ED",
+      "foreground": "#23453C",
+      "accent": "#498E70",
+      "shapes": [
+        { "fill": "foreground", "path": "M45,27 L68,27 C92,27 108,42 108,64 C108,86 92,101 68,101 L45,101 L45,84 L67,84 C82,84 91,77 91,64 C91,51 82,44 67,44 L45,44 Z" },
+        { "fill": "accent", "path": "M24,55 L55,55 L64,64 L55,73 L24,73 C21,73 19,71 19,68 L19,60 C19,57 21,55 24,55 Z" }
+      ]
+    }
+  ]
+}

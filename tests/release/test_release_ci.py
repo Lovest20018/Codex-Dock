@@ -28,8 +28,8 @@ class ReleasePipelineTests(unittest.TestCase):
         (self.out / f'CodexDock-{w}-Setup-win-x64.exe').write_bytes(b'fixture installer')
         (self.out / f'CodexDock-{w}-source.zip').write_bytes(b'fixture source')
         with zipfile.ZipFile(self.out / f'CodexDock-{w}-win-x64.zip', 'w') as archive:
-            archive.writestr(f'CodexDock-{w}-win-x64/manifest.json', json.dumps({'sourceCommit': 'a' * 40, 'version': w}))
-            archive.writestr(f'CodexDock-{w}-win-x64/verification/ui-report.json', '{"status":"PASS"}')
+            archive.writestr(f'CodexDock-{w}-win-x64/manifest.json', json.dumps({'sourceCommit': 'a' * 40, 'version': w, 'uiFramework': 'WinUI 3'}))
+            archive.writestr(f'CodexDock-{w}-win-x64/verification/ui-report.json', '{"status":"PASS","uiFramework":"WinUI 3"}')
         windows_names = [f'CodexDock-{w}-Setup-win-x64.exe', f'CodexDock-{w}-source.zip', f'CodexDock-{w}-win-x64.zip']
         (self.out / f'SHA256SUMS-{w}.txt').write_text(''.join(f'{release.sha(self.out / name)}  {name}\n' for name in windows_names))
         (self.out / f'installer-verification-{w}.json').write_text(json.dumps({'status': 'PASS', 'installerSha256': release.sha(self.out / windows_names[0]),
@@ -74,6 +74,13 @@ class ReleasePipelineTests(unittest.TestCase):
     def test_changed_installer_is_rejected(self):
         (self.out / f'CodexDock-{self.windows}-Setup-win-x64.exe').write_bytes(b'changed installer')
         with self.assertRaisesRegex(ValueError, 'checksum mismatch'):
+            release.release_files(self.out, 'windows')
+
+    def test_windows_requires_the_verified_winui_entry(self):
+        with zipfile.ZipFile(self.out / f'CodexDock-{self.windows}-win-x64.zip', 'w') as archive:
+            archive.writestr(f'CodexDock-{self.windows}-win-x64/manifest.json', json.dumps({'sourceCommit': 'a' * 40, 'version': self.windows, 'uiFramework': 'WPF'}))
+            archive.writestr(f'CodexDock-{self.windows}-win-x64/verification/ui-report.json', '{"status":"PASS","uiFramework":"WPF"}')
+        with self.assertRaisesRegex(ValueError, 'verified WinUI'):
             release.release_files(self.out, 'windows')
 
     def test_failed_installer_verification_is_rejected(self):

@@ -1,26 +1,29 @@
 using System.IO;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using CodexConfig.Core;
+using CodexConfig.Application;
 
 namespace CodexConfig.App;
 
 public partial class MainWindow
 {
-    private bool desktopRestartBusy, desktopRestarted;
+    private bool desktopRestarted;
+    private bool desktopRestartBusy => desktopApplication.IsBusy;
     private ConfigSnapshot? desktopRestartSnapshot;
     private CodexDesktopTarget? lastAppliedDesktopTarget;
     private string? desktopApplicationHome;
     private string desktopApplicationStage = "等待应用", desktopApplicationMessage = "";
-    private (CodexDesktopTarget Target, ConfigSnapshot Saved, DesktopSpeedPlan Plan, int Port)? pendingSpeedRetry;
-    private (CodexDesktopTarget Target, ConfigSnapshot Saved)? blockedDesktopExit;
+    private DesktopEnhancementRetry? pendingSpeedRetry => desktopApplication.PendingRetry;
+    private DesktopExitRetry? blockedDesktopExit => desktopApplication.BlockedExit;
     private Func<CodexDesktopTarget>? smokeDesktopTarget;
+    private Func<IReadOnlyList<CodexDesktopTarget>>? smokeDesktopTargets;
+    private Func<IReadOnlyList<CodexDesktopTarget>, CodexDesktopTarget?>? smokeDesktopChoose;
     private Func<CodexDesktopTarget, bool>? smokeDesktopConfirm;
     private Func<CodexDesktopTarget, string, string?, Action, CancellationToken, Task>? smokeDesktopRestart;
     private Func<ConfigSnapshot, Task>? smokeDesktopGateway;
 
-    private string DesktopApplicationAction => pendingSpeedRetry is { } retry && retry.Saved.Home == home ? "重试速度兼容" :
+    private string DesktopApplicationAction => pendingSpeedRetry is { } retry && retry.Saved.Home == home ? retry.Plan.SpeedEnabled ? "重试速度兼容" : "重试旧聊天接续" :
         codexRuntime is { Available: true, ProcessCount: 0 } ? "打开 Codex 并应用" :
         codexRuntime is { Available: true, ProcessCount: > 0 } ? "重启 Codex 并应用" : "打开或重启 Codex";
 
@@ -38,13 +41,17 @@ public partial class MainWindow
         desktopApplicationStage = stage; DesktopApplyStageText.Text = stage;
         DesktopRestartStatus.SetResourceReference(TextBlock.ForegroundProperty, error ? "Error" : "Muted");
         SetDesktopRestartStatus(text);
+        if (!desktopApplication.IsBusy)
+        {
+            if (error) workspace.Session.Fail(text, WorkspaceOperation.ApplyingDesktop);
+            else workspace.Session.WaitForUser(text);
+        }
     }
 
     private void PrepareDesktopRestart(bool preserveRetry = false)
     {
         desktopRestarted = false; desktopRestartSnapshot = snapshot;
-        if (!preserveRetry || pendingSpeedRetry?.Saved.Home != home) pendingSpeedRetry = null;
-        blockedDesktopExit = null;
+        desktopApplication.Reset(preserveRetry && pendingSpeedRetry?.Saved.Home == home);
         RestartCodexButton.Content = DesktopApplicationAction; RestartCodexButton.IsEnabled = true;
         desktopApplicationStage = "等待应用"; DesktopApplyStageText.Text = desktopApplicationStage;
         DesktopApplyProgress.Visibility = Visibility.Collapsed;
@@ -79,9 +86,9 @@ public partial class MainWindow
         await RestartCodexFromReviewAsync(forceTarget: blocked.Target);
     }
 
-    private async Task RestartCodexFromReviewAsync(bool fromSpeedSettings = false, CodexDesktopTarget? forceTarget = null)
+    private async Task RestartCodexFromReviewAsync(bool fromSpeedSettings = false, CodexDesktopTarget? forceTarget = null, bool enhancedLaunch = false)
     {
-        if (closing || desktopRestartBusy) return;
+        if (closing || desktopRestartBusy || autoEnhancementBusy) return;
         if (Dirty) { OpenConfigurationReview(); return; }
         if (fromSpeedSettings)
         {
@@ -89,129 +96,21 @@ public partial class MainWindow
             OpenDesktopApplicationPanel();
         }
         if (!reviewSaved || desktopRestartSnapshot is null || desktopRestarted) return;
-        var saved = desktopRestartSnapshot;
-        var expectedHome = saved.Home;
-        var desktopOpened = false;
-        CodexDesktopTarget? requestedTarget = null;
-        void ValidateSaved()
-        {
-            if (!string.Equals(home, expectedHome, StringComparison.OrdinalIgnoreCase)) throw new IOException("配置目录已改变，请重新核对应用目标。");
-            var current = store.Load(expectedHome);
-            CodexApplySnapshot.RequireCompatible(saved, current);
-            // Use the latest bytes in memory, including refreshed login tokens. Nothing is written here.
-            saved = current;
-        }
-        desktopRestartBusy = true;
         DesktopApplyProgress.Visibility = Visibility.Visible;
         ReloadDesktopConfigurationButton.Visibility = ForceDesktopRestartButton.Visibility = Visibility.Collapsed;
         RestartCodexButton.IsEnabled = ClosePreviewButton.IsEnabled = ConfigurationSourcesButton.IsEnabled = false;
-        SavedGatewaysButton.IsEnabled = ReloadDesktopConfigurationButton.IsEnabled = false;
-        ForceDesktopRestartButton.IsEnabled = false;
-        RefreshSpeedSettings();
-        SetDesktopApplicationStage("1 / 5 · 核对配置", "正在核对已保存的配置、模型目录和启动入口…");
+        SavedGatewaysButton.IsEnabled = ReloadDesktopConfigurationButton.IsEnabled = ForceDesktopRestartButton.IsEnabled = false;
         try
         {
-            if (busy || officialLoginBusy || gatewayPolling || gatewayLaunchInProgress)
-                throw new InvalidOperationException("连接或网关正在处理操作，请等待完成后再应用。");
-            if (store.HasPending(expectedHome)) throw new InvalidOperationException("发现未完成的保存，请先到备份恢复处理。");
-            ValidateSaved();
-            var settings = store.ReadSettings(saved);
-            if (saved.Catalog is { Content: null }) throw new IOException("模型能力目录不存在或无法读取，请先在“模型与行为”核对目录。");
-            if (ManagedModelCatalogStore.Inspect(saved).Managed && new TomlDocument(saved.Config).String("approvals_reviewer") == "auto_review")
-                ManagedModelCatalogStore.ValidateCoverage(saved, new TomlDocument(saved.Config));
-            var desktop = new CodexDesktop();
-            var retry = pendingSpeedRetry;
-            var target = smokeOutput is not null
-                ? smokeDesktopTarget?.Invoke() ?? throw new InvalidOperationException("隔离检查不能操作真实 Codex 桌面端。")
-                : await Task.Run(desktop.FindTarget, lifetime.Token);
-            if (forceTarget is not null && !SameDesktopRoot(forceTarget, target))
-                throw new InvalidOperationException("此前未退出的 Codex 实例已改变，不能结束旧目标；请重新点击应用核对。");
-            if (forceTarget is not null) target = forceTarget;
-            requestedTarget = target;
-            DesktopApplyContext.Text = "程序：" + target.Executable + "\n配置目录：" + expectedHome;
-            if (retry is not null)
-            {
-                // Retrying a failed enhancement only refreshes the same confirmed instance.
-                if (smokeOutput is null && !SameDesktopRoot(retry.Value.Target, target))
-                {
-                    pendingSpeedRetry = null;
-                    throw new InvalidOperationException("上次打开的 Codex 实例已退出或改变。请再次点击应用，重新核对启动目标。");
-                }
-                if (!SpeedPreferences().Load() || !DesktopSpeedSettings.Eligible(store, saved))
-                { pendingSpeedRetry = null; throw new InvalidOperationException("速度兼容已关闭或连接已改变，请重新应用当前配置。"); }
-                CodexApplySnapshot.RequireCompatible(retry.Value.Saved, saved);
-                desktopOpened = true;
-                SetDesktopApplicationStage("5 / 5 · 加载速度兼容", "正在重试速度兼容，将刷新本次 Codex 页面…");
-                await StopSpeedSessionAsync();
-                await AttachSpeedCompatibilityAsync(target, saved, retry.Value.Plan, retry.Value.Port);
-                pendingSpeedRetry = null;
-                CompleteDesktopApplication(saved, target, speed: true);
-                return;
-            }
-            var speed = await PrepareSpeedCompatibilityAsync(target, saved);
-            var confirmed = smokeOutput is not null ? smokeDesktopConfirm?.Invoke(target) == true : MessageBox.Show(this,
-                (forceTarget is not null ? "将结束下列已确认的 Codex 实例及其子进程，再重新打开。\n正在运行的任务会中断，未保存内容可能丢失。\n目标主进程：" +
-                    string.Join("、", target.Processes.Where(process => !target.Processes.Any(parent => parent.Id == process.ParentId)).Select(process => process.Id)) + "\n\n" :
-                    target.IsRunning ? "将请求 Codex 正常退出，再重新打开。请先完成正在运行的任务并保存编辑内容。若取消退出或程序未退出，Dock 会停止本次重启。\n\n" : "将打开 Codex 桌面端。\n\n") +
-                "程序：\n" + target.Executable + "\n\n本次使用的配置目录：\n" + saved.Home +
-                (settings.Mode == ConnectionMode.OfficialWithApi ? "\n\n将先检查并启动该连接的本机模型网关。" : "") +
-                (speed.Plan is null ? "" : "\n\n将应用 API 速度兼容；请保持 Dock 运行。") + "\n\n重新打开后，请新建聊天核对配置。继续？",
-                forceTarget is not null ? "结束该实例并重开" : target.IsRunning ? "重启 Codex 并应用配置" : "打开 Codex 并应用配置", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
-            if (!confirmed) { SetDesktopApplicationStage("已取消", "已取消应用，配置仍已保存；可稍后继续。"); return; }
-            ValidateSaved();
-            SetDesktopApplicationStage("2 / 5 · 准备连接", settings.Mode == ConnectionMode.OfficialWithApi ? "正在确认本机模型网关可用，完成后再退出 Codex…" : "API Key 直连，无需启动本机模型网关。");
-            await PrepareDesktopGatewayAsync(saved);
-            ValidateSaved();
-            CodexDesktopTarget opened;
-            if (smokeOutput is not null)
-            {
-                if (smokeDesktopRestart is null) throw new InvalidOperationException("隔离检查不能启动真实 Codex。");
-                SetDesktopApplicationStage("3 / 5 · 退出旧实例", "正在等待 Codex 完全退出…");
-                await smokeDesktopRestart(target, saved.Home, saved.AuthApiBaseUrl, ValidateSaved, lifetime.Token);
-                opened = target;
-            }
-            else
-            {
-                opened = await Task.Run(() => desktop.RestartAsync(target, saved.Home, saved.AuthApiBaseUrl, ValidateSaved, lifetime.Token, speed.Port,
-                    phase => Dispatcher.Invoke(() => DesktopProcessProgress(phase, target.IsRunning)), forceConfirmed: forceTarget is not null), lifetime.Token);
-            }
-            desktopOpened = true;
-            RecordDesktopApplication(saved, opened);
-            await StopSpeedSessionAsync();
-            if (speed.Plan is not null)
-            {
-                pendingSpeedRetry = (opened, saved, speed.Plan, speed.Port!.Value);
-                SetDesktopApplicationStage("5 / 5 · 加载速度兼容", "Codex 已打开，正在连接并加载速度兼容…");
-                await AttachSpeedCompatibilityAsync(opened, saved, speed.Plan, speed.Port.Value);
-                pendingSpeedRetry = null;
-            }
-            CompleteDesktopApplication(saved, opened, speed.Plan is not null);
-        }
-        catch (CodexApplyConflictException error)
-        {
-            SetDesktopApplicationStage("等待核对外部变更", error.Message, error: true);
-            ReloadDesktopConfigurationButton.Visibility = Visibility.Visible;
-        }
-        catch (OperationCanceledException)
-        {
-            SetDesktopApplicationStage("应用已取消", desktopOpened ? "Codex 已打开，后续应用已取消。请核对当前状态后重试。" : "应用已取消，配置仍已保存。", error: false);
-        }
-        catch (Exception error) when (error is CodexDesktopCloseException or CodexDesktopExitTimeoutException)
-        {
-            blockedDesktopExit = requestedTarget is { IsRunning: true } target ? (target, saved) : null;
-            SetDesktopApplicationStage("等待旧实例退出", "配置已保存，Codex 尚未退出：" + error.Message, error: true);
-            ForceDesktopRestartButton.Visibility = blockedDesktopExit is not null ? Visibility.Visible : Visibility.Collapsed;
-        }
-        catch (Exception error)
-        {
-            SetDesktopApplicationStage(desktopOpened ? "已打开 · 速度兼容未完成" : "应用未完成",
-                (desktopOpened ? "Codex 已重新打开，速度兼容未完成：" : "配置已保存，应用未完成：") + error.Message, error: true);
-            // A cancelled exit must not disconnect the compatibility session of the still-running app.
-            if (desktopOpened || speedSession is { IsRunning: false }) await StopSpeedSessionAsync();
+            var result = await desktopApplication.ApplyAsync(new(desktopRestartSnapshot, forceTarget is not null, enhancedLaunch), new WpfDesktopApplyInteraction(this), lifetime.Token);
+            desktopRestartSnapshot = result.Saved;
+            ReloadDesktopConfigurationButton.Visibility = result.Outcome == DesktopApplyOutcome.Conflict ? Visibility.Visible : Visibility.Collapsed;
+            ForceDesktopRestartButton.Visibility = result.Outcome == DesktopApplyOutcome.ExitBlocked && blockedDesktopExit is not null ? Visibility.Visible : Visibility.Collapsed;
+            if (result.Outcome == DesktopApplyOutcome.Completed && result.Target is { } target)
+                CompleteDesktopApplication(result.Saved, target, result.EnhancementsApplied);
         }
         finally
         {
-            desktopRestartBusy = false;
             DesktopApplyProgress.Visibility = Visibility.Collapsed;
             RestartCodexButton.Content = desktopRestarted ? "Codex 已打开" : DesktopApplicationAction;
             RestartCodexButton.IsEnabled = !desktopRestarted && !closing;
@@ -223,16 +122,53 @@ public partial class MainWindow
         }
     }
 
-    private void DesktopProcessProgress(CodexDesktopPhase phase, bool wasRunning)
+    private sealed class WpfDesktopApplyInteraction(MainWindow window) : IDesktopApplyInteraction
     {
-        var (stage, message) = phase switch
+        public string ActiveHome => window.home;
+        public void ValidateContext()
         {
-            CodexDesktopPhase.Preparing => ("2 / 5 · 核对启动入口", "正在核对 Codex 安装与启动入口…"),
-            CodexDesktopPhase.Closing => ("3 / 5 · 退出旧实例", wasRunning ? "正在等待 Codex 完全退出，请完成其退出确认或未保存内容提示…" : "Codex 未运行，正在准备打开…"),
-            CodexDesktopPhase.Starting => ("4 / 5 · 打开 Codex", "正在使用已保存的配置打开 Codex…"),
-            _ => ("5 / 5 · 核对新进程", "已请求打开 Codex，正在核对新桌面进程…")
-        };
-        SetDesktopApplicationStage(stage, message);
+            if (window.closing || window.Dirty) throw new InvalidOperationException("配置草稿或窗口状态已改变，请重新核对后应用。");
+            if (window.busy || window.officialLoginBusy || window.gatewayPolling || window.gatewayLaunchInProgress)
+                throw new InvalidOperationException("连接或网关正在处理操作，请等待完成后再应用。");
+        }
+        public Task<CodexDesktopTarget?> ChooseAsync(IReadOnlyList<CodexDesktopTarget> targets, CancellationToken cancellation)
+            => Task.FromResult(window.smokeOutput is not null ? window.smokeDesktopChoose?.Invoke(targets) : window.ChooseDesktopTarget(targets));
+        public Task<bool> ConfirmAsync(DesktopApplyConfirmation confirmation, CancellationToken cancellation)
+            => Task.FromResult(window.smokeOutput is not null ? window.smokeDesktopConfirm?.Invoke(confirmation.Target) == true :
+                MessageBox.Show(window, confirmation.Message, confirmation.Title, MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes);
+        public void Report(DesktopApplyProgress progress)
+        { window.SetDesktopApplicationStage(progress.Stage, progress.Message, progress.IsError); window.RefreshSpeedSettings(); }
+        public void TargetSelected(CodexDesktopTarget target, ConfigSnapshot saved)
+            => window.DesktopApplyContext.Text = DesktopTargetDescription(target) + "\n配置目录：" + saved.Home;
+        public void DesktopOpened(CodexDesktopTarget target, ConfigSnapshot saved) => window.RecordDesktopApplication(saved, target);
+    }
+
+    private sealed class WpfDesktopApplyRuntime(MainWindow window) : IDesktopApplyRuntime
+    {
+        public bool IsEnhancementRunning => window.speedSession is { IsRunning: true };
+        public async Task<IReadOnlyList<CodexDesktopTarget>> FindTargetsAsync(CancellationToken cancellation)
+            => window.smokeOutput is not null
+                ? window.smokeDesktopTargets?.Invoke() ?? (window.smokeDesktopTarget is not null ? [window.smokeDesktopTarget()] : throw new InvalidOperationException("隔离检查不能操作真实 Codex 桌面端。"))
+                : await Task.Run(() => new CodexDesktop().FindTargets(), cancellation);
+        public async Task<DesktopEnhancementPreparation> PrepareEnhancementsAsync(CodexDesktopTarget target, ConfigSnapshot saved, CancellationToken cancellation)
+        { var prepared = await window.PrepareSpeedCompatibilityAsync(target, saved); return new(prepared.Plan, prepared.Port); }
+        public Task PrepareGatewayAsync(ConfigSnapshot saved, CancellationToken cancellation) => window.PrepareDesktopGatewayAsync(saved);
+        public async Task<CodexDesktopTarget> RestartAsync(CodexDesktopTarget target, ConfigSnapshot saved, Action validateSaved, int? port,
+            Action<CodexDesktopPhase> progress, bool forceConfirmed, CancellationToken cancellation)
+        {
+            if (window.smokeOutput is not null)
+            {
+                if (window.smokeDesktopRestart is null) throw new InvalidOperationException("隔离检查不能启动真实 Codex。");
+                progress(CodexDesktopPhase.Closing);
+                await window.smokeDesktopRestart(target, saved.Home, saved.AuthApiBaseUrl, validateSaved, cancellation); return target;
+            }
+            return await Task.Run(() => new CodexDesktop().RestartAsync(target, saved.Home, saved.AuthApiBaseUrl,
+                () => window.Dispatcher.Invoke(validateSaved), cancellation, port,
+                phase => window.Dispatcher.Invoke(() => progress(phase)), forceConfirmed), cancellation);
+        }
+        public Task StopEnhancementsAsync() => window.StopSpeedSessionAsync();
+        public Task AttachEnhancementsAsync(CodexDesktopTarget target, ConfigSnapshot saved, DesktopSpeedPlan plan, int port, CancellationToken cancellation)
+            => window.AttachSpeedCompatibilityAsync(target, saved, plan, port, cancellation: cancellation);
     }
 
     private async Task PrepareDesktopGatewayAsync(ConfigSnapshot saved)
@@ -268,16 +204,50 @@ public partial class MainWindow
     private void CompleteDesktopApplication(ConfigSnapshot saved, CodexDesktopTarget target, bool speed)
     {
         desktopRestarted = true; RecordDesktopApplication(saved, target);
-        SetDesktopApplicationStage("已打开 · 请在新聊天核对", speed
-            ? "Codex 已重新打开，速度兼容已应用。请保持 Dock 运行，并在新建聊天中核对速度档位。"
-            : "已确认 Codex 桌面进程打开。请新建聊天核对；项目、Profile 和组织要求仍可能覆盖此文件。");
-        ReviewHint.Text = "本地配置已保存 · Codex 已打开 · 请在新聊天核对";
+        var recovery = ConnectionPreferences().Load();
+        ReviewHint.Text = recovery ? "本地配置已保存 · Codex 已打开 · 旧聊天接续已接入" : "本地配置已保存 · Codex 已打开 · 请在新聊天核对";
     }
 
     private static bool SameDesktopRoot(CodexDesktopTarget expected, CodexDesktopTarget current)
+        => DesktopApplicationService.SameRoot(expected, current);
+
+    private static string DesktopTargetDescription(CodexDesktopTarget target) => DesktopApplicationService.DescribeTarget(target);
+
+    private CodexDesktopTarget? ChooseDesktopTarget(IReadOnlyList<CodexDesktopTarget> targets)
     {
-        var roots = expected.Processes.Where(process => !expected.Processes.Any(parent => parent.Id == process.ParentId)).ToArray();
-        return roots.Length == 1 && current.Processes.Contains(roots[0]);
+        var (dialog, choices, confirm, exitOthers) = CreateDesktopTargetPicker(targets);
+        if (dialog.ShowDialog() != true || choices.SelectedIndex < 0) return null;
+        var selected = targets[choices.SelectedIndex];
+        return exitOthers.IsChecked == true ? selected.WithOtherInstancesToExit(targets.Where(target => !ReferenceEquals(target, selected)).ToArray()) : selected;
+    }
+
+    private (Window Dialog, ListBox Choices, Button Confirm, CheckBox ExitOthers) CreateDesktopTargetPicker(IReadOnlyList<CodexDesktopTarget> targets)
+    {
+        var dialog = new Window { Owner = this, Title = "选择本次 Codex 启动方式", Width = 720, Height = 540, MinWidth = 560, MinHeight = 420,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        dialog.SetResourceReference(BackgroundProperty, "Canvas");
+        var body = new DockPanel { Margin = new(22) }; dialog.Content = body;
+        var heading = new StackPanel { Margin = new(0, 0, 0, 14) }; DockPanel.SetDock(heading, Dock.Top); body.Children.Add(heading);
+        heading.Children.Add(new TextBlock { Text = "选择重开后使用的资料目录", FontSize = 20, FontWeight = FontWeights.SemiBold });
+        heading.Children.Add(HelpContent.Note("选择一个实例作为重开目标。需要合并为一个 Codex 时，可同时退出列表中的其他实例。", new(0, 8, 0, 0)));
+        var exitOthers = new CheckBox { Margin = new(0, 0, 0, 10), Content = new TextBlock { Text = "同时退出其他 " + (targets.Count - 1) + " 个实例，全部退出后只打开一个 Codex", TextWrapping = TextWrapping.Wrap } };
+        DockPanel.SetDock(exitOthers, Dock.Bottom);
+        var footer = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right, Margin = new(0, 14, 0, 0) };
+        DockPanel.SetDock(footer, Dock.Bottom); body.Children.Add(footer);
+        body.Children.Add(exitOthers);
+        var cancel = new Button { Content = "取消", IsCancel = true, Margin = new(0, 0, 8, 0) }; footer.Children.Add(cancel);
+        var confirm = new Button { Content = "继续核对", IsEnabled = false, IsDefault = true }; confirm.SetResourceReference(StyleProperty, "PrimaryButton"); footer.Children.Add(confirm);
+        var choices = new ListBox { HorizontalContentAlignment = HorizontalAlignment.Stretch }; body.Children.Add(choices);
+        ScrollViewer.SetHorizontalScrollBarVisibility(choices, ScrollBarVisibility.Disabled);
+        choices.SetResourceReference(Control.BackgroundProperty, "Surface"); choices.SetResourceReference(Control.ForegroundProperty, "Ink");
+        choices.SetResourceReference(Control.BorderBrushProperty, "Line");
+        foreach (var target in targets)
+            choices.Items.Add(new ListBoxItem { Style = (Style)FindResource("ConnectionModeOption"), Margin = new(0, 0, 0, 8),
+                Content = new TextBlock { Text = DesktopTargetDescription(target), TextWrapping = TextWrapping.Wrap } });
+        choices.SelectionChanged += (_, _) => confirm.IsEnabled = choices.SelectedIndex >= 0;
+        confirm.Click += (_, _) => { if (choices.SelectedIndex >= 0) dialog.DialogResult = true; };
+        dialog.SourceInitialized += (_, _) => ThemeManager.UpdateTitleBar(dialog);
+        return (dialog, choices, confirm, exitOthers);
     }
 
     private void ReloadDesktopConfigurationClicked(object sender, RoutedEventArgs e)
@@ -287,19 +257,9 @@ public partial class MainWindow
         {
             var previous = desktopRestartSnapshot; var current = store.Load(home);
             _ = store.ReadSettings(current);
-            var differences = CodexApplySnapshot.Compare(previous, current).Changes;
-            var before = new TomlDocument(previous.Config).Model; var after = new TomlDocument(current.Config).Model;
-            string Display(string path, object? value) => value is null ? "未设置" : ConfigReadClient.SafeValue(path, JsonSerializer.SerializeToElement(value));
-            var text = differences.Select(change =>
-            {
-                const string prefix = "config.toml · ";
-                if (!change.StartsWith(prefix, StringComparison.Ordinal)) return change + "（内容已隐藏）";
-                var path = change[prefix.Length..];
-                return path + "\n之前：" + Display(path, TomlDocument.ValueAt(before, path)) + "\n现在：" + Display(path, TomlDocument.ValueAt(after, path));
-            });
-            var summary = string.Join("\n\n", text);
+            var summary = DesktopApplicationService.DescribeChanges(previous, current);
             if (!Reload(current)) return;
-            pendingSpeedRetry = null; PrepareDesktopRestart();
+            PrepareDesktopRestart();
             reviewSaved = true;
             ReviewTitle.Text = "核对最新配置后应用";
             ReviewSummary.Text = "已读取最新本地配置 · 本次未写入文件";

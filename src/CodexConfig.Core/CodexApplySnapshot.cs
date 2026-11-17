@@ -117,8 +117,8 @@ public static class CodexApplySnapshot
             if (left["tokens"] is not JsonObject oldTokens || right["tokens"] is not JsonObject newTokens) return false;
             var account = oldTokens["account_id"]?.GetValue<string>();
             if (string.IsNullOrWhiteSpace(account) || account != newTokens["account_id"]?.GetValue<string>()) return false;
-            var oldIdentity = Identity(oldTokens["id_token"]?.GetValue<string>());
-            if (oldIdentity is null || oldIdentity != Identity(newTokens["id_token"]?.GetValue<string>())) return false;
+            var oldIdentity = AuthIdentity(oldTokens["id_token"]?.GetValue<string>());
+            if (oldIdentity is null || oldIdentity != AuthIdentity(newTokens["id_token"]?.GetValue<string>())) return false;
             foreach (var name in new[] { "access_token", "refresh_token", "id_token" })
             { oldTokens.Remove(name); newTokens.Remove(name); }
             return Equivalent(left, right);
@@ -127,7 +127,7 @@ public static class CodexApplySnapshot
     }
 
     // This only associates two local credential snapshots. It does not validate a login or entitlement.
-    private static (string Issuer, string Subject)? Identity(string? token)
+    internal static (string Issuer, string Subject)? AuthIdentity(string? token)
     {
         if (token is null || token.Length > 128 * 1024) return null;
         var parts = token.Split('.');

@@ -11,6 +11,14 @@ remains 2.1.7. Each adapted upstream file records its reviewed digest and source
 provenance in `upstream-overlay.json`. Scope, decisions and verification are in
 [`docs/mobile-upstream-backport-2026-11-09.md`](../../docs/mobile-upstream-backport-2026-11-09.md).
 
+On 2026-11-15, the reviewed Windows gateway subset of v2.2.1, commit
+`1004e5aeb6ee38a75ab18b4bad1720a38553aada`, was backported: v13 stream validation,
+bounded follower recovery, model catalog failure/draft preservation and partial
+host-list recovery. The original base, prior fixes and Dock login-lock policy
+remain intact. The 31 explicit overlays include the reviewed fixture updates;
+new provenance is appended without replacing earlier backport records. Details:
+[`docs/mobile-upstream-backport-2026-11-15.md`](../../docs/mobile-upstream-backport-2026-11-15.md).
+
 `upstream-manifest.json` records original SHA-256 digests. `upstream-overlay.json`
 enumerates every intentional modification and omitted file. Run
 `scripts/verify-mobile-upstream.py` before building; unexpected edits fail the build.

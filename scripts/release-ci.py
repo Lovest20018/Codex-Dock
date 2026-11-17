@@ -111,6 +111,8 @@ def windows_files(directory, windows):
         ui = json.loads(archive.read(f'CodexDock-{windows}-win-x64/verification/ui-report.json'))
         if manifest['sourceCommit'] != commit() or manifest['version'] != windows or ui['status'] != 'PASS':
             raise ValueError('Windows package provenance or UI check failed.')
+        if manifest.get('uiFramework') != 'WinUI 3' or ui.get('uiFramework') != 'WinUI 3':
+            raise ValueError('Windows release must contain the verified WinUI application.')
         for line in (directory / f'SHA256SUMS-{windows}.txt').read_text().splitlines():
             digest, name = line.split('  ', 1)
             actual = sha(directory / name) if '/' not in name else hashlib.sha256(archive.read(name)).hexdigest()

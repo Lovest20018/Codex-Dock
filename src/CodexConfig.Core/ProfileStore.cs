@@ -6,6 +6,17 @@ namespace CodexConfig.Core;
 
 public sealed record ProfileSnapshot(string Home, string Name, byte[]? Config);
 public sealed record ProfilePlan(ProfileSnapshot Before, byte[] Config, string Preview, IReadOnlyList<string> Warnings);
+public sealed class ProfileRestorePlan
+{
+    internal ProfileSnapshot Before { get; }
+    private readonly byte[]? target;
+    public byte[]? Target => target?.ToArray();
+    internal string SourceHash { get; }
+    public string Source { get; }
+    public string Preview => new TomlDocument(Target).Masked();
+    internal ProfileRestorePlan(ProfileSnapshot before, byte[]? target, string source, string sourceHash)
+    { Before = before with { Config = before.Config?.ToArray() }; this.target = target?.ToArray(); Source = source; SourceHash = sourceHash; }
+}
 
 // Profile files are independent, single-file edits with optimistic concurrency and encrypted undo.
 public sealed class ProfileStore
@@ -71,24 +82,33 @@ public sealed class ProfileStore
         ValidateName(name); var directory = BackupDirectory(home);
         return Directory.Exists(directory) ? Directory.EnumerateFiles(directory, name + "--*.profilebackup").OrderByDescending(Path.GetFileName, StringComparer.Ordinal).FirstOrDefault() : null;
     }
-    public string Restore(ProfileSnapshot current)
+    public string Restore(ProfileSnapshot current) => Restore(PrepareRestore(current));
+    public ProfileRestorePlan PrepareRestore(ProfileSnapshot current)
     {
         var path = LatestBackup(current.Home, current.Name) ?? throw new InvalidOperationException("此 Profile 尚无备份。");
         CheckLink(path);
         if (new FileInfo(path).Length > 24 * 1024 * 1024) throw new InvalidDataException("Profile 备份过大。");
-        var plain = ProtectedData.Unprotect(File.ReadAllBytes(path), Entropy, DataProtectionScope.CurrentUser);
+        var encrypted = File.ReadAllBytes(path);
+        var plain = ProtectedData.Unprotect(encrypted, Entropy, DataProtectionScope.CurrentUser);
         try
         {
             var backup = JsonSerializer.Deserialize<Backup>(plain) ?? throw new InvalidDataException("Profile 备份无效。");
             if (backup.Name != current.Name || Hash(current.Config) != backup.AfterHash) throw new InvalidOperationException("Profile 已有其他修改，不能直接恢复。");
-            return Write(current, backup.Before);
+            return new(current, backup.Before, path, Hash(encrypted));
         }
         finally { CryptographicOperations.ZeroMemory(plain); }
     }
-    private string Write(ProfileSnapshot before, byte[]? next)
+    public string Restore(ProfileRestorePlan review) => Write(review.Before, review.Target, () =>
+    {
+        CheckLink(review.Source);
+        if (LatestBackup(review.Before.Home, review.Before.Name) != review.Source || !File.Exists(review.Source) || new FileInfo(review.Source).Length > 24 * 1024 * 1024 || Hash(File.ReadAllBytes(review.Source)) != review.SourceHash)
+            throw new IOException("Profile 备份在确认后改变，请重新查看恢复差异。");
+    });
+    private string Write(ProfileSnapshot before, byte[]? next, Action? validateSource = null)
     {
         var path = FilePath(before.Home, before.Name); var directory = BackupDirectory(before.Home); Directory.CreateDirectory(directory);
         using var writeLock = new FileStream(Path.Combine(directory, "profiles.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        validateSource?.Invoke();
         void Unchanged() { if (Hash(Load(before.Home, before.Name).Config) != Hash(before.Config)) throw new InvalidOperationException("Profile 已被其他程序修改，请重新读取。"); }
         Unchanged();
         var backupPath = Path.Combine(directory, $"{before.Name}--{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss-fffffff}-{Guid.NewGuid():N}.profilebackup");

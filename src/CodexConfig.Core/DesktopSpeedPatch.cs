@@ -6,7 +6,11 @@ using System.Text.RegularExpressions;
 namespace CodexConfig.Core;
 
 public sealed record SpeedRuntimeLocation(string Path, int Line, int Column, string Chunk);
-public sealed record DesktopSpeedPlan(IReadOnlyList<SpeedRuntimeLocation> Runtimes, IReadOnlyDictionary<string, int> Gates);
+public sealed record DesktopSpeedPlan(IReadOnlyList<SpeedRuntimeLocation> Runtimes, IReadOnlyDictionary<string, int> Gates)
+{
+    public bool SpeedEnabled { get; init; } = true;
+    public bool ConnectionsEnabled { get; init; }
+}
 internal sealed record SpeedRewrite(string Source, IReadOnlyList<string> Gates);
 
 // Independently implemented from the four-gate design documented by CodexPlusPlus 2.6.6.
@@ -84,8 +88,9 @@ public static class DesktopSpeedPatch
         return new(source, gates);
     }
 
-    public static DesktopSpeedPlan Inspect(string desktopExecutable)
+    public static DesktopSpeedPlan Inspect(string desktopExecutable, bool speedEnabled = true, bool connectionsEnabled = false)
     {
+        if (!speedEnabled && !connectionsEnabled) throw new ArgumentException("请至少选择一项客户端兼容功能。");
         var archive = Path.Combine(Path.GetDirectoryName(desktopExecutable)!, "resources", "app.asar");
         using var stream = File.OpenRead(archive);
         Span<byte> prefix = stackalloc byte[16]; stream.ReadExactly(prefix);
@@ -96,7 +101,8 @@ public static class DesktopSpeedPatch
         var headerBytes = new byte[jsonSize]; stream.ReadExactly(headerBytes);
         using var header = JsonDocument.Parse(headerBytes);
         var assets = header.RootElement.GetProperty("files").GetProperty("webview").GetProperty("files").GetProperty("assets");
-        var counts = Definitions.ToDictionary(gate => gate.Name, _ => 0);
+        var counts = speedEnabled ? Definitions.ToDictionary(gate => gate.Name, _ => 0) : new Dictionary<string, int>();
+        if (connectionsEnabled) counts.Add("connections", 0);
         var runtimes = new List<SpeedRuntimeLocation>();
         foreach (var (path, entry) in Entries(assets, "assets/"))
         {
@@ -106,13 +112,14 @@ public static class DesktopSpeedPatch
             var offset = 8L + headerSize + long.Parse(entry.GetProperty("offset").GetString()!, System.Globalization.CultureInfo.InvariantCulture);
             if (offset < 8L + headerSize || offset + size > stream.Length) throw new InvalidDataException("Codex 资源偏移无效。");
             stream.Position = offset; var bytes = new byte[size]; stream.ReadExactly(bytes); var source = Encoding.UTF8.GetString(bytes);
-            if (source.Contains("serviceTierAccess:") || source.Contains("readServiceTier") || source.Contains("Failed to read service tier for request"))
+            if (speedEnabled && (source.Contains("serviceTierAccess:") || source.Contains("readServiceTier") || source.Contains("Failed to read service tier for request")))
                 foreach (var gate in Rewrite(source).Gates) counts[gate]++;
+            if (connectionsEnabled && source.Contains("this.requestClient.sendRequest", StringComparison.Ordinal)) counts["connections"] += DesktopConnectionPatch.Count(source);
             if (!path[7..].Contains('/') && source.Contains("as __webpack_require__")) runtimes.AddRange(RuntimeLocations(path, source));
         }
         if (counts.Any(pair => pair.Value == 0) || runtimes.Count == 0)
             throw new InvalidDataException("此 Codex 版本的速度门控、当前模型读取或模块加载器尚未匹配，未应用兼容处理。");
-        return new(runtimes, counts);
+        return new(runtimes, counts) { SpeedEnabled = speedEnabled, ConnectionsEnabled = connectionsEnabled };
     }
 
     internal static IReadOnlyList<SpeedRuntimeLocation> RuntimeLocations(string path, string source)

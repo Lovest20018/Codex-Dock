@@ -4,7 +4,7 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>CodexDock</AssemblyName>
     <RootNamespace>CodexConfig.App</RootNamespace>
-    <Version>0.18.0</Version>
+    <Version>0.19.0</Version>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Product>Codex Dock</Product>
@@ -16,5 +16,6 @@
     <Resource Include="Assets\tray-light.png" />
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
     <ProjectReference Include="../CodexConfig.Core/CodexConfig.Core.csproj" />
+    <ProjectReference Include="../CodexConfig.Application/CodexConfig.Application.csproj" />
   </ItemGroup>
 </Project>

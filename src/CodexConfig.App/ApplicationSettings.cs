@@ -1,12 +1,15 @@
 using System.Windows;
 using CodexConfig.Core;
 
+using CodexConfig.Application;
+
 namespace CodexConfig.App;
 
 public partial class MainWindow
 {
     private bool updatingStartup;
     private readonly IStartupRegistration startup;
+    private readonly StartupRegistrationService startupRegistrationService;
     internal bool StartInTray { get; init; }
     internal void ApplyStartupVisibility() { if (StartInTray && tray is not null) Hide(); }
     private void RefreshStartupSetting()
@@ -14,8 +17,8 @@ public partial class MainWindow
         updatingStartup = true;
         try
         {
-            var command = startup.Read();
-            AutoStartBox.IsChecked = StartupCommand.Targets(command, Environment.ProcessPath!, home);
+            var saved = startupRegistrationService.Read(home); var command = saved.ObservedCommand;
+            AutoStartBox.IsChecked = saved.Enabled;
             GatewayDockAutoStartBox.IsChecked = AutoStartBox.IsChecked;
             AutoStartHint.Text = command is null ? "已关闭。" : AutoStartBox.IsChecked == true
                 ? "已登记当前程序。若 Windows 已禁用此启动项，请在系统的“启动应用”设置中启用。"
@@ -38,7 +41,9 @@ public partial class MainWindow
         try
         {
             var enabled = sender is System.Windows.Controls.CheckBox box && box.IsChecked == true;
-            startup.Write(enabled ? StartupCommand.Create(Environment.ProcessPath!, home) : null);
+            var review = startupRegistrationService.Prepare(startupRegistrationService.Read(home), enabled);
+            if (review.ReplacesOther && smokeOutput is null && MessageBox.Show(this, "启动项指向另一程序或配置目录。改为当前程序与目录，并在 Windows 登录时收起到托盘？", "更换开机启动项", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) { RefreshStartupSetting(); return; }
+            startupRegistrationService.Apply(review, () => home, () => !closing && !desktopRestartBusy);
             RefreshStartupSetting();
         }
         catch (Exception error)
@@ -110,7 +115,9 @@ public partial class MainWindow
         var before = store.Load(home);
         ConnectionNameBox.Text = "我的自定义连接"; ConnectionNoteBox.Text = "工作使用\r\n备用模型入口";
         ConnectionNoteExpander.IsExpanded = true; UpdatePreview();
-        if (!Dirty || preview?.Details is null || !RenderChanges().Contains("连接名称与备注")) throw new InvalidOperationException("Connection labels missing from draft preview.");
+        if (!Dirty || preview?.Details is null || ConnectionDetails.Read(preview.Details).Name != "我的自定义连接" ||
+            !configurationSave.Review(preview).Targets.Contains(System.IO.Path.Combine(home, ConnectionDetails.FileName)))
+            throw new InvalidOperationException("Connection labels missing from draft preview.");
         if (!SaveCurrent()) throw new InvalidOperationException("Connection label save failed.");
         var saved = store.Load(home);
         if (loadedSettings.Details.Name != "我的自定义连接" || loadedSettings.Details.Note != "工作使用\n备用模型入口" || Dirty ||

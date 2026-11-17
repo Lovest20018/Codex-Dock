@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using CodexConfig.Core;
+using CodexConfig.Application;
 
 namespace CodexConfig.App;
 
@@ -27,6 +28,7 @@ public partial class MainWindow
     private DateTimeOffset mobilePairExpires;
     private int mobileTicks;
     private bool mobileBusy, mobileRefreshing;
+    private Func<MobileSetupReview, bool>? smokeMobileConfirm;
 
     private MobileGatewayManager MobileManager() => new(home, smokeOutput is null ? null : Path.Combine(smokeOutput, "mobile-state"));
 
@@ -66,14 +68,18 @@ public partial class MainWindow
         manageGateways.Click += ManageGatewaysClicked; controls.Children.Add(manageGateways);
         Action(controls, "管理 Codex 接入", async () =>
         {
-            using var result = await MobileManager().ControlAsync("manager", new { }, lifetime.Token);
-            var address = result.RootElement.GetProperty("url").GetString()!;
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(address) { UseShellExecute = true });
+            var saved = await mobileConnection.LoadSettingsAsync(home, lifetime.Token);
+            var result = await mobileConnection.ManagerAsync(saved, () => !closing && home == saved.Home, lifetime.Token);
+            if (!result.Succeeded || result.Value is null) throw new IOException(result.Message);
+            if (smokeOutput is not null) throw new InvalidOperationException("隔离检查不打开真实浏览器。");
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(result.Value.AbsoluteUri) { UseShellExecute = true });
             mobileStatus.Text = "已在本机浏览器打开 Codex 接入管理。";
         });
         Action(controls, "检测 HTTPS 入口", async () =>
         {
-            using var result = await MobileManager().ControlAsync("check", new { }, lifetime.Token);
+            var saved = await mobileConnection.LoadSettingsAsync(home, lifetime.Token);
+            var result = await mobileConnection.CheckEntryAsync(saved, () => !closing && home == saved.Home, lifetime.Token);
+            if (!result.Succeeded) throw new IOException(result.Message);
             mobileStatus.Text = "HTTPS 入口已确认指向这台电脑，可生成配对码。";
         });
         runtime.Children.Add(controls);
@@ -93,7 +99,12 @@ public partial class MainWindow
         Action(qrActions, "生成 / 刷新配对码", CreateMobilePairAsync);
         Action(qrActions, "撤销配对码", async () =>
         {
-            if (mobilePairId is { } id) { using var result = await MobileManager().ControlAsync("pair", new { action = "revoke", id }, lifetime.Token); }
+            if (mobilePairId is { } id)
+            {
+                var saved = await mobileConnection.LoadSettingsAsync(home, lifetime.Token);
+                var result = await mobileConnection.RevokePairAsync(saved, id, () => !closing && home == saved.Home, lifetime.Token);
+                if (!result.Succeeded) throw new IOException(result.Message);
+            }
             ClearMobileQr(); mobileQrHint.Text = "配对码已撤销。";
         }); pairing.Children.Add(qrActions);
         pairing.Children.Add(OverviewText("二维码 5 分钟有效、仅可使用一次；刷新使旧码失效。仅在本机生成，未上传至二维码服务。", "Muted", 12));
@@ -135,7 +146,7 @@ public partial class MainWindow
     private async Task StopMobileGatewayAsync()
     {
         var expectedHome = home;
-        await MobileManager().StopAsync(lifetime.Token);
+        await ExecuteSavedGatewayAsync(GatewayKind.Mobile, GatewayCommand.Stop);
         if (expectedHome == home && !closing) { ClearMobileQr(); await RefreshMobilePageAsync(); }
     }
 
@@ -143,18 +154,22 @@ public partial class MainWindow
     {
         var expectedHome = home;
         ClearMobileQr(); mobileStatus.Text = "正在停止旧进程并重启手机网关…";
-        await MobileManager().RestartAsync(lifetime.Token);
+        await ExecuteSavedGatewayAsync(GatewayKind.Mobile, GatewayCommand.Restart);
         if (expectedHome == home && !closing) await RefreshMobilePageAsync();
     }
 
     private async Task SaveAndStartMobileAsync()
     {
         if (!int.TryParse(mobilePort.Text, out var port)) throw new ArgumentException("请输入有效的本机端口。");
-        var manager = MobileManager();
-        await manager.SaveAsync(mobileUrl.Text, mobileUsername.Text, mobilePassword.Password, port, lifetime.Token);
-        mobilePassword.Clear(); ClearMobileQr();
-        mobilePasswordHint.Text = "密码已设置；留空沿用。填写新密码将撤销已有设备授权。";
-        await manager.StartAsync(lifetime.Token);
+        var expectedHome = home;
+        var review = await mobileConnection.PrepareAsync(expectedHome, new(mobileUrl.Text, mobileUsername.Text, mobilePassword.Password, port), lifetime.Token);
+        var confirmed = smokeOutput is not null ? smokeMobileConfirm?.Invoke(review) ?? throw new InvalidOperationException("隔离检查未提供手机设置保存确认。") :
+            MessageBox.Show(this, review.Description, "保存并启动手机连接", MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK;
+        if (!confirmed) return;
+        var result = await mobileConnection.SaveAndStartAsync(review, () => !closing && home == expectedHome, lifetime.Token);
+        if (result.SettingsSaved || result.Succeeded)
+        { mobilePassword.Clear(); ClearMobileQr(); mobilePasswordHint.Text = "密码已设置；留空沿用。填写新密码将撤销已有设备授权。"; }
+        if (!result.Succeeded) throw new IOException(result.Message);
         await RefreshMobilePageAsync();
     }
 
@@ -203,7 +218,12 @@ public partial class MainWindow
             var panel = new DockPanel { Margin = new(0, 6, 0, 8) };
             var revoke = new Button { Content = "撤销设备", Margin = new(12, 0, 0, 0) }; DockPanel.SetDock(revoke, Dock.Right); panel.Children.Add(revoke);
             panel.Children.Add(OverviewText($"{(agent.Contains("-Android") ? "安卓 App" : "浏览器")} · {row.GetProperty("ip").GetString()} · 最近 {lastSeen}", "Muted", 13));
-            revoke.Click += async (_, _) => await MobileActionAsync(async () => { using var result = await MobileManager().ControlAsync("devices", new { action = "revoke", id }, lifetime.Token); await RefreshMobilePageAsync(); });
+            revoke.Click += async (_, _) => await MobileActionAsync(async () =>
+            {
+                var saved = await mobileConnection.LoadSettingsAsync(home, lifetime.Token);
+                var result = await mobileConnection.RevokeDeviceAsync(saved, id, () => !closing && home == saved.Home, lifetime.Token);
+                if (!result.Succeeded) throw new IOException(result.Message); await RefreshMobilePageAsync();
+            });
             mobileDevices.Children.Add(panel);
         }
         foreach (var row in value.GetProperty("autoBlocks").EnumerateArray())
@@ -212,7 +232,12 @@ public partial class MainWindow
             var panel = new DockPanel { Margin = new(0, 6, 0, 8) };
             var unblock = new Button { Content = "解除登录限制", Margin = new(12, 0, 0, 0) }; DockPanel.SetDock(unblock, Dock.Right); panel.Children.Add(unblock);
             panel.Children.Add(OverviewText($"{ip} · 多次登录失败，已限制新登录", "Muted", 13));
-            unblock.Click += async (_, _) => await MobileActionAsync(async () => { using var result = await MobileManager().ControlAsync("devices", new { action = "unblock", ip }, lifetime.Token); await RefreshMobilePageAsync(); });
+            unblock.Click += async (_, _) => await MobileActionAsync(async () =>
+            {
+                var saved = await mobileConnection.LoadSettingsAsync(home, lifetime.Token);
+                var result = await mobileConnection.UnblockAsync(saved, ip, () => !closing && home == saved.Home, lifetime.Token);
+                if (!result.Succeeded) throw new IOException(result.Message); await RefreshMobilePageAsync();
+            });
             mobileDevices.Children.Add(panel);
         }
         if (mobileDevices.Children.Count == 0) mobileDevices.Children.Add(OverviewText("尚无登录设备。", "Muted", 13));
@@ -220,11 +245,13 @@ public partial class MainWindow
 
     private async Task CreateMobilePairAsync()
     {
-        using var result = await MobileManager().ControlAsync("pair", new { action = "create" }, lifetime.Token);
-        var grant = result.RootElement; var bytes = Convert.FromBase64String(grant.GetProperty("image").GetString()!);
+        var saved = await mobileConnection.LoadSettingsAsync(home, lifetime.Token);
+        var result = await mobileConnection.CreatePairAsync(saved, () => !closing && home == saved.Home, lifetime.Token);
+        if (!result.Succeeded || result.Value is not { } grant) throw new IOException(result.Message);
+        var bytes = grant.Image;
         using var stream = new MemoryStream(bytes); var bitmap = new BitmapImage();
         bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad; bitmap.StreamSource = stream; bitmap.EndInit(); bitmap.Freeze();
-        mobilePairId = grant.GetProperty("id").GetString(); mobilePairExpires = DateTimeOffset.FromUnixTimeSeconds((long)grant.GetProperty("expires").GetDouble());
+        mobilePairId = grant.Id; mobilePairExpires = grant.Expires;
         mobileQr.Source = bitmap; mobileQr.Visibility = Visibility.Visible; mobileQrHint.Text = "使用安卓 App 扫描二维码。有效期 5 分钟。";
         mobileStatus.Text = "HTTPS 入口已确认，配对码已生成。";
     }
@@ -243,9 +270,11 @@ public partial class MainWindow
         var id = mobilePairId; var requestedHome = home;
         try
         {
-            using var result = await MobileManager().ControlAsync("pair", new { action = "status", id }, lifetime.Token);
+            var saved = await mobileConnection.LoadSettingsAsync(home, lifetime.Token);
+            var result = await mobileConnection.PairStateAsync(saved, id, () => !closing && home == requestedHome && id == mobilePairId, lifetime.Token);
+            if (!result.Succeeded) throw new IOException(result.Message);
             if (id != mobilePairId || requestedHome != home) return;
-            var state = result.RootElement.GetProperty("state").GetString();
+            var state = result.Value;
             if (state != "active") { ClearMobileQr(); mobileQrHint.Text = state == "used" ? "配对成功。可在下方查看和撤销设备。" : "配对码已失效，请重新生成。"; await RefreshMobilePageAsync(); }
         }
         catch { ClearMobileQr(); mobileQrHint.Text = "无法确认配对码状态，请刷新服务状态。"; }

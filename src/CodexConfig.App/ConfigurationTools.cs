@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using CodexConfig.Core;
+using CodexConfig.Application;
 using Microsoft.Win32;
 
 namespace CodexConfig.App;
@@ -19,6 +20,7 @@ internal sealed class ConfigurationTools : Expander
     private byte[]? localConfig;
     private string model = "";
     private ConfigurationReadResult? result;
+    private readonly ConfigurationSourceService sourceReader = new();
     internal Action? RefreshCapabilities;
     internal ConfigurationReadResult? Snapshot => result;
     internal async Task ReadForSmokeAsync(string program, string project)
@@ -66,10 +68,8 @@ internal sealed class ConfigurationTools : Expander
         read.IsEnabled = false; status.Text = "正在读取本机配置层…";
         try
         {
-            var comparePath = Path.Combine(home, "config.toml");
-            if (selectedProfile.Length == 0 && File.Exists(comparePath) && new FileInfo(comparePath).Length > 8 * 1024 * 1024) throw new IOException("配置文件过大。");
-            var compare = selectedProfile.Length == 0 ? File.Exists(comparePath) ? File.ReadAllBytes(comparePath) : null : new ProfileStore().Load(home, selectedProfile).Config;
-            var snapshot = await new ConfigReadClient().ReadAsync(selectedExe, home, selectedCwd, selectedProfile.Length == 0 ? null : selectedProfile, compare, cancellation);
+            var snapshot = await sourceReader.ReadAsync(new(home, selectedExe, selectedCwd, selectedProfile.Length == 0 ? null : selectedProfile),
+                () => new(home, executable.Text, cwd.Text, profile.Text.Trim()), cancellation);
             if (home != expectedHome || cwd.Text != selectedCwd || executable.Text != selectedExe || profile.Text.Trim() != selectedProfile) return;
             result = snapshot; Filter();
             status.Text = $"本机执行端快照 · {snapshot.ReadAt.LocalDateTime:g} · {snapshot.Rows.Count} 项\n{snapshot.Executable}\n执行端报告：{(snapshot.RuntimeInfo.Length > 0 ? snapshot.RuntimeInfo : "未提供版本标识")}\n项目：{snapshot.Cwd} · 比较文件：{(selectedProfile.Length == 0 ? "config.toml" : selectedProfile + ".config.toml")}\n当前聊天和组织强制要求可能另有覆盖；返回缺失项显示未知。";

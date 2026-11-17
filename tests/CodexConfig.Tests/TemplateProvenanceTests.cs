@@ -48,7 +48,7 @@ internal static class TemplateProvenanceTests
         Test("template provenance current built-ins remain available after explicitly restoring the library", () =>
         {
             var repository = new TemplateRepository(DirectoryForTest());
-            var bundled = BuiltInTemplates.KrillCommunity;
+            var bundled = BuiltInTemplates.Daily;
             var fresh = repository.Load().Single(template => template.Id == bundled.Id);
             Assert(fresh.SourceName == bundled.SourceName && fresh.SourceUrl == bundled.SourceUrl);
             repository.Save(bundled with { SourceName = "Old source", SourceUrl = "https://example.invalid/old", Settings = [new("agents.max_depth", "1")] });

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using CodexConfig.Core;
+using CodexConfig.Application;
 
 namespace CodexConfig.App;
 
@@ -11,14 +12,14 @@ public partial class MainWindow
     private ReleaseUpdate? availableUpdate;
     private VerifiedInstaller? downloadedInstaller, pendingInstaller;
     private CancellationTokenSource? updateCancellation;
+    private readonly UpdateDownloadService updateDownloads = new();
 
     private async void CheckUpdateClicked(object sender, RoutedEventArgs e)
     {
         if (updateCancellation is not null) return;
-        using var client = new GitHubUpdates();
-        await CheckForUpdatesAsync(client);
+        await CheckForUpdatesAsync(updateDownloads);
     }
-    private async Task CheckForUpdatesAsync(GitHubUpdates client)
+    private async Task CheckForUpdatesAsync(UpdateDownloadService client)
     {
         updateCancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         CheckUpdateButton.IsEnabled = false; DownloadUpdateButton.Visibility = InstallUpdateButton.Visibility = Visibility.Collapsed;
@@ -41,10 +42,10 @@ public partial class MainWindow
         CheckUpdateButton.IsEnabled = DownloadUpdateButton.IsEnabled = false; CancelUpdateButton.Visibility = Visibility.Visible;
         try
         {
-            using var client = new GitHubUpdates();
             var directory = Path.Combine(Path.GetTempPath(), "CodexDock-updates", Guid.NewGuid().ToString("N"));
-            downloadedInstaller = await client.DownloadAsync(update, directory, new Progress<int>(percent =>
-            { if (!closing) UpdateStatusText.Text = $"正在下载 {update.Version} · {percent}%"; }), updateCancellation.Token);
+            var cancellation = updateCancellation;
+            downloadedInstaller = await updateDownloads.DownloadAsync(update, directory, new Progress<int>(percent =>
+            { if (!closing && ReferenceEquals(updateCancellation, cancellation) && !cancellation.IsCancellationRequested) UpdateStatusText.Text = $"正在下载 {update.Version} · {percent}%"; }), cancellation.Token);
             if (!closing)
             {
                 UpdateStatusText.Text = "下载及 SHA-256 校验完成。安装前将处理未保存的修改，停止手机和模型网关并等待后台进程退出。";
@@ -85,11 +86,11 @@ public partial class MainWindow
             throw new InvalidOperationException("Sidebar and update settings must show the running application version.");
         Capture(output, "application-version.png");
         checks.Add("Sidebar and update settings match running application version " + version);
-        using var latest = new GitHubUpdates(new UpdateFixtureHandler(false));
+        var latest = new UpdateDownloadService(new GitHubUpdateRuntime(() => new GitHubUpdates(new UpdateFixtureHandler(false))));
         await CheckForUpdatesAsync(latest);
         if (availableUpdate is not null || DownloadUpdateButton.Visibility != Visibility.Collapsed || !CheckUpdateButton.IsEnabled)
             throw new InvalidOperationException("No-release update UI state is incorrect.");
-        using var newer = new GitHubUpdates(new UpdateFixtureHandler(true));
+        var newer = new UpdateDownloadService(new GitHubUpdateRuntime(() => new GitHubUpdates(new UpdateFixtureHandler(true))));
         await CheckForUpdatesAsync(newer);
         if (availableUpdate is null || DownloadUpdateButton.Visibility != Visibility.Visible || InstallUpdateButton.Visibility != Visibility.Collapsed)
             throw new InvalidOperationException("New-release update UI state is incorrect.");

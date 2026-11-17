@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <RootNamespace>CodexConfig.WinUI</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>../../assets/brand/codex-dock.ico</ApplicationIcon>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- A .NET runtime version must not override the Windows SDK reference version. -->
+    <RuntimeFrameworkVersion />
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <EnableMsixTooling>false</EnableMsixTooling>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>12</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>CodexDock.WinUI</AssemblyName>
+    <AssemblyName Condition="'$(InstalledBuild)' == 'true' Or '$(LocalInstallBuild)' == 'true'">CodexDock</AssemblyName>
+    <Version>0.19.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
+    <ProjectReference Include="../CodexConfig.Application/CodexConfig.Application.csproj" />
+    <Content Include="../../assets/brand/logo-64.png" Link="Assets/codex-dock.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../assets/brand/codex-dock.ico" Link="Assets/codex-dock.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../assets/brand/tray-on-light.ico" Link="Assets/tray-on-light.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../assets/brand/tray-on-dark.ico" Link="Assets/tray-on-dark.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../artifacts/mobile-worker/CodexDock.Mobile/**/*" Link="mobile/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="IncludeCompiledWinUiResourcesInPublish" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="$(TargetDir)App.xbf;$(TargetDir)MainWindow.xbf;$(TargetDir)$(AssemblyName).pri" />
+      <ResolvedFileToPublish Include="$(TargetDir)App.xbf" RelativePath="App.xbf" CopyToPublishDirectory="PreserveNewest" />
+      <ResolvedFileToPublish Include="$(TargetDir)MainWindow.xbf" RelativePath="MainWindow.xbf" CopyToPublishDirectory="PreserveNewest" />
+      <ResolvedFileToPublish Include="$(TargetDir)$(AssemblyName).pri" RelativePath="$(AssemblyName).pri" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+</Project>

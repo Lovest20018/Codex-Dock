@@ -1,7 +1,10 @@
 using System.Text.Json;
+using System.Security.Cryptography;
 using Tomlyn.Model;
 
 namespace CodexConfig.Core;
+
+public sealed record TemplateLibrarySnapshot(IReadOnlyList<ConfigTemplate> Templates, string Revision);
 
 // Templates belong to this editor, independently of the selected Codex home.
 public sealed class TemplateRepository(string directory)
@@ -12,13 +15,15 @@ public sealed class TemplateRepository(string directory)
     public static string DefaultDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexConfig");
     public static bool IsBuiltIn(string id) => BuiltInTemplates.All.Any(template => template.Id == id);
 
-    public IReadOnlyList<ConfigTemplate> Load()
+    public IReadOnlyList<ConfigTemplate> Load() => LoadSnapshot().Templates;
+
+    public TemplateLibrarySnapshot LoadSnapshot()
     {
-        var library = Read();
-        return Merge(library).ToArray();
+        var library = Read(out var revision);
+        return new(Merge(library).ToArray(), revision);
     }
 
-    public ConfigTemplate Save(ConfigTemplate template, bool create = false)
+    public ConfigTemplate Save(ConfigTemplate template, bool create = false, string? expectedRevision = null)
     {
         template = Validate(template);
         Mutate(library =>
@@ -29,20 +34,20 @@ public sealed class TemplateRepository(string directory)
                 Templates = library.Templates.Where(item => item.Id != template.Id).Append(template).ToArray(),
                 HiddenBuiltIns = library.HiddenBuiltIns.Where(id => id != template.Id).ToArray()
             };
-        });
+        }, expectedRevision);
         return template;
     }
 
-    public void Delete(string id) => Mutate(library => library with
+    public void Delete(string id, string? expectedRevision = null) => Mutate(library => library with
     {
         Templates = library.Templates.Where(template => template.Id != id).ToArray(),
         HiddenBuiltIns = IsBuiltIn(id) ? library.HiddenBuiltIns.Append(id).Distinct(StringComparer.Ordinal).ToArray() : library.HiddenBuiltIns
-    });
+    }, expectedRevision);
 
-    public void RestoreBuiltIns() => Mutate(library => library with
+    public void RestoreBuiltIns(string? expectedRevision = null) => Mutate(library => library with
     {
         Templates = library.Templates.Where(template => !IsBuiltIn(template.Id)).ToArray(), HiddenBuiltIns = []
-    });
+    }, expectedRevision);
 
     public static ConfigTemplate New(string name, IEnumerable<TemplateSetting> settings) =>
         new("user-" + Guid.NewGuid().ToString("N"), name, "我的模板", "", "", settings.ToArray());
@@ -107,17 +112,19 @@ public sealed class TemplateRepository(string directory)
         _ => false
     };
 
-    private static IEnumerable<ConfigTemplate> Merge(Library library) => BuiltInTemplates.All
+    private static IEnumerable<ConfigTemplate> Merge(Library library) => BuiltInTemplates.Defaults
         .Where(template => !library.HiddenBuiltIns.Contains(template.Id, StringComparer.Ordinal) && !library.Templates.Any(item => item.Id == template.Id))
         .Concat(library.Templates);
 
-    private Library Read()
+    private Library Read(out string revision)
     {
+        revision = "absent";
         if (!File.Exists(FilePath)) return new(1, [], []);
         try
         {
             if (new FileInfo(FilePath).Length > 4 * 1024 * 1024) throw new InvalidDataException();
-            var library = JsonSerializer.Deserialize<Library>(File.ReadAllBytes(FilePath), JsonOptions);
+            var bytes = File.ReadAllBytes(FilePath); revision = Convert.ToHexString(SHA256.HashData(bytes));
+            var library = JsonSerializer.Deserialize<Library>(bytes, JsonOptions);
             if (library is null || library.Version != 1 || library.Templates is null || library.HiddenBuiltIns is null || library.Templates.Length > 300 || library.Templates.Select(template => template.Id).Distinct(StringComparer.Ordinal).Count() != library.Templates.Length) throw new InvalidDataException();
             return library with { Templates = library.Templates.Select(Validate).ToArray() };
         }
@@ -125,11 +132,13 @@ public sealed class TemplateRepository(string directory)
         { throw new InvalidDataException("模板文件无法读取，原文件已保留。请检查：" + FilePath, error); }
     }
 
-    private void Mutate(Func<Library, Library> change)
+    private void Mutate(Func<Library, Library> change, string? expectedRevision)
     {
         Directory.CreateDirectory(directory);
         using var gate = new FileStream(Path.Combine(directory, "templates.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-        var next = change(Read());
+        var library = Read(out var revision);
+        if (expectedRevision is not null && expectedRevision != revision) throw new IOException("方案库已被其他窗口修改，请重新读取后再保存；当前编辑已保留。");
+        var next = change(library);
         if (next.Templates.Length > 300) throw new ArgumentException("最多保存 300 个模板。");
         var data = JsonSerializer.SerializeToUtf8Bytes(next, JsonOptions);
         if (data.Length > 4 * 1024 * 1024) throw new ArgumentException("模板内容过多，请减少设置或文本长度。");

@@ -6,3 +6,4 @@ src/CodexAndroid/** text eol=lf
 scripts/build-android.py text eol=lf
 scripts/init-android-signing.ps1 text eol=lf
 tests/android/** text eol=lf
+third_party/* -whitespace

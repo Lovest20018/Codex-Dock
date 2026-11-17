@@ -17,7 +17,7 @@ public partial class MainWindow
     private int reviewChangeCount;
 
     private void UpdateSaveBarVisibility() => GlobalSaveBar.Visibility =
-        currentPage is not ("mobile" or "gateways") && !(currentPage == "templates" && (TemplateEditor.IsEditing || TemplateEditor.Current is not null))
+        currentPage is not ("mobile" or "gateways") && !(currentPage == "enhancements" && !Dirty) && !(currentPage == "templates" && (TemplateEditor.IsEditing || TemplateEditor.Current is not null))
             ? Visibility.Visible : Visibility.Collapsed;
 
     private void OpenConfigurationReview()
@@ -36,8 +36,6 @@ public partial class MainWindow
     {
         if (preview is null || reviewSaved) return;
         var before = preview.Before;
-        var original = new TomlDocument(before.Config).Model;
-        var updated = new TomlDocument(preview.Config).Model;
         ReviewChanges.Children.Clear();
         if (ConnectionChanged && !EditingMixedConnection)
         {
@@ -58,10 +56,9 @@ public partial class MainWindow
             var notice = new Border { Child = change, Padding = new(14), CornerRadius = new(8), Margin = new(0, 0, 0, 8) };
             notice.SetResourceReference(Border.BackgroundProperty, "AccentSoft"); ReviewChanges.Children.Add(notice);
         }
-        var targets = new List<string>();
+        var sharedReview = configurationSave.Review(preview);
+        var targets = sharedReview.Targets;
         reviewChangeCount = 0;
-        string Display(string path, object? value) => value is null ? "未设置 · 跟随其他配置层或 Codex 默认"
-            : ConfigReadClient.SafeValue(path, JsonSerializer.SerializeToElement(value));
         void Add(string name, string path, string previous, string next)
         {
             reviewChangeCount++;
@@ -73,36 +70,8 @@ public partial class MainWindow
             var border = new Border { Child = row, Padding = new(0, 12, 8, 12), BorderThickness = new(0, 0, 0, 1) };
             border.SetResourceReference(Border.BorderBrushProperty, "Line"); ReviewChanges.Children.Add(border);
         }
-        foreach (var path in TomlDocument.ValuePaths(original).Concat(TomlDocument.ValuePaths(updated)).Distinct(StringComparer.Ordinal).OrderBy(path => path, StringComparer.Ordinal))
-        {
-            var previous = TomlDocument.ValueAt(original, path); var next = TomlDocument.ValueAt(updated, path);
-            if (ConfigSchema.Literal(previous) == ConfigSchema.Literal(next)) continue;
-            Add(ConfigHelp.Name(path), path, Display(path, previous), next is null ? "移除此项本地覆盖，跟随其他配置层或 Codex 默认" : Display(path, next));
-        }
-        if (reviewChangeCount > 0) targets.Add(Path.Combine(before.Home, "config.toml"));
-        void FileChange(byte[]? oldBytes, byte[]? newBytes, string name, string file)
-        {
-            if ((oldBytes ?? []).SequenceEqual(newBytes ?? [])) return;
-            targets.Add(Path.Combine(before.Home, file));
-            Add(name, file, oldBytes is null ? "本地未设置" : "已设置（内容已隐藏）", newBytes is null ? "移除本地文件" : "更新本地文件（内容已隐藏）");
-        }
-        FileChange(before.Auth, preview.Auth, loadedSettings.NeedsApiKeyMigration && !EditingMixedConnection ? "认证文件 · 旧 PAT → API Key" : "认证文件", "auth.json");
-        FileChange(before.Bridge, preview.Bridge, "加密模型连接", MixedConnection.FileName);
-        FileChange(before.Details, preview.Details, "连接资料与 HTTP 确认", ConnectionDetails.FileName);
-        if (preview.CatalogUpdate is { } catalog)
-        {
-            targets.Add(catalog.Path); targets.Add(Path.Combine(home, ManagedModelCatalogStore.IndexFile));
-            Add("专用审核与模型目录", "Dock 管理的能力目录", "现有目录与审核策略", "固定 codex-auto-review；目录与策略同时备份，审核失败停止执行");
-        }
-        var previousHttp = ConnectionDetails.Read(before.Details).HttpOrigin;
-        var nextHttp = ConnectionDetails.Read(preview.Details).HttpOrigin;
-        if (previousHttp != nextHttp)
-            Add("HTTP 明文连接确认", "Dock 站点确认", previousHttp.Length == 0 ? "未确认" : previousHttp, nextHttp.Length == 0 ? "撤销确认" : nextHttp);
-        if (before.AuthApiBaseUrl != preview.AuthApiBaseUrl)
-        {
-            targets.Add("用户环境变量 CODEX_AUTHAPI_BASE_URL");
-            Add("用户环境变量", "CODEX_AUTHAPI_BASE_URL", before.AuthApiBaseUrl ?? "未设置", preview.AuthApiBaseUrl ?? "移除本地覆盖");
-        }
+        foreach (var change in sharedReview.Changes)
+            Add(change.Name, change.Path, change.Previous, change.Next);
         var editable = Dirty;
         ReviewTitle.Text = editable ? "确认写入本地配置" : "查看当前配置";
         ReviewSummary.Text = editable ? $"待写入 {reviewChangeCount} 项 · " + (reviewSource is null ? "包含当前所有未保存的修改" : "来源：" + reviewSource + (reviewHadDraft ? "，包含此前未保存修改" : "")) : "当前本地配置 · 没有待写入的修改";

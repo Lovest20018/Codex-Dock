@@ -70,7 +70,7 @@ public partial class MainWindow
                 "A veto or tray timeout preserves files and offers a separately confirmed scoped fallback");
             await Settle(); Capture(output, "configuration-restart-failure.png");
             smokeDesktopConfirm = _ => false;
-            await RestartCodexFromReviewAsync(forceTarget: blockedDesktopExit!.Value.Target);
+            await RestartCodexFromReviewAsync(forceTarget: blockedDesktopExit!.Target);
             Check(launches == 0 && DesktopRestartStatus.Text.Contains("已取消"), "Declining scoped process termination never restarts or ends the desktop");
             smokeDesktopConfirm = _ => true;
             var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -90,6 +90,58 @@ public partial class MainWindow
         }
         finally { smokeDesktopTarget = null; smokeDesktopConfirm = null; smokeDesktopRestart = null; }
         await RunDesktopApplicationStagesSmokeAsync(output, checks);
+        await RunDesktopTargetSelectionSmokeAsync(output, checks);
+    }
+
+    private async Task RunDesktopTargetSelectionSmokeAsync(string output, List<string> checks)
+    {
+        void Check(bool value, string message) { if (!value) throw new InvalidOperationException(message); checks.Add(message); }
+        var directory = Path.Combine(output, "target-selection-home"); Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "config.toml"), "model='target-selection-model'\n");
+        var memory = new IsolatedGatewayEnvironment(); var isolated = new ConfigStore(memory, _ => null);
+        var window = new MainWindow(isolated, directory, output, memory); window.Loaded -= window.WindowLoaded;
+        var first = new CodexDesktopTarget(Path.Combine(directory, "Codex.exe"), [new(101, 1, 134390198764749156, Path.Combine(directory, "Codex.exe"))]) { UserDataDirectory = Path.Combine(directory, "chatgpt-desktop") };
+        var second = new CodexDesktopTarget(first.Executable, [new(202, 1, 134390207385091453, first.Executable)]) { UserDataDirectory = Path.Combine(directory, "Codex") };
+        var launches = 0; var confirms = 0;
+        try
+        {
+            window.Show(); window.OpenDesktopApplicationPanel();
+            var picker = window.CreateDesktopTargetPicker([first, second]);
+            try
+            {
+                picker.Dialog.Show(); await window.Settle();
+                Check(picker.Choices.SelectedIndex == -1 && !picker.Confirm.IsEnabled, "Multiple desktop instances require an explicit choice without a preselected process");
+                Check(picker.ExitOthers.IsChecked != true, "Exiting all old instances requires a separate visible selection");
+                picker.ExitOthers.IsChecked = true;
+                Check(picker.ExitOthers.IsChecked == true, "The instance picker can explicitly combine exiting all captured old instances with one new launch");
+                var visual = picker.Dialog;
+                var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)visual.ActualWidth, (int)visual.ActualHeight, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                bitmap.Render(visual); var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder(); encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                using (var stream = File.Create(Path.Combine(output, "desktop-instance-picker.png"))) encoder.Save(stream);
+                picker.Choices.SelectedIndex = 1;
+                Check(picker.Confirm.IsEnabled, "Selecting a desktop instance enables confirmation");
+            }
+            finally { picker.Dialog.Close(); }
+            var unchanged = isolated.Load(directory);
+            window.smokeDesktopTargets = () => [first, second]; window.smokeDesktopChoose = _ => null;
+            window.smokeDesktopConfirm = _ => { confirms++; return true; };
+            window.smokeDesktopRestart = (target, _, _, validate, _) => { Check(ReferenceEquals(target, second), "Restart receives only the explicitly selected desktop target"); validate(); launches++; return Task.CompletedTask; };
+            await window.RestartCodexFromReviewAsync();
+            Check(launches == 0 && confirms == 0 && window.DesktopRestartStatus.Text.Contains("已取消") && unchanged.SameContents(isolated.Load(directory)), "Cancelling instance selection leaves both desktops and configuration untouched");
+            window.smokeDesktopChoose = _ => second;
+            await window.RestartCodexFromReviewAsync();
+            Check(launches == 1 && confirms == 1 && window.DesktopApplyContext.Text.Contains(second.UserDataDirectory) && window.DesktopApplyContext.Text.Contains("202"), "Apply details retain the chosen profile and root process");
+            var combined = second with { AlsoExit = [first] };
+            window.PrepareDesktopRestart(); window.smokeDesktopChoose = _ => combined;
+            window.smokeDesktopRestart = (_, _, _, _, _) => throw new CodexDesktopExitTimeoutException("one old instance still running");
+            await window.RestartCodexFromReviewAsync();
+            Check(window.blockedDesktopExit?.Target.ExitRoots.Count == 2 && launches == 1, "A partial batch exit retains the captured roots and does not claim another launch");
+            window.smokeDesktopTargets = () => [first];
+            window.smokeDesktopRestart = (target, _, _, validate, _) => { Check(ReferenceEquals(target, combined), "Batch force retry keeps the original selection after its primary root has exited"); validate(); launches++; return Task.CompletedTask; };
+            await window.RestartCodexFromReviewAsync(forceTarget: combined);
+            Check(launches == 2 && window.desktopRestarted, "A separately confirmed batch retry can finish the remaining old instance and launch once");
+        }
+        finally { window.smokeDesktopTargets = null; window.smokeDesktopChoose = null; window.Close(); }
     }
 
     private async Task RunDesktopApplicationStagesSmokeAsync(string output, List<string> checks)

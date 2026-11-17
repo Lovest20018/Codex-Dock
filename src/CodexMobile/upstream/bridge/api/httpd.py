@@ -35,7 +35,7 @@ from bridge.features.auth.auth import Auth, LoginRejected
 from bridge.features.updates.mobile import MobileUpdates
 from bridge.clients.codex.ipc import IPCError
 from bridge.features.sessions.goal import GoalError
-from bridge.clients.codex.catalog import CatalogError
+from bridge.clients.codex.catalog import CatalogError, CatalogIdentityChanged
 from bridge.features.sessions.store import StoreUnavailable
 from bridge.clients.codex.remote import RemoteUnavailable
 from bridge.features.sessions.create import ArchiveRejected, CreationError
@@ -1305,7 +1305,9 @@ class Handler(BaseHTTPRequestHandler):
             elif action == "settings":
                 if 'fastMode' in body and not isinstance(body['fastMode'], bool):
                     raise ValueError('Fast 模式开关无效')
-                result = bridge.settings(thread_id, body.get("model"), body.get("effort"), **({'fast_mode': body['fastMode']} if 'fastMode' in body else {}))
+                result = bridge.settings(thread_id, body.get("model"), body.get("effort"),
+                                         **({"fast_mode": body["fastMode"]} if "fastMode" in body else {}),
+                                         **({"expected_catalog": body["modelCatalogIdentity"]} if "modelCatalogIdentity" in body else {}))
             elif action == "stop":
                 result = bridge.interrupt(thread_id)
             elif action == "history":
@@ -1352,6 +1354,9 @@ class Handler(BaseHTTPRequestHandler):
         except ArchiveRejected as exc:
             self.close_connection = True
             self.output(409, {'error': str(exc), 'code': 'archive_rejected', 'reason': exc.reason})
+        except CatalogIdentityChanged as exc:
+            self.close_connection = True
+            self.output(409, {'error': str(exc), 'code': exc.code})
         except (IPCError, GoalError, CatalogError, RemoteUnavailable, CreationError, StoreUnavailable, AccountError) as exc:
             self.close_connection = True
             self.output(409, {"error": str(exc), "code": "desktop_unavailable"})

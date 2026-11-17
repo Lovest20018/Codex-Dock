@@ -1,142 +1,106 @@
 # Codex Dock · Lovest Code
 
-<img src="assets/brand/logo-128.png" width="64" height="64" alt="Codex Dock Logo">
+<img src="assets/brand/logo-128.png" width="72" height="72" alt="Codex Dock 接入图标">
 
-在 Windows 上管理 Codex 配置、账号接入与后台网关，在手机上继续聊天、查看任务、处理审批和使用项目工作台。
+在 Windows 上管理 Codex 的连接、模型、配置与后台服务，用手机继续自己的聊天。
 
-项目包含 Windows 应用 **Codex Dock**、由 Windows 托管的 **Web / 手机网关**，以及独立安卓客户端 **Lovest Code**。手机端连接自己的电脑和原生执行环境，聊天能力由所选 Codex Desktop、CLI 或已登记的 WSL / SSH 提供。
+**Codex Dock** 是 Windows 配置应用，**Lovest Code** 是 Android 客户端。电脑端托管 Web / 手机网关，连接本机 Codex Desktop、CLI，以及已登记的 WSL / SSH 执行环境。
 
-[Windows 下载](https://github.com/Lovest20018/Codex-Dock/releases/latest) · [Android 下载](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.4) · [全部版本](https://github.com/Lovest20018/Codex-Dock/releases) · [构建流程](https://github.com/Lovest20018/Codex-Dock/actions/workflows/release.yml) · [反馈问题](https://github.com/Lovest20018/Codex-Dock/issues)
+[Windows 下载](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.19.0) · [Android 下载](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.5) · [全部版本](https://github.com/Lovest20018/Codex-Dock/releases) · [反馈问题](https://github.com/Lovest20018/Codex-Dock/issues)
 
-## 当前状态
+## 当前版本
 
-截至 2026-11-13，本仓库的版本为：
-
-| 应用 | 版本与下载 | 本版更新 |
+| 应用 | 版本 | 这次更新 |
 | --- | --- | --- |
-| Windows · Codex Dock | **[0.18.0](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.18.0)** | 模型与专用审核、统一应用进度、保存恢复冲突修复、API Key 迁移及独立网关管理。 |
-| Android · Lovest Code | **[0.2.4](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.4)** / versionCode 7 | 应用内检查更新、校验下载并打开系统安装器；保留通知、原图下载、草稿和三页导航。 |
+| Windows · Codex Dock | **[0.19.0](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.19.0)** | WinUI 3 成为默认界面，五个任务入口、统一保存与应用流程、旧聊天接续和增强、网关等待设置、实验功能读取，以及手机网关兼容与恢复修复。 |
+| Android · Lovest Code | **[0.2.5](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.5)** | 更换为“接入 · 浅绿”图标，适配自适应启动器、Android 13+ 单色图标和通知；沿用原包名和签名，可覆盖升级。 |
 
-**Windows 与 Android 独立更新、独立发布。** Windows Release 只放 EXE、便携包和对应源码；Android Release 只放 APK 和对应源码，各自附带校验清单与验证记录。Windows 使用 `vX.Y.Z` 标签，Android 使用 `android-vX.Y.Z` 标签。历史合并版保留，新版本按平台发布，维护方式见 [发布说明](docs/github-releases.md)。
+Windows 与 Android 现在使用同一套开口 D、接入箭头和浅绿配色。两个应用独立构建与发布；Windows 的更新入口只跟踪 `v*`，安卓应用内更新只跟踪 `android-v*`。
 
-完整使用本轮功能，请配套使用 Windows **0.18.0** 与 Android **0.2.4**。Web 页面、手机后台与模型兼容性随 Windows 更新；应用内更新、独立通知、原生冷启动和图片下载支持随 APK 更新。
+## 安装与覆盖升级
 
-Web / 手机工作台复用固定的 Codex Mobile Bridge 2.1.7 快照，选择性移植上游 2.2.0 修复，并通过显式覆盖和自有适配提供 Codex 范围的功能。上游来源、许可与维护方式见 [UPSTREAM](src/CodexMobile/UPSTREAM.md) 和 [本轮移植记录](docs/mobile-upstream-backport-2026-11-09.md)。
+| 平台 | 安装文件 | 环境 |
+| --- | --- | --- |
+| Windows | [安装器 EXE](https://github.com/Lovest20018/Codex-Dock/releases/download/v0.19.0/CodexDock-0.19.0-Setup-win-x64.exe) · [便携 ZIP](https://github.com/Lovest20018/Codex-Dock/releases/download/v0.19.0/CodexDock-0.19.0-win-x64.zip) | Windows x64，目标最低版本 Windows 10 1809；.NET、Windows App SDK 和手机后台随包提供。 |
+| Android | [LovestCode-Android-0.2.5.apk](https://github.com/Lovest20018/Codex-Dock/releases/download/android-v0.2.5/LovestCode-Android-0.2.5.apk) | Android 8 / API 26 及以上。 |
 
-0.16.0 完成三批配置优化：配置目录更新、组合校验、已配置实例、配置来源、独立 profile，以及压缩与连接耗时诊断。使用入口和验证边界见 [实施记录](docs/configuration-implementation-2026-11-02.md)。
+**Windows 覆盖升级：**在旧版 Dock 选择“停止网关并退出”，并从托盘退出此前单独打开的 WinUI 预览，再运行新安装器、选择原安装目录。无需先卸载；原快捷方式继续打开 `CodexDock.exe`，界面改为 WinUI。便携版请解压到独立目录，保留整个 `mobile` 文件夹和所有运行库。
 
-0.17.0 补入 Superba alpha.15 的第一批配置更新：目录增至 1064 条结构定义、调整社区模板默认选择、增加逐站 HTTP 确认，并在保存成功页提供 **重启 Codex 并应用**。使用方式与验收状态见 [合并记录](docs/superba-reuse-implementation-2026-11-11.md)。
+**Android 覆盖升级：**直接安装新版 APK，不要先卸载。包名仍是 `io.github.lovest20018.codexdock`，原证书和应用数据目录保持；连接、授权及草稿可沿用。也可在“我的 → 版本与更新”检查新版，按系统提示允许 Lovest Code 安装应用。
 
-0.17.1 修正模板应用逻辑：逐项显示将写入或保留的值；本地已编辑方案可直接预览本版内置配方；新增明确写入三项 `false` 的旧上下文停用方案。升级不自动应用模板，详见 [模板修正与验收](docs/template-application-fix-2026-11-11.md)。
+校验文件：[Windows SHA-256](https://github.com/Lovest20018/Codex-Dock/releases/download/v0.19.0/SHA256SUMS-0.19.0.txt) · [Android SHA-256](https://github.com/Lovest20018/Codex-Dock/releases/download/android-v0.2.5/SHA256SUMS-Android-0.2.5.txt)。更新后在电脑启动手机服务，并重新检测 HTTPS 入口。
 
-0.18.0 统一使用 API Key 直连；旧 PAT 通过差异确认迁移，官方登录由原生 Codex 完成。常用模型页集中设置推理、速度与专用审核，保存和恢复保留客户端自动更新，统一应用面板显示启动进度与重试。独立 **网关管理** 页面启停模型与手机网关，自动启动默认关闭。改动见 [版本说明](docs/release-0.18.0.md)。
+## Windows 界面
 
-## 可以做什么
-
-| 使用场景 | 功能 |
+| 任务入口 | 用途 |
 | --- | --- |
-| 配置 Codex | 修改服务地址、API Key、默认模型及常用设置；搜索配置说明；查看遮盖凭据的更改预览。 |
-| 保留官方账号并连接独立模型入口 | 在原生 Codex 桌面登录 ChatGPT，通过可选本机模型网关将模型请求转到所选 API 服务。 |
-| 从手机继续工作 | 查看与继续聊天、处理权限及输入请求、使用消息队列和附件；按执行端能力使用文件预览、Git 和终端。 |
-| 管理接入 | 在电脑的本机管理页登记官方账号、API 与 CLI / WSL 接入；手机使用已登记的执行环境。 |
-| 日常维护 | 配置模板、保存前加密备份、冲突提示、恢复、托盘、开机启动和 Windows 软件更新。 |
+| 工作台 | 查看当前配置、草稿、运行状态和下一步操作。 |
+| Codex 配置 | 编辑连接、官方登录与模型、推理和速度；管理全部配置、Profile、方案库。 |
+| 运行与增强 | 将已保存配置应用到 Codex，管理 Fast / Ultrafast 兼容、旧聊天接续、自动接回和模型网关。 |
+| 手机访问 | 保存手机服务设置、启停后台、检测 HTTPS、配对和管理授权设备。 |
+| 诊断与恢复 | 查看已保存文件、配置来源与实验功能、读取聊天参数、恢复加密备份。 |
 
-模型目录可按需获取，保存本地配置不要求服务在线。保存成功只确认本机写入；模型能力、订阅资格和远端连通性仍取决于实际服务。
+设置与帮助位于侧栏底部。页面按当前编辑对象显示保存动作；主配置、Profile、方案和手机设置分别保存。`Ctrl+S` 只处理当前编辑对象，仍需核对差异；只读页面不会顺便保存其他草稿。`Ctrl+F` 搜索当前配置或列表，`F1` / `Ctrl+Shift+H` 打开帮助。
 
-## Windows 安装与更新
+## 配置服务与模型
 
-Windows 支持 **Windows 10 1809 及以上 x64**。完整安装包包含 .NET 与手机后台运行时；请另外安装所需的 Codex 客户端。
+1. 打开 **Codex 配置 → 连接**，确认顶部配置目录。
+2. 选择 **API Key 直连**，填写服务地址和 API Key；在 **模型与行为** 选择或填写模型 ID。
+3. 查看修改明细，确认目标文件、认证变化和模型设置后保存。保存前创建当前用户加密的备份。
+4. 点击 **打开或重启 Codex 并应用**，核对目标实例，再新建聊天确认实际效果。
 
-| 文件 | 用法 |
-| --- | --- |
-| `CodexDock-<版本>-Setup-win-x64.exe` | 运行安装向导。 |
-| `CodexDock-<版本>-win-x64.zip` | 完整解压，运行 `CodexDock.exe`；保留旁边的整个 `mobile` 目录。 |
-| `SHA256SUMS-<版本>.txt` | 核对 Windows 交付文件的 SHA-256。 |
+已有自定义供应商、项目配置、MCP 和技能配置按原有边界保留。旧 PAT 可通过明确的迁移操作改为 API Key；普通读取或修改模型不会自动迁移认证。服务模型列表为按需读取，保存本地配置不要求服务在线。
 
-从 [Windows 发布页](https://github.com/Lovest20018/Codex-Dock/releases/latest) 下载安装器或便携包。Windows 0.16.1 起，可在应用设置或托盘选择 **停止网关并退出**；软件内安装更新会停止当前配置的手机与模型网关，并等待进程退出。旧版升级前先停止两个网关并退出。更新后重新启动手机服务并检测 HTTPS 入口。
+需要保留 ChatGPT 身份时，选择 **官方账号 + API**：先在原生 Codex 登录，再读取该目录的官方登录，或明确选择已有加密备份。模型请求通过本机网关使用独立服务的 API Key；上游失败时不会自动使用官方推理额度。所需网关在应用前检查并启动。
 
-## Android 安装与更新
+混合连接可设置 HTTP 响应头等待，默认 **120 秒**，范围 **60–3600 秒**；收到响应头后使用独立的数据空闲计时。此设置只对经过 Dock 网关的 HTTP 请求生效。普通模型目录保留经过校验的图片、上下文、推理和服务档位声明，不根据模型名字猜测能力。
 
-从 [Android 0.2.4 发布页](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.4) 下载 `LovestCode-Android-0.2.4.apk`，适用于 Android 8 / API 26 及以上。核对 `SHA256SUMS-Android-0.2.4.txt` 后安装，需要允许浏览器或文件管理器安装此 APK。
+**运行与增强** 中的兼容和接续默认关闭，需要时明确开启并应用；增强需要 Dock 常驻，不修改 Codex 安装文件。专用审核可固定为 `codex-auto-review`，能力目录与配置一起核对、备份和恢复。详见 [客户端增强](docs/desktop-connection-recovery.md)、[速度兼容](docs/desktop-speed-compatibility.md) 和 [模型与专用审核](docs/model-behavior-managed-catalog.md)。
 
-Lovest Code 沿用本项目安卓包名、签名与 Logo，0.2.4 可直接覆盖安装 0.2.3，保留连接和登录。以后在“我的 → 版本与更新”检查新版，确认后由应用下载、校验并打开系统安装器；首次按提示允许 Lovest Code 安装应用。0.2.3 及更早版本需先手动覆盖安装 0.2.4 一次，不要卸载。它与旧上游 App 是不同应用，首次迁移需重新添加电脑并登录。电脑上的聊天记录不受影响。
+## 从手机连接电脑
 
-尚未公开的构建可从 Actions 成功运行的 Artifacts 下载所选平台的 `windows-release` 或 `android-release`。
+需要一个证书受手机信任的 **HTTPS 根域名**，以及该入口到 Windows 电脑的网络通路。
 
-## 配置电脑端
+1. 在 **手机访问 → 服务设置** 填写 HTTPS 域名、独立账号和密码，保存并启动。
+2. 将 HTTPS 根站点反向代理到电脑可达的 HTTP 端口，默认 `13090`；保留外部 `Host`（含端口）、`Origin`、Cookie 与 WebSocket 升级头。
+3. 在 **连接与配对** 检测 HTTPS 入口；通过后，用 Lovest Code 扫码配对，或填写域名并登录。
+4. 在电脑的 **管理 Codex 接入** 页面登记并启用执行环境，再从手机查看和继续聊天。
 
-1. 打开 **连接与账号**，确认正在编辑的 Codex 配置目录。
-2. 选择 **API Key 直连**，填写地址、API Key 与模型 ID；普通 Responses 服务在更多连接选项中选择对应类型。
-3. 点击 **查看并确认修改** 或按 `Ctrl+S`，核对目标文件与修改前后值，再点击 **确认写入**。修改普通设置时，无须重新填写凭据。
-4. 完全退出并重新打开 Codex，再新建聊天核对。也可在保存成功页选择 **重启 Codex 并应用**，确认程序和配置目录后继续。
+群晖等外部代理应使用 Windows 电脑可达的 IP，不能把 `127.0.0.1` 当成另一台电脑。私有管理端口只绑定本机，不转发到公网。域名、证书、路由、穿透和防火墙由使用者配置；示例见 [手机连接说明](docs/mobile-connection.md)。
 
-直连统一写入 `{"auth_mode":"apikey","OPENAI_API_KEY":"服务提供的密钥"}`，无需 ChatGPT 或设备码登录。旧 PAT 仍可读取：点击 **迁移为 API Key** 查看差异，再确认写入。迁移使用当前密钥、创建加密备份，并清理旧 `chatgpt_base_url` 与 `CODEX_AUTHAPI_BASE_URL`；读取、取消或只改普通设置不会迁移。服务端必须接受该密钥作为 API Key，必要时填写新的密钥。保存后完全退出 Codex（含托盘）再重开。
+手机端保留聊天、电脑和我的三页导航；切页保留 WebView、输入草稿和阅读位置。可查看任务、处理审批、使用附件及执行端支持的项目、Git 和终端功能。在发送选项中可选择追加当前任务或完成后发送；结果不明的操作不会自动重发，任务结束后无法追加时保留草稿。
 
-Codex 26.1106 原生桌面在 API Key 登录下隐藏 **Fast／闪电入口**。Dock 提供可选的 [Fast / Ultrafast 兼容](docs/desktop-speed-compatibility.md)：在“模型与行为 → 速度”开启，再点击“打开／重启 Codex 并应用”，保持 Dock 运行。状态显示“已应用”后，在原生新聊天中核对；档位仍由模型目录和服务决定。兼容默认关闭，不修改客户端安装文件或认证。
+手机网关已选择移植上游 2.2.1 的 v13 同步、连接恢复、模型缓存与列表容错。遇到无法解释的关键任务或审批结构时暂停控制并保留历史；不会凭界面连通就猜测当前任务可安全写入。详见 [网关移植记录](docs/mobile-upstream-backport-2026-11-15.md)。
 
-“模型与行为”按模型、推理、速度和自动审核分区。可固定 `codex-auto-review`，同步原生能力目录时保留审核映射；配置、目录和管理记录一起预览、备份及恢复。概览提供统一应用入口和本机聊天参数读取，详见[模型与专用审核](docs/model-behavior-managed-catalog.md)。
+## 数据与运行状态
 
-保存、概览、速度兼容和恢复配置现使用同一[应用与重启流程](docs/codex-restart-flow-2026-11-12.md)。运行信息更新不再误报配置冲突；实际变更可在面板内读取核对，兼容失败可单独重试。
+- 默认读取 `%USERPROFILE%\.codex`，设置了 `CODEX_HOME` 时优先使用；也可在窗口中选择其他目录。
+- 保存前检测真实配置变更，保留已核验的客户端管道轮换与同账号令牌刷新；失败时保留草稿。
+- 手机设置与设备记录按配置目录隔离，位于 `%LOCALAPPDATA%\CodexConfig\mobile\<目录标识>`。明确撤销设备或更换账号/密码后，需要重新授权。
+- 关闭窗口通常收起到托盘。退出 Dock 会停止当前窗口的增强；已启动的网关可继续运行，选择“停止网关并退出”则一并停止。
+- 登录 Windows 后启动 Dock、模型网关自动启动和手机服务自动启动分别设置。刷新或切页不会开启未授权自动启动的后台。
 
-选择 **官方账号 + 独立模型入口** 时，在原生 Codex 桌面完成 ChatGPT 登录，再点击 **重新读取官方登录**；也可明确选择 **使用已备份的官方登录**。Dock 保留当前文件的官方登录，备份只先暂存、确认后才恢复；不会发起设备码或 CLI 登录。模型入口与草稿保留，保存后从统一面板应用到 Codex，所需模型网关会先检查并启动。来回选择连接方式保留表单和暂存登录，确认页说明认证变化；保存直连时，原官方登录纳入加密备份。该模式保留原生官方身份，为模型请求使用独立凭据；服务失败时不会自动使用官方额度。
+**诊断与恢复 → 配置来源** 可明确选择本机执行端、项目和 Profile，读取配置层与实验功能的支持/观察值。实验功能修改先加入主配置草稿；保存后需重新读取核对。该读取来自新启动的独立执行端，不代表现有桌面或聊天已采用这些设置。当前聊天参数通过单独的只读诊断核对。
 
-此模式要求所选配置目录中的文件凭据，不会读取系统钥匙串或其他目录的登录。读取或恢复的登录在确认保存时明确选择文件凭据；过期与刷新由原生 Codex 处理。网关支持 HTTP / SSE、压缩请求和 WebSocket 转发，是否可用取决于上游服务；完整能力和真实线路验证边界见 [0.12.0 审查](docs/review-0.12.0.md)。
+## 验证范围
 
-**网关管理** 分别提供本机模型网关和手机网关的状态、启动、停止、重启及“打开 Dock 时自动启动”开关。两个开关默认关闭、按配置目录独立保存；启停使用已保存设置，保留表单草稿和手机登录。需要随 Windows 登录启动时，同时开启页面上的 **登录 Windows 后启动 Dock**。开关立即保存，下一次打开 Dock 时执行一次；关闭开关不会停止已运行的网关，手动停止后刷新也不会重新启动。托盘仍可停止或重启两个网关。
+仓库包含 Core / 共享服务、实际 WinUI 和 WPF 窗口、打包后台启停、安装与卸载、Python / HTTP、Web 浏览器以及 Android 模拟器检查。安装包验证包含文件摘要、同安装目录后台停止、其他安装目录隔离、已保存手机设置与用户哨兵文件保留。对应版本的证据与限制见 [Windows 0.19.0 审查](docs/review-0.19.0.md) 和 [Android 0.2.5 审查](docs/review-android-0.2.5.md)。
 
-新增配置功能位于 **全部配置**：选择 **已配置** 可直接编辑实际 MCP / 供应商名称；**更多选项** 可添加结构化实例。展开 **来源与 profile**，选择本机执行端和项目目录后读取文件值、执行端值及配置层；此快照不包含现有聊天参数和未保存草稿。**管理 Profile 文件** 独立保存 `<名称>.config.toml`，通过 `codex --profile <名称>` 选择。当前核查内核的 app-server 不支持读取指定 profile 的来源，界面会明确显示未确认。
-
-**配置模板** 提供日常 high / 复杂任务 xhigh，只修改所选推理强度。混合连接的模型网关状态区分别显示压缩请求、返回条目和确认完成次数，并提供队列与传输耗时；指标只覆盖经该网关的当前进程流量。
-
-在 **模板与备份 → 配置模板** 选择推荐方案，勾选本次修改后直接进入同一个确认页，无需跳到全部配置再次保存。**编辑方案 / 保存方案** 只修改本机方案库。确认页同时列出此前未保存的修改；返回调整保留原有草稿，确认成功后显示实际写入结果与备份入口。**跟随 Codex 配置** 表示移除该项本地覆盖，执行时仍可能继承其他配置层，并不等于套用 Krill 推荐值。
-
-## 连接手机
-
-需要一个已有的、证书受手机信任的 **HTTPS 根域名**，以及从该入口到 Windows 电脑的网络通路。
-
-1. 在 Windows 的 **手机连接** 填写 HTTPS 域名、独立访问账号和密码，点击 **保存并启动**。
-2. 将整个 HTTPS 根站点反向代理到电脑可达的 HTTP 端口，默认 `13090`。保留外部 `Host`（含非默认端口）、`Origin`、Cookie 和 WebSocket 升级头。
-3. 点击 **检测 HTTPS 入口**；通过后，在 Lovest Code 中扫码或填写域名，再登录。
-4. 在电脑点击 **管理 Codex 接入**，登记并启用需要的执行环境，然后从手机继续聊天。
-
-无需填写代理来源 IP。程序支持本机代理、其他设备反代和路由端口映射；手机 HTTP 端口监听 IPv4 接口，私有管理端口只绑定本机。不要将管理端口转发到公网。
-
-`127.0.0.1` 始终指向使用该地址的设备自身：群晖等外部代理应填写 Windows 电脑可达的 IP。Dock 不自动配置域名、证书、穿透、路由或防火墙。详细示例、超时与长连接要求见 [手机连接说明](docs/mobile-connection.md)。
-
-Lovest Code 切换聊天、电脑和我的页面时保留当前 WebView 与草稿，重新打开优先恢复上次聊天。聊天详情收起主导航，模型及高级选项继续可用；0.2.2 移除文字输入区的折叠入口，发送后仍可继续输入。见 [安卓说明](docs/android-dock-shell-plan.md)。
-
-任务运行中，在 **选项 → 发送方式** 选择 **补充当前任务**，可把文字追加到当前任务；**完成后发送** 会排队等待。默认 **发送新消息** 用于开启下一轮。补充时沿用当前工作模式，任务已结束会提示并保留草稿；CLI 接入的补充暂不支持附件。见 [专项验证](docs/review-steering-2026-10-31.md)。
-
-## 数据、保存与后台进程
-
-- 默认读取 `%USERPROFILE%\.codex`；设置 `CODEX_HOME` 时优先使用该目录，也可在应用中选择配置位置。
-- Codex 配置页共用一份草稿。保存前检测外部修改并创建加密备份，失败时保留草稿；模板只保存普通设置。
-- 连接备注、备份和 Dock 私有设置使用当前 Windows 用户加密。Codex 认证文件按客户端格式保存在本机。
-- 手机设置和设备记录按配置目录隔离，位于 `%LOCALAPPDATA%\CodexConfig\mobile\<目录标识>`。密码、域名或账号变更后需重新登录。
-- 关闭 Windows 窗口会收起到托盘。退出编辑器后，已启动的网关继续运行；可在网关管理或托盘显式停止。
-- 登录 Windows 后启动 Dock 与两个网关的自动启动分别设置；只有明确开启对应网关的自动启动，Dock 启动时才会尝试运行它。未开启的网关不会因刷新、切页或保存普通配置而启动。
-
-活动 profile、项目配置和会话参数可能覆盖文件中的默认值。配置概览展示本地文件状态，不能代表每个运行会话的最终设置。
-
-## 验证与已知边界
-
-仓库包含 .NET 核心与隔离 WPF 检查、手机网关 HTTP / Python 回归、共享 Web 的 Node / 浏览器回归，以及在 Android 14 隔离模拟器上安装实际 APK 的检查。
-
-安卓发送回归使用生产页面和真实触摸，验证连续发送、键盘变化、长回复、输入区保持展开和覆盖升级。补充任务专项另外经过生产 HTTP 与 IPC 链路，由隔离原生 owner 夹具接收；验证三次补充仍归属同一任务、重复提交保护和结束后保留草稿。测试资产仅打入独立测试 APK，不进入正式应用。
-
-模拟器与自动化结果不能覆盖所有厂商键盘、相机扫码、系统缩放、省电策略、公网链路或真实 Codex / WSL / SSH 任务。功能随执行端能力显示，阅读历史不会自动启动或接管原会话；结果未知的写入不会自动重放。具体证据见 [Windows 0.18.0 审查](docs/review-0.18.0.md) 和 [Android 0.2.4 审查](docs/review-android-0.2.4.md)。
+自动化与模拟器不能代替实体手机的相机扫码、厂商键盘、省电策略、公网 HTTPS、其他物理 DPI、Windows 登录启动或真实模型 / WSL / SSH 任务验收。功能受执行端、模型目录和实际服务能力约束，文件保存成功与现有聊天实际采用分别核对。
 
 ## 开发与文档
 
-Windows 使用 C# / .NET 8 / WPF；手机服务使用 Python 3.12；安卓壳使用 Java 17 与 Android SDK 35。源码构建不包含私人签名密钥，详见 [开发与构建](docs/development.md) 和 [安卓构建说明](docs/android-dock-shell-plan.md)。
+Windows 主界面使用 **C# / .NET 8 / WinUI 3**，保留 WPF 兼容源码；手机服务使用 Python 3.12；安卓使用 Java 17 / Android SDK 35。Web / 手机工作台基于固定的 Codex Mobile Bridge 快照，通过显式覆盖选择性移植，保留其 MIT 许可和来源记录。
 
 | 目录 | 内容 |
 | --- | --- |
-| `src/CodexConfig.App`、`src/CodexConfig.Core` | Windows 界面、配置事务、账号登录及模型 / 手机网关管理。 |
-| `src/CodexMobile` | 固定上游、手机服务适配、本机管理页和 Dock 自有 Web 界面。 |
-| `src/CodexAndroid` | Lovest Code 自有原生壳、资源和页面适配。 |
-| `tests`、`scripts` | 隔离回归、构建、完整性检查与发布包验证。 |
+| `src/CodexConfig.WinUI` | Windows 默认界面与窗口交互。 |
+| `src/CodexConfig.Application`、`src/CodexConfig.Core` | 两套界面共享的配置、应用、增强与网关服务。 |
+| `src/CodexConfig.App` | WPF 兼容界面。 |
+| `src/CodexMobile` | 固定上游、手机后台、本机管理页和 Dock Web 适配。 |
+| `src/CodexAndroid` | Lovest Code 原生壳、图标资源与页面适配。 |
+| `tests`、`scripts` | 隔离回归、构建、安装验证及按平台发布。 |
 
-[Windows 0.18.0](docs/release-0.18.0.md) · [Android 0.2.4](docs/release-android-0.2.4.md) · [手机功能对照](docs/mobile-upstream-comparison.md) · [GitHub 发布约定](docs/github-releases.md)
+[开发与构建](docs/development.md) · [发布约定](docs/github-releases.md) · [Windows 更新说明](docs/release-0.19.0.md) · [Android 更新说明](docs/release-android-0.2.5.md) · [上游来源](src/CodexMobile/UPSTREAM.md)
 
 [MIT 许可证](LICENSE) · [第三方许可](THIRD-PARTY-NOTICES.md)

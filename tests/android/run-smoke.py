@@ -17,11 +17,14 @@ parser.add_argument('--sdk', type=Path, required=True)
 parser.add_argument('--apk', type=Path, required=True)
 parser.add_argument('--device', default='emulator-5562')
 parser.add_argument('--mode', choices=('full', 'send', 'steer', 'update'), default='full')
+parser.add_argument('--output-dir', type=Path, help='Fresh test output inside this repository artifacts directory.')
 parser.add_argument('--signing-home', type=Path, default=Path(os.environ['LOCALAPPDATA']) / 'CodexDock/android-signing')
 args = parser.parse_args()
 if not args.device.startswith('emulator-'):
     parser.error('This automated test is limited to an isolated emulator.')
-out = ROOT / ('artifacts/android-steering-smoke' if args.mode == 'steer' else 'artifacts/android-update-smoke' if args.mode == 'update' else 'artifacts/android-smoke')
+out = args.output_dir.resolve() if args.output_dir else ROOT / ('artifacts/android-steering-smoke' if args.mode == 'steer' else 'artifacts/android-update-smoke' if args.mode == 'update' else 'artifacts/android-smoke')
+if args.output_dir and (not out.is_relative_to((ROOT / 'artifacts').resolve()) or out.exists()):
+    parser.error('--output-dir must be a new directory inside this repository artifacts directory.')
 out.mkdir(parents=True, exist_ok=True)
 tools = args.sdk / 'build-tools/35.0.0'
 android = args.sdk / 'platforms/android-35/android.jar'

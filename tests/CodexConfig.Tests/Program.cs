@@ -4,15 +4,127 @@ using System.Text.Json;
 using CodexConfig.Core;
 using Tomlyn.Model;
 
+try { return await RunAsync(args); }
+catch (Exception error)
+{
+    // Focused entry points and setup failures must use the same ordinary
+    // nonzero exit as failed test cases, rather than opening Windows WER UI.
+    Console.Error.WriteLine("FAIL test execution\n" + error);
+    return 1;
+}
+
+static async Task<int> RunAsync(string[] args)
+{
+if (ExperimentalFeatureTests.IsFixture(args)) return await ExperimentalFeatureTests.RunFixtureAsync();
+if (args is ["--native-feature-read", var nativeFeatureRoot, var nativeFeatureExecutable])
+{ await ExperimentalFeatureTests.ReadNativeAsync(nativeFeatureRoot, nativeFeatureExecutable); return 0; }
+if (args is ["--installed-desktop-acceptance", var installedDesktopRoot])
+{ await InstalledDesktopAcceptance.RunAsync(installedDesktopRoot); return 0; }
+if (args is ["--cleanup-installed-desktop-acceptance", var installedCleanupRoot])
+{ await InstalledDesktopAcceptance.CleanupAsync(installedCleanupRoot); return 0; }
 if (args is ["--model-bridge", var workerHome]) return await BridgeProcess.RunAsync(workerHome);
-if (args is ["--desktop-restart-fixture", var fixtureOutput]) return DesktopRestartTests.RunFixture(fixtureOutput);
+if (Array.IndexOf(args, "--desktop-restart-fixture") is var fixtureIndex && fixtureIndex >= 0 && fixtureIndex + 2 == args.Length &&
+    args.Take(fixtureIndex).All(argument => argument.StartsWith("--user-data-dir=", StringComparison.Ordinal))) return DesktopRestartTests.RunFixture(args[fixtureIndex + 1]);
+if (args is ["--desktop-unit", var desktopRoot])
+{
+    desktopRoot = Path.GetFullPath(desktopRoot);
+    var desktopTests = new List<(string Name, Func<Task> Run)>(); Directory.CreateDirectory(desktopRoot);
+    DesktopRestartTests.Register(desktopTests, desktopRoot); DesktopInstanceTests.Register(desktopTests, desktopRoot);
+    foreach (var test in desktopTests) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
+}
+if (args is ["--desktop-targets"])
+{ Console.WriteLine(JsonSerializer.Serialize(new CodexDesktop().FindTargets(), new JsonSerializerOptions { WriteIndented = true })); return 0; }
+if (args is ["--enhancement-unit", var enhancementRoot])
+{
+    enhancementRoot = Path.GetFullPath(enhancementRoot); Directory.CreateDirectory(enhancementRoot);
+    var cases = new List<(string Name, Func<Task> Run)>(); DesktopEnhancementTests.Register(cases, enhancementRoot);
+    foreach (var test in cases) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
+}
+if (args is ["--application-unit", var applicationRoot])
+{
+    applicationRoot = Path.GetFullPath(applicationRoot); Directory.CreateDirectory(applicationRoot);
+    var cases = new List<(string Name, Func<Task> Run)>(); ApplicationStateTests.Register(cases, applicationRoot); ClientEnhancementStateTests.Register(cases, applicationRoot); WorkspaceShellTests.Register(cases, applicationRoot); TestHarnessTests.Register(cases, applicationRoot); DesktopApplicationServiceTests.Register(cases, applicationRoot); AutomaticEnhancementServiceTests.Register(cases, applicationRoot); ConfigurationSaveServiceTests.Register(cases, applicationRoot); GatewayManagementServiceTests.Register(cases, applicationRoot); MobileConnectionServiceTests.Register(cases, applicationRoot);
+    OfficialLoginAndModelTests.Register(cases, applicationRoot);
+    ConfigurationToolsTests.Register(cases, applicationRoot);
+    WindowsToolsTests.Register(cases, applicationRoot);
+    UpdatesAndDiagnosticsTests.Register(cases, applicationRoot);
+    WorkspaceReadinessTests.Register(cases, applicationRoot);
+    ModelGatewayDiagnosticsTests.Register(cases, applicationRoot);
+    WorkspaceInformationTests.Register(cases, applicationRoot);
+    foreach (var test in cases) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
+}
+if (args is ["--upstream-reuse-unit", var reuseRoot])
+{
+    reuseRoot = Path.GetFullPath(reuseRoot); Directory.CreateDirectory(reuseRoot);
+    var cases = new List<(string Name, Func<Task> Run)>(); UpstreamGatewayReuseTests.Register(cases, reuseRoot); ExperimentalFeatureTests.Register(cases, reuseRoot);
+    foreach (var test in cases) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
+}
+if (args is ["--login-model-unit", var loginModelRoot])
+{
+    loginModelRoot = Path.GetFullPath(loginModelRoot); Directory.CreateDirectory(loginModelRoot);
+    var cases = new List<(string Name, Func<Task> Run)>(); OfficialLoginAndModelTests.Register(cases, loginModelRoot);
+    foreach (var test in cases) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
+}
 if (args is ["--desktop-store-launch-check"]) return DesktopRestartTests.CheckStoreLaunch();
+if (args is ["--websocket-diagnostics-unit", var websocketDiagnosticsRoot])
+{
+    websocketDiagnosticsRoot = Path.GetFullPath(websocketDiagnosticsRoot); Directory.CreateDirectory(websocketDiagnosticsRoot);
+    var cases = new List<(string Name, Func<Task> Run)>(); ConfigurationOptimizationTests.Register(cases, websocketDiagnosticsRoot);
+    var test = cases.Single(test => test.Name == "websocket compaction diagnostics inspect fragmented frames without changing forwarded messages");
+    await test.Run(); Console.WriteLine("PASS " + test.Name); return 0;
+}
+if (args is ["--windows-tools-unit", var windowsToolsRoot])
+{
+    windowsToolsRoot = Path.GetFullPath(windowsToolsRoot); Directory.CreateDirectory(windowsToolsRoot);
+    var cases = new List<(string Name, Func<Task> Run)>(); WindowsToolsTests.Register(cases, windowsToolsRoot);
+    foreach (var test in cases) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
+}
+if (args is ["--updates-diagnostics-unit", var updatesDiagnosticsRoot])
+{
+    updatesDiagnosticsRoot = Path.GetFullPath(updatesDiagnosticsRoot); Directory.CreateDirectory(updatesDiagnosticsRoot);
+    var cases = new List<(string Name, Func<Task> Run)>(); UpdatesAndDiagnosticsTests.Register(cases, updatesDiagnosticsRoot);
+    foreach (var test in cases) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
+}
+if (args is ["--workspace-information-unit", var informationRoot])
+{
+    informationRoot = Path.GetFullPath(informationRoot); Directory.CreateDirectory(informationRoot);
+    var cases = new List<(string Name, Func<Task> Run)>(); WorkspaceInformationTests.Register(cases, informationRoot);
+    foreach (var test in cases) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
+}
+if (args is ["--workspace-readiness-unit", var workspaceReadinessRoot])
+{
+    workspaceReadinessRoot = Path.GetFullPath(workspaceReadinessRoot); Directory.CreateDirectory(workspaceReadinessRoot);
+    var cases = new List<(string Name, Func<Task> Run)>(); WorkspaceReadinessTests.Register(cases, workspaceReadinessRoot); ModelGatewayDiagnosticsTests.Register(cases, workspaceReadinessRoot);
+    foreach (var test in cases) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
+}
+if (args is ["--configuration-tools-unit", var configurationToolsRoot])
+{
+    configurationToolsRoot = Path.GetFullPath(configurationToolsRoot); Directory.CreateDirectory(configurationToolsRoot);
+    var cases = new List<(string Name, Func<Task> Run)>(); ConfigurationToolsTests.Register(cases, configurationToolsRoot);
+    foreach (var test in cases) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
+}
 if (args is ["--speed-desktop-isolated", var isolatedSpeedRoot])
 { await DesktopSpeedTests.DesktopAsync(isolatedSpeedRoot); return 0; }
 if (args is ["--speed-inspect", var speedExecutable])
 {
     Console.WriteLine(JsonSerializer.Serialize(DesktopSpeedPatch.Inspect(speedExecutable))); return 0;
 }
+if (args is ["--connection-inspect", var connectionExecutable])
+{ Console.WriteLine(JsonSerializer.Serialize(DesktopSpeedPatch.Inspect(connectionExecutable, speedEnabled: false, connectionsEnabled: true))); return 0; }
+if (args is ["--connection-unit", var connectionRoot])
+{
+    var connectionTests = new List<(string Name, Func<Task> Run)>(); Directory.CreateDirectory(connectionRoot); ConnectionRecoveryTests.Register(connectionTests, connectionRoot);
+    foreach (var test in connectionTests) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
+}
+if (args is ["--bridge-rebind-unit", var rebindRoot])
+{
+    var rebindTests = new List<(string Name, Func<Task> Run)>(); Directory.CreateDirectory(rebindRoot); BridgeRebindTests.Register(rebindTests, rebindRoot);
+    foreach (var test in rebindTests) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
+}
+if (args is ["--connection-browser", var connectionBrowserRoot, var connectionBrowser])
+{ await ConnectionRecoveryBrowserTests.RunAsync(connectionBrowserRoot, connectionBrowser); return 0; }
+if (args is ["--connection-browser-native", var nativeConnectionRoot, var nativeConnectionBrowser, var nativeConnectionAssets])
+{ await ConnectionRecoveryBrowserTests.RunAsync(nativeConnectionRoot, nativeConnectionBrowser, nativeConnectionAssets); return 0; }
 if (args is ["--speed-browser", var speedRoot, var speedBrowser]) { await DesktopSpeedTests.BrowserAsync(speedRoot, speedBrowser); Console.WriteLine("Speed browser PASS"); return 0; }
 if (args is ["--speed-browser-native", var nativeSpeedRoot, var nativeSpeedBrowser, var nativeSpeedAssets]) { await DesktopSpeedTests.BrowserAsync(nativeSpeedRoot, nativeSpeedBrowser, nativeSpeedAssets); Console.WriteLine("Speed native modules PASS"); return 0; }
 if (args is ["--speed-unit", var speedTestRoot])
@@ -45,6 +157,26 @@ Directory.CreateDirectory(root);
 var runRoot = Path.Combine(root, Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(runRoot);
 var tests = new List<(string Name, Func<Task> Run)>();
+ConnectionRecoveryTests.Register(tests, runRoot);
+BridgeRebindTests.Register(tests, runRoot);
+DesktopInstanceTests.Register(tests, runRoot);
+DesktopEnhancementTests.Register(tests, runRoot);
+ApplicationStateTests.Register(tests, runRoot);
+ClientEnhancementStateTests.Register(tests, runRoot);
+WorkspaceShellTests.Register(tests, runRoot);
+TestHarnessTests.Register(tests, runRoot);
+DesktopApplicationServiceTests.Register(tests, runRoot);
+AutomaticEnhancementServiceTests.Register(tests, runRoot);
+ConfigurationSaveServiceTests.Register(tests, runRoot);
+GatewayManagementServiceTests.Register(tests, runRoot);
+MobileConnectionServiceTests.Register(tests, runRoot);
+OfficialLoginAndModelTests.Register(tests, runRoot);
+ConfigurationToolsTests.Register(tests, runRoot);
+WindowsToolsTests.Register(tests, runRoot);
+UpdatesAndDiagnosticsTests.Register(tests, runRoot);
+WorkspaceReadinessTests.Register(tests, runRoot);
+ModelGatewayDiagnosticsTests.Register(tests, runRoot);
+WorkspaceInformationTests.Register(tests, runRoot);
 var utf8 = new UTF8Encoding(false);
 byte[] Bytes(string text) => utf8.GetBytes(text);
 void Assert(bool condition, string message = "Assertion failed") { if (!condition) throw new InvalidOperationException(message); }
@@ -554,19 +686,19 @@ Test("template library saves, edits, deletes and restores built-ins without conn
 {
     var directory = Path.Combine(runRoot, "template-library");
     var library = new TemplateRepository(directory);
-    Assert(library.Load().Any(template => template.Id == BuiltInTemplates.KrillCommunity.Id));
+    Assert(library.Load().All(template => template.Id != BuiltInTemplates.KrillCommunity.Id));
     var saved = library.Save(TemplateRepository.New("我的常用设置", [new("web_search", "\"live\"")]), create: true);
     Assert(library.Load().Any(template => template.Id == saved.Id && template.Name == "我的常用设置"));
     var edited = library.Save(saved with { Name = "新的名称", Settings = [new("analytics.enabled", "false", false)] });
     Assert(new TemplateRepository(directory).Load().Single(template => template.Id == saved.Id) is { Name: "新的名称", Settings.Count: 1 } persisted && !persisted.Settings[0].SelectByDefault);
-    Assert(library.Load().Count == BuiltInTemplates.All.Count + 1);
+    Assert(library.Load().Count == BuiltInTemplates.Defaults.Count + 1);
     Throws<ArgumentException>(() => library.Save(TemplateRepository.New("密钥模板", [new("oauth.tokens.access_token", "\"secret\"")]), create: true));
     library.Delete(saved.Id); Assert(library.Load().All(template => template.Id != saved.Id));
     library.Delete(BuiltInTemplates.KrillCommunity.Id); Assert(library.Load().All(template => template.Id != BuiltInTemplates.KrillCommunity.Id));
     var replacement = library.Save(BuiltInTemplates.KrillCommunity with { Name = "我改过的内置模板" });
     Assert(library.Load().Single(template => template.Id == replacement.Id).Name == replacement.Name);
     var kept = library.Save(TemplateRepository.New("保留的自定义模板", [new("analytics.enabled", "false")]), true);
-    library.RestoreBuiltIns(); Assert(library.Load().Single(template => template.Id == BuiltInTemplates.KrillCommunity.Id).Name == BuiltInTemplates.KrillCommunity.Name);
+    library.RestoreBuiltIns(); Assert(library.Load().All(template => template.Id != BuiltInTemplates.KrillCommunity.Id));
     Assert(library.Load().Any(template => template.Id == kept.Id));
 });
 Test("invalid template edits do not change the library and corrupt files are preserved", () =>
@@ -601,8 +733,11 @@ Test("capturing current settings includes drafts, skips removed values and exclu
 LegacyConnectionTests.Register(tests, runRoot);
 TemplateProvenanceTests.Register(tests, runRoot);
 GatewayTests.Register(tests, runRoot);
+UpstreamGatewayReuseTests.Register(tests, runRoot);
+ExperimentalFeatureTests.Register(tests, runRoot);
 GatewayProcessTests.Register(tests, runRoot);
 NativeBridgeTests.Register(tests, runRoot);
+NativeConnectionRecoveryTests.Register(tests, runRoot);
 CodexDiscoveryTests.Register(tests, runRoot);
 OfficialLoginTests.Register(tests, runRoot);
 DetailsAndStartupTests.Register(tests, runRoot);
@@ -634,6 +769,7 @@ foreach (var test in tests)
 }
 Console.WriteLine($"{tests.Count - failures}/{tests.Count} passed. Isolated files: {runRoot}");
 return failures == 0 ? 0 : 1;
+}
 
 sealed class FakeEnvironment : IUserEnvironment
 {

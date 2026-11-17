@@ -73,13 +73,18 @@ public sealed partial class MobileGatewayManager
         finally { if (plain is not null) CryptographicOperations.ZeroMemory(plain); }
     }
 
-    public async Task<MobileGatewayConfig> SaveAsync(string publicUrl, string username, string password, int port = DefaultPort, CancellationToken cancellation = default)
+    public string SettingsRevision() => File.Exists(SettingsPath) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(SettingsPath))) : "missing";
+
+    public async Task<MobileGatewayConfig> SaveAsync(string publicUrl, string username, string password, int port = DefaultPort, CancellationToken cancellation = default, string? expectedRevision = null)
     {
         publicUrl = NormalizePublicUrl(publicUrl); username = username.Trim();
         if (username.Length is < 1 or > 200 || username.Any(char.IsControl)) throw new ArgumentException("账号需为 1 至 200 个字符。");
         if (port is < 1024 or > 65535) throw new ArgumentException("本机端口需在 1024 至 65535 之间。");
         if (!Directory.Exists(home)) throw new ArgumentException("请先选择已存在的 Codex 配置目录。");
         await using var managerLock = await LockAsync(cancellation).ConfigureAwait(false);
+        void RequireReviewed()
+        { if (expectedRevision is not null && SettingsRevision() != expectedRevision) throw new IOException("手机连接设置在确认后发生变化，请重新读取后再保存。"); }
+        RequireReviewed();
         var previous = Load();
         MobileAuth auth;
         if (password.Length == 0 && previous?.Auth.Username == username) auth = previous.Auth;
@@ -91,7 +96,9 @@ public sealed partial class MobileGatewayManager
             try { auth = new("password", username, Convert.ToHexString(salt).ToLowerInvariant(), Convert.ToHexString(hash).ToLowerInvariant()); }
             finally { CryptographicOperations.ZeroMemory(hash); }
         }
+        RequireReviewed();
         if (previous is not null) await StopCoreAsync(previous, cancellation).ConfigureAwait(false);
+        RequireReviewed();
         var controlPort = previous?.ControlPort ?? FreePort();
         while (controlPort == port) controlPort = FreePort();
         var config = new MobileGatewayConfig(Protocol, publicUrl, port, controlPort, previous?.ControlToken ?? RandomHex(32),
@@ -109,6 +116,7 @@ public sealed partial class MobileGatewayManager
         {
             var encrypted = ProtectedData.Protect(plain, Entropy, DataProtectionScope.CurrentUser);
             await File.WriteAllBytesAsync(temporary, encrypted, cancellation).ConfigureAwait(false);
+            RequireReviewed();
             File.Move(temporary, SettingsPath, true);
         }
         finally { CryptographicOperations.ZeroMemory(plain); if (File.Exists(temporary)) File.Delete(temporary); }

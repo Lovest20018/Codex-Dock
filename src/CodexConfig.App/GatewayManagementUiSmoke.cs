@@ -18,7 +18,11 @@ public partial class MainWindow
 
     private async Task RunGatewayManagementChecksAsync(string output, List<string> checks)
     {
-        void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); checks.Add(message); }
+        void Check(bool condition, string message)
+        {
+            if (!condition) throw new InvalidOperationException(message);
+            checks.Add(message); File.AppendAllText(Path.Combine(output, "progress.log"), "PASS " + message + Environment.NewLine);
+        }
         var fixtureHome = Path.Combine(output, "gateway-fixture-" + Guid.NewGuid().ToString("N")[..8]); Directory.CreateDirectory(fixtureHome);
         File.WriteAllText(Path.Combine(fixtureHome, "auth.json"), """
             {"auth_mode":"chatgpt","tokens":{"id_token":"fake-gateway-id","access_token":"fake-gateway-access","refresh_token":"fake-gateway-refresh"}}
@@ -127,9 +131,13 @@ public partial class MainWindow
         }
         finally
         {
+            File.AppendAllText(Path.Combine(output, "progress.log"), "CLEANUP start" + Environment.NewLine);
             if (faultFixture is not null) { faultFixture.exitReady = true; faultFixture.Close(); }
+            File.AppendAllText(Path.Combine(output, "progress.log"), "CLEANUP fault window closed" + Environment.NewLine);
             await manager.StopAsync(); await BridgeProcess.StopAsync(before.Bridge!);
+            File.AppendAllText(Path.Combine(output, "progress.log"), "CLEANUP workers stopped" + Environment.NewLine);
             fixture.exitReady = true; fixture.Close(); ThemeManager.Apply(false);
+            File.AppendAllText(Path.Combine(output, "progress.log"), "CLEANUP complete" + Environment.NewLine);
         }
     }
 }

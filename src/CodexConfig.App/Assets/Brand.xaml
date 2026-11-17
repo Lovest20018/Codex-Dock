@@ -1,7 +1,7 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <DrawingImage x:Key="BrandMark"><DrawingImage.Drawing><DrawingGroup>
-    <GeometryDrawing Brush="#23364D"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,128,128" RadiusX="28" RadiusY="28"/></GeometryDrawing.Geometry></GeometryDrawing>
-    <GeometryDrawing Geometry="M32,32 L32,84 Q32,96 44,96 L84,96 Q96,96 96,84 L96,76"><GeometryDrawing.Pen><Pen Brush="#FFFFFF" Thickness="12" StartLineCap="Square" EndLineCap="Square" LineJoin="Round"/></GeometryDrawing.Pen></GeometryDrawing>
-    <GeometryDrawing Brush="#62D2DD"><GeometryDrawing.Geometry><RectangleGeometry Rect="56,44,48,16" RadiusX="4" RadiusY="4"/></GeometryDrawing.Geometry></GeometryDrawing>
+    <GeometryDrawing Brush="#EEF2ED"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,128,128" RadiusX="30" RadiusY="30"/></GeometryDrawing.Geometry></GeometryDrawing>
+    <GeometryDrawing Brush="#23453C" Geometry="M45,27 L68,27 C92,27 108,42 108,64 C108,86 92,101 68,101 L45,101 L45,84 L67,84 C82,84 91,77 91,64 C91,51 82,44 67,44 L45,44 Z"/>
+    <GeometryDrawing Brush="#498E70" Geometry="M24,55 L55,55 L64,64 L55,73 L24,73 C21,73 19,71 19,68 L19,60 C19,57 21,55 24,55 Z"/>
   </DrawingGroup></DrawingImage.Drawing></DrawingImage>
 </ResourceDictionary>

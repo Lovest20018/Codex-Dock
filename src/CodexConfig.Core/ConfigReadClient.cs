@@ -118,6 +118,12 @@ public sealed class ConfigReadClient
 
     public static string SafeValue(string path, JsonElement value)
     {
+        var text = RedactValue(path, value)?.ToJsonString() ?? "null";
+        return text.Length > 800 ? text[..800] + "…" : text;
+    }
+
+    public static JsonNode? RedactValue(string path, JsonElement value)
+    {
         JsonNode? Mask(string key, JsonElement item)
         {
             if (TomlDocument.IsSensitivePath(key)) return JsonValue.Create("••••••••");
@@ -132,8 +138,7 @@ public sealed class ConfigReadClient
                 return JsonValue.Create(uri.GetLeftPart(UriPartial.Authority).Replace(uri.UserInfo + "@", "") + uri.AbsolutePath + "（地址参数已隐藏）");
             return JsonNode.Parse(item.GetRawText());
         }
-        var text = Mask(path, value)?.ToJsonString() ?? "null";
-        return text.Length > 800 ? text[..800] + "…" : text;
+        return Mask(path, value);
     }
 
     private static async Task<bool> Drain(StreamReader reader)

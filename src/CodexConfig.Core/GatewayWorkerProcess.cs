@@ -38,12 +38,7 @@ internal static class GatewayWorkerProcess
         throw new IOException(message);
     }
 
-    internal static bool PortFree(int port)
-    {
-        using var listener = new TcpListener(IPAddress.Loopback, port) { ExclusiveAddressUse = true };
-        try { listener.Start(); return true; }
-        catch (SocketException) { return false; }
-    }
+    internal static bool PortFree(int port) => GatewayPortState.IsReleased(port);
 
     private static int? ListenerPid(int port)
     {

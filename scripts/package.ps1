@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.18.0',
+    [string]$Version = '0.19.0',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
@@ -8,6 +8,8 @@ $taskRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $taskArtifacts = Join-Path $taskRoot 'artifacts'
 $taskCommit = (git -C $taskRoot rev-parse HEAD).Trim()
 if (git -C $taskRoot status --porcelain) { throw 'Commit reviewed changes before producing a release package.' }
+$taskSourceVersion = ([xml](Get-Content -LiteralPath (Join-Path $taskRoot 'src\CodexConfig.WinUI\CodexConfig.WinUI.csproj') -Raw)).Project.PropertyGroup.Version
+if ($Version -ne $taskSourceVersion) { throw 'Package version must match the WinUI source version.' }
 $taskRelease = Join-Path $taskArtifacts "CodexDock-$Version-win-x64"
 if (-not ([IO.Path]::GetFullPath($taskRelease).StartsWith($taskArtifacts + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase))) { throw 'Release path escapes artifacts.' }
 if (-not $SkipPublish) {
@@ -20,17 +22,23 @@ if (-not $SkipPublish) {
     $taskFallback = Join-Path $env:USERPROFILE '.nuget\packages'
     $taskRestoreArgs = @()
     if (Test-Path -LiteralPath $taskFallback) { $taskRestoreArgs += "-p:RestoreFallbackFolders=$taskFallback" }
-    & dotnet publish (Join-Path $taskRoot 'src\CodexConfig.App\CodexConfig.App.csproj') -c Release -r win-x64 --self-contained true `
-        -p:PublishSingleFile=false -p:DebugType=None @taskRestoreArgs -o $taskRelease
+    & dotnet publish (Join-Path $taskRoot 'src\CodexConfig.WinUI\CodexConfig.WinUI.csproj') -c Release -r win-x64 --self-contained true `
+        -p:InstalledBuild=true -p:PublishSingleFile=false -p:PublishTrimmed=false -p:DebugType=None @taskRestoreArgs -o $taskRelease
     if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
 }
 $taskExe = Join-Path $taskRelease 'CodexDock.exe'
 if (-not (Test-Path -LiteralPath $taskExe)) { throw 'Missing published executable.' }
+foreach ($taskResource in @('CodexDock.pri','App.xbf','MainWindow.xbf','hostfxr.dll','coreclr.dll','Microsoft.AspNetCore.dll','Microsoft.UI.Xaml.dll')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $taskRelease $taskResource))) { throw "Missing self-contained WinUI file: $taskResource" }
+}
 if (-not (Test-Path -LiteralPath (Join-Path $taskRelease 'mobile\CodexDock.Mobile.exe'))) { throw 'Missing self-contained mobile worker.' }
 if (-not (Test-Path -LiteralPath $InnoCompiler)) { throw 'Inno Setup 6 compiler not found.' }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'README.md'),(Join-Path $taskRoot 'LICENSE'),(Join-Path $taskRoot 'THIRD-PARTY-NOTICES.md') -Destination $taskRelease -Force
 foreach ($taskFolder in @('docs','third_party','brand')) { New-Item -ItemType Directory -Path (Join-Path $taskRelease $taskFolder) -Force | Out-Null }
 Copy-Item -LiteralPath (Join-Path $taskRoot "docs\release-$Version.md"),(Join-Path $taskRoot 'docs\schema-maintenance.md'),(Join-Path $taskRoot 'docs\codex-dock-delivery.md'),(Join-Path $taskRoot 'docs\ui-layout-review.md'),(Join-Path $taskRoot 'docs\process-rename-review.md'),(Join-Path $taskRoot 'docs\github-releases.md'),(Join-Path $taskRoot "docs\review-$Version.md") -Destination (Join-Path $taskRelease 'docs') -Force
+foreach ($taskDocument in @('winui-preview.md','winui-consolidation-2026-11-17.md','codexplusplus-reuse-implementation-2026-11-17.md','review-fixes-mobile-validation-2026-11-17.md','mobile-upstream-backport-2026-11-15.md','brand-refresh-2026-11-17.md')) {
+    Copy-Item -LiteralPath (Join-Path $taskRoot "docs\$taskDocument") -Destination (Join-Path $taskRelease 'docs') -Force
+}
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\configuration-implementation-2026-11-02.md'),(Join-Path $taskRoot 'docs\configuration-audit-2026-11-02.md'),(Join-Path $taskRoot 'docs\configuration-options-2026-11-02.md'),(Join-Path $taskRoot 'docs\runtime-settings-inventory-2026-11-02.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Get-ChildItem -LiteralPath (Join-Path $taskRoot 'third_party') -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $taskRelease 'third_party') -Force }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\superba-reuse-implementation-2026-11-11.md'),(Join-Path $taskRoot 'docs\superba-reuse-review-2026-11-11.md') -Destination (Join-Path $taskRelease 'docs') -Force
@@ -38,6 +46,7 @@ Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\template-application-fix-2026-
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\connection-gateway-interaction-2026-11-11.md'),(Join-Path $taskRoot 'docs\api-key-auth-migration-2026-11-12.md'),(Join-Path $taskRoot 'docs\official-login-convergence-2026-11-12.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\desktop-speed-compatibility.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\model-behavior-managed-catalog.md') -Destination (Join-Path $taskRelease 'docs') -Force
+Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\desktop-connection-recovery.md'),(Join-Path $taskRoot 'docs\codexplusplus-reuse-validation-2026-11-14.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\codex-restart-flow-2026-11-12.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\magpie-codex-comparison.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\mobile-connection.md'),(Join-Path $taskRoot 'docs\mobile-gateway-reuse.md') -Destination (Join-Path $taskRelease 'docs') -Force
@@ -50,6 +59,7 @@ Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\release-0.12.0.md'),(Join-Path
 Get-ChildItem -LiteralPath (Join-Path $taskRoot 'assets\brand') -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $taskRelease 'brand') -Force }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'src\CodexConfig.App\Assets\app.ico') -Destination (Join-Path $taskRelease 'brand') -Force
 $taskUiOutput = Join-Path $taskRoot ('.ui-test-v' + ($Version -replace '\.0$',''))
+Remove-Item Env:CODEX_DOCK_WINUI_TEST_FILTER -ErrorAction SilentlyContinue
 $taskRun = Start-Process -FilePath $taskExe -ArgumentList @('--smoke-test',$taskUiOutput) -WindowStyle Hidden -PassThru -Wait
 if ($taskRun.ExitCode -ne 0) { throw "Published EXE UI check failed. See $taskUiOutput\failure.txt" }
 $taskUiReport = Join-Path $taskUiOutput 'report.json'
@@ -57,7 +67,7 @@ if (-not (Test-Path -LiteralPath $taskUiReport) -or (Get-Content -LiteralPath $t
 $taskExeHash = (Get-FileHash -LiteralPath $taskExe -Algorithm SHA256).Hash.ToLowerInvariant()
 $taskAssemblyHash = (Get-FileHash -LiteralPath (Join-Path $taskRelease 'CodexDock.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
 $taskReport = Get-Content -LiteralPath $taskUiReport -Raw | ConvertFrom-Json
-if ($taskReport.applicationVersion -ne $Version) { throw 'The running application version must match the requested package version.' }
+if ($taskReport.applicationVersion -ne $Version -or $taskReport.uiFramework -ne 'WinUI 3') { throw 'The running WinUI application version must match the requested package version.' }
 if ($taskReport.executableName -ne 'CodexDock.exe' -or $taskReport.executableSha256 -ne $taskExeHash -or $taskReport.applicationAssemblySha256 -ne $taskAssemblyHash) { throw 'The UI report must match this published executable and application assembly.' }
 New-Item -ItemType Directory -Path (Join-Path $taskRelease 'verification') -Force | Out-Null
 Copy-Item -LiteralPath $taskUiReport -Destination (Join-Path $taskRelease 'verification\ui-report.json') -Force
@@ -66,7 +76,7 @@ Copy-Item -LiteralPath $taskUiReport -Destination (Join-Path $taskRelease 'verif
     "Codex Dock $Version / Windows x64"
     ''
     '运行 Setup EXE 安装；也可解压便携包并打开 CodexDock.exe。无需安装 .NET。'
-    '常用设置、服务连接、配置模板、备份恢复在同一窗口。保存后可点击“重启 Codex 并应用”，再新建聊天核对。'
+    '工作台、Codex 配置、运行与增强、手机访问、诊断与恢复在同一窗口。保存后明确应用到 Codex，再新建聊天核对。'
     'Ctrl+S 查看并确认修改；Ctrl+F 搜索；Esc 返回调整。'
     '模型目录获取为可选操作，不会改变所选认证方式。'
     '选择模板或手动修改后，核对目标文件与修改明细，再点击确认写入。编辑方案只修改本机方案库。'
@@ -82,7 +92,7 @@ Copy-Item -LiteralPath $taskUiReport -Destination (Join-Path $taskRelease 'verif
 ) | Set-Content -LiteralPath (Join-Path $taskRelease '使用说明.txt') -Encoding utf8
 $taskExeHash = (Get-FileHash -LiteralPath $taskExe -Algorithm SHA256).Hash.ToLowerInvariant()
 @{
-    name='CodexDock'; version=$Version; platform='win-x64'; selfContained=$true
+    name='CodexDock'; version=$Version; platform='win-x64'; selfContained=$true; uiFramework='WinUI 3'
     createdAtUtc=[DateTimeOffset]::UtcNow.ToString('o'); sourceCommit=$taskCommit; executableSha256=$taskExeHash; applicationAssemblySha256=$taskAssemblyHash
     installer='Inno Setup, per-user'; settings='Codex configuration shares a draft; mobile access saves independently'
     mobileWorkerSha256=(Get-FileHash -LiteralPath (Join-Path $taskRelease 'mobile\CodexDock.Mobile.exe') -Algorithm SHA256).Hash.ToLowerInvariant()

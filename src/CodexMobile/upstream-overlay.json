@@ -2,12 +2,19 @@
   "commit": "0721aa7dafa6177751ba7e568e0ad0efee05655b",
   "files": {
     "bridge/api/httpd.py": {
-      "sha256": "9ff810cb58041340359b6c286e3abf29563450ce2b0feaf22aa302e5cba59554",
-      "reason": "Optional desktop session manager factory; upstream default remains unchanged. Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "sha256": "0f0a9e15aca552ea94670c05dd29e84f158e3ecd516dc63f1ac1e8f8217b7015",
+      "reason": "Optional desktop session manager factory; upstream default remains unchanged. Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md. Preserve Dock manager factory and download behavior; return model identity-change errors and bind explicit model saves to the reviewed catalog. See docs/mobile-upstream-backport-2026-11-15.md.",
       "backport": {
         "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
         "sourceSha256": "aea140757f19e71fee0244c2961efb9736d8df08ddb95943c106226b89d3cf25"
-      }
+      },
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "067d6a9c244052e4360fc8204ecffcc5786ada995d473bb8cdd1885b1af6ffd1",
+          "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        }
+      ]
     },
     "bridge/clients/manager.py": {
       "sha256": "8b8c16399c160799208f79e8415808cf6c599a077ae0a6f3ddebd24885cb9c50",
@@ -22,8 +29,15 @@
       "reason": "Explicit legacy Dock import and content-only revisions; clear confirmed provisional promotions without deleting later drafts."
     },
     "web/shell/app.js": {
-      "sha256": "979009eef26a60884fe37b5bd4d3e5ddcfc6a81dd21240af8d9f8fa1cc532078",
-      "reason": "Legacy Dock draft cleanup plus optional presentation hooks for scoped delivery, list and queue; uncertain identical submissions open existing message management, IME composition cannot submit."
+      "sha256": "bb8dd24e29a9f7ec4ac85a5a115190098107f344db11bcdac0531e4e58cdaa11",
+      "reason": "Legacy Dock draft cleanup plus optional presentation hooks for scoped delivery, list and queue; uncertain identical submissions open existing message management, IME composition cannot submit. Keep Dock composer hooks; retain model drafts across discovery success/failure, reject old-account results and preserve native default effort. See docs/mobile-upstream-backport-2026-11-15.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "58f4ec3a471c5bb840a4bb8400d2c04a0f884abeb5e2fcdb86f94313b3377a02",
+          "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        }
+      ]
     },
     "web/features/clients/client-navigation.js": {
       "sha256": "3f4eaceb014ae7993773df9d49b6bd7aeb41b2291d5ac123712abd8d086f7975",
@@ -42,12 +56,19 @@
       }
     },
     "bridge/features/sessions/model.py": {
-      "sha256": "5c53ed701f02f3b4e2966309cbbe4f5f3a81be6158b84cd06cacc4b5cb11da4e",
-      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "sha256": "fd8a25c5318d63713471d2ff399c9b149916397f7f6145aa772059d7446dfa48",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md. Apply patches without mutating the last validated state, so a rejected new stream cannot corrupt readable history. See docs/mobile-upstream-backport-2026-11-15.md.",
       "backport": {
         "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
         "sourceSha256": "234cf8053843e265c6a9431473be9d406be1b342094a4affe4834c182edc6bff"
-      }
+      },
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "97293688f0b46e24df413adfbd82b3473fb99e56ab7fdc8512a045391b1de924",
+          "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        }
+      ]
     },
     "web/features/chat/activity.js": {
       "sha256": "51e03ac9f85bfa54bb02a13caaf1f51975938edd7f92584f48f6fcb16fb30d73",
@@ -98,12 +119,19 @@
       }
     },
     "bridge/app/service.py": {
-      "sha256": "7c7b4055cafdc5f4ec807a46001a549a17b900b8edcbd39aab5469e9e79c0024",
-      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "sha256": "6577aba9cbda543fe49f444cd78ffa60c2bdf93642992ffbd4e629c89ec82141",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md. Scoped v2.2.1 stream/control and task-audit compatibility, follower recovery/backoff, model empty/failure protection and host construction error isolation. Keep Dock account/auth/host and no-replay contracts. See docs/mobile-upstream-backport-2026-11-15.md.",
       "backport": {
         "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
         "sourceSha256": "47815a792349c2b8da39ac8f73e53ee6bfb2c738587816ef06cd6bd98f2b8a06"
-      }
+      },
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "b88a92af5af36b4d807043aa480c7c815fab4221b25eb56a0c42be714e644e29",
+          "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        }
+      ]
     },
     "bridge/features/accounts/accounts.py": {
       "sha256": "0f557fe27aad5d24a31f61d068975ddd578a74d0a6eb916964db0b2097087b9c",
@@ -162,12 +190,19 @@
       }
     },
     "web/shared/i18n.js": {
-      "sha256": "f95ad1eb5c33af28db8061c27f754690a797378f4047b0a5194530987347d81a",
-      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
+      "sha256": "6bdada884d2ad20d9acbb8e10fbae727b4d47e21b12a7b34439efb446338a312",
+      "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md. Translate the scoped model recovery/default-effort and protocol compatibility messages without changing chat or model text. See docs/mobile-upstream-backport-2026-11-15.md.",
       "backport": {
         "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
         "sourceSha256": "d4fc3379688e14c8e765d0fc4c6b15e068f31408a182169a07763b99b51ec43a"
-      }
+      },
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "63eda5d7abaf4d88bb705bd968db7a8b631687f59e40d84fcb327a3682e506c9",
+          "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        }
+      ]
     },
     "tests/timeline-pagination.test.cjs": {
       "sha256": "f98ac7fe17f9d79acf410a306dad05002b57ec1b4d3673f40091272335aee365",
@@ -176,6 +211,72 @@
         "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
         "sourceSha256": "5e881849fdd3a4a0f9c706c65ce57797c2ec24769e6345a7553e2aacda3aaf96"
       }
+    },
+    "bridge/clients/codex/ipc.py": {
+      "sha256": "0d155acd1e7eafde5f1788ff020c0713a78762917a4b3a25cd0f5eb06354c973",
+      "reason": "Validated v11/v13 and additive future desktop streams, generation-safe initialization, bounded read deadlines and endpoint replacement; keep existing outbound operations. See docs/mobile-upstream-backport-2026-11-15.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "0c7fbe2d07f5dd212a36ab897817c8c92d517778d724e1fbff36b024f7c076b9",
+          "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        }
+      ]
+    },
+    "bridge/clients/codex/transport.py": {
+      "sha256": "82643d896cd1301856d488cce05ee2d2160a13e4100232d25c1fe46f456c32f1",
+      "reason": "Read-only router identity detection, retaining cancellable Windows named-pipe transport. See docs/mobile-upstream-backport-2026-11-15.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "22352736c00e950c86563a604dcd5e2caab0d4e812603654bd3f3b54678d071f",
+          "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        }
+      ]
+    },
+    "bridge/clients/codex/catalog.py": {
+      "sha256": "1b5b189a281dc0ec4ab6b41bbb063d31938070313b8539db97120698e2821b63",
+      "reason": "Read-only helper cwd fallback, account/project-scoped empty/failure cache handling and explicit identity-change errors. See docs/mobile-upstream-backport-2026-11-15.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "c6caced9ab82785dde05603388726015e42e5dcba9f584e182091879bf2f7535",
+          "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        }
+      ]
+    },
+    "tests/test_bridge.py": {
+      "sha256": "4e788923ddb98066e52962673dc83b2d8db6ab8238da3f4c03a439b3f856edc0",
+      "reason": "Patch tests now assert returned state and unchanged input; initialize providers on the existing __new__ manager fixture. All original authorization/navigation assertions remain. See docs/mobile-upstream-backport-2026-11-15.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "8b98b72f776956d29f33ac474028af4b43be2177b8bc3dae36b9aa66c4d9a62a",
+          "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        }
+      ]
+    },
+    "tests/test_native_model_cache.py": {
+      "sha256": "afcc527b224dfcd17a2257639ecd5922b34a964607ea1fb2e0ee6a71f561f49d",
+      "reason": "Assert typed account-identity changes and explicit unavailable metadata without a false freshness timestamp; retain all cache isolation checks. See docs/mobile-upstream-backport-2026-11-15.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "d678aacc91b22a232d1c0cbf739afae1dbd3054401634c82df9daa468bbf190e",
+          "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        }
+      ]
+    },
+    "tests/test_accounts.py": {
+      "sha256": "3467f1eb2df3681f270d061bb7055220956819611366f7d6134cdbcd877f2ad9",
+      "reason": "Complete existing session doubles with the condition and compatibility state used by LiveSession, retaining original-owner delegation assertions. See docs/mobile-upstream-backport-2026-11-15.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "767c4fee55b210f4c04d97babd5991b775ff27c8993dda4c3ff7f32c5f625dbf",
+          "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        }
+      ]
     }
   },
   "omitted": {

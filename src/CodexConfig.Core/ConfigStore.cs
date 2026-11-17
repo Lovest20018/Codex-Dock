@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace CodexConfig.Core;
 
-public sealed class ConfigStore(IUserEnvironment environment, Func<string, string?>? readEnvironment = null)
+public sealed partial class ConfigStore(IUserEnvironment environment, Func<string, string?>? readEnvironment = null)
 {
     private const int MaxBytes = 8 * 1024 * 1024;
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("CodexConfig.backup.v1");
@@ -136,7 +136,8 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
             }
             var bridge = before.Bridge;
             if (updateDetails && bridge is not null && MixedConnection.Read(bridge) is { } connection && connection.OwnsRoute(new TomlDocument(before.Config)))
-                if (connection.HttpOrigin != desiredDetails.HttpOrigin) bridge = (connection with { HttpOrigin = desiredDetails.HttpOrigin }).Protect();
+                if (connection.HttpOrigin != desiredDetails.HttpOrigin || connection.HeaderTimeoutSeconds != desiredDetails.GatewayHeaderTimeoutSeconds)
+                    bridge = (connection with { HttpOrigin = desiredDetails.HttpOrigin, HeaderTimeoutSeconds = desiredDetails.GatewayHeaderTimeoutSeconds }).Protect();
             return new(before, doc.Bytes, before.Auth, before.AuthApiBaseUrl, doc.Masked(),
                 before.Auth is null ? "尚无认证文件。" : "认证配置保持现值（内容已隐藏）。", ["仅保存配置项，认证配置保持现值。"])
             { Bridge = bridge, Details = details };
@@ -276,6 +277,13 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         if (HasPending(current.Home)) throw new InvalidOperationException("请先恢复未完成的保存。");
         var path = LatestBackup(current.Home) ?? throw new InvalidOperationException("尚无可恢复的备份。");
         var record = ReadBackup(path);
+        var target = RestoreTarget(record, current);
+        return Commit(current, target.Config, target.Auth, target.AuthApiBaseUrl, "restore", target.Bridge,
+            target.Details, restoreCatalog: target.Catalog, catalogIndex: target.CatalogIndex);
+    }
+
+    private static ConfigSnapshot RestoreTarget(Backup record, ConfigSnapshot current)
+    {
         var expected = ExpectedAfter(record, current);
         if (!CodexApplySnapshot.Compare(expected, current).CanContinue || record.AfterBridgeHash is not null && Hash(current.Bridge) != record.AfterBridgeHash ||
             record.AfterDetailsHash is not null && Hash(current.Details) != record.AfterDetailsHash ||
@@ -295,17 +303,24 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
                 dependency = new(managed, bytes);
             }
         }
-        return Commit(current, config, auth, record.BeforeEnv, "restore", record.AfterBridgeHash is null ? current.Bridge : record.BeforeBridge,
-            record.AfterDetailsHash is null ? current.Details : record.BeforeDetails, restoreCatalog: dependency,
-            catalogIndex: record.AfterCatalogIndexHash is null ? current.CatalogIndex : record.BeforeCatalogIndex);
+        if (dependency?.Content is { } desired)
+        {
+            if (!File.Exists(dependency.Path)) ManagedModelCatalogStore.EnsureSafeTarget(current.Home, dependency.Path, desired);
+            else if (Hash(ManagedModelCatalogStore.Read(dependency.Path)) != Hash(desired)) throw new IOException("要恢复的模型目录已被其他程序修改，已停止覆盖。");
+        }
+        return new(current.Home, config, auth, record.BeforeEnv)
+        { Bridge = record.AfterBridgeHash is null ? current.Bridge : record.BeforeBridge,
+            Details = record.AfterDetailsHash is null ? current.Details : record.BeforeDetails, Catalog = dependency ?? ManagedModelCatalogStore.Capture(current.Home, config),
+            CatalogIndex = record.AfterCatalogIndexHash is null ? current.CatalogIndex : record.BeforeCatalogIndex };
     }
 
     private string Commit(ConfigSnapshot before, byte[]? config, byte[]? auth, string? authApiUrl, string action, byte[]? bridge, byte[]? details,
-        ManagedCatalogUpdate? catalogUpdate = null, CatalogReference? restoreCatalog = null, byte[]? catalogIndex = null)
+        ManagedCatalogUpdate? catalogUpdate = null, CatalogReference? restoreCatalog = null, byte[]? catalogIndex = null, Action? validateSource = null)
     {
         using var writeLock = Lock(before.Home);
         for (var attempt = 0; attempt < 3; attempt++)
         {
+            validateSource?.Invoke();
             var current = Load(before.Home);
             var comparison = CodexApplySnapshot.Compare(before, current);
             if (!comparison.CanContinue) throw new InvalidOperationException("确认后的本地设置已改变：" + string.Join("、", comparison.Changes) + "。请重新读取并核对后再保存。");
@@ -378,9 +393,26 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
         }
     }
 
-    private void RestoreInterrupted(string home, Backup record)
+    private void RestoreInterrupted(string home, Backup record, ConfigSnapshot? reviewed = null)
     {
         var current = Load(home);
+        if (reviewed is not null) CodexApplySnapshot.RequireCompatible(reviewed, current);
+        var target = InterruptedTarget(home, record, current);
+        var baselineCurrent = record.AfterTestBaselineHash is not null ? ReadFile(TestBaselinePath(home)) : null;
+        if (target.Catalog?.Content is { } catalogBytes && !File.Exists(target.Catalog.Path)) AtomicWrite(target.Catalog.Path, catalogBytes);
+        if (record.AfterCatalogIndexHash is not null && Hash(current.CatalogIndex) != Hash(target.CatalogIndex))
+            AtomicWrite(Path.Combine(home, ManagedModelCatalogStore.IndexFile), target.CatalogIndex);
+        if (Hash(current.Config) != Hash(target.Config)) AtomicWrite(Path.Combine(home, "config.toml"), target.Config);
+        if (Hash(current.Auth) != Hash(target.Auth)) AtomicWrite(Path.Combine(home, "auth.json"), target.Auth);
+        if (record.AfterBridgeHash is not null && Hash(current.Bridge) != Hash(target.Bridge)) AtomicWrite(Path.Combine(home, MixedConnection.FileName), target.Bridge);
+        if (record.AfterDetailsHash is not null && Hash(current.Details) != Hash(target.Details)) AtomicWrite(Path.Combine(home, ConnectionDetails.FileName), target.Details);
+        if (environment.Read() != target.AuthApiBaseUrl) environment.Write(target.AuthApiBaseUrl);
+        if (record.AfterTestBaselineHash is not null && Hash(baselineCurrent) != Hash(record.BeforeTestBaseline))
+            AtomicWrite(TestBaselinePath(home), record.BeforeTestBaseline);
+    }
+
+    private static ConfigSnapshot InterruptedTarget(string home, Backup record, ConfigSnapshot current)
+    {
         var baselineCurrent = record.AfterTestBaselineHash is not null ? ReadFile(TestBaselinePath(home)) : null;
         static bool Expected(byte[]? value, byte[]? before, string afterHash) => Hash(value) == Hash(before) || Hash(value) == afterHash;
         var beforeConfig = CodexApplySnapshot.SameConfig(record.BeforeConfig, current.Config);
@@ -401,21 +433,16 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
             if (!File.Exists(old.Path))
             {
                 ManagedModelCatalogStore.EnsureSafeTarget(home, old.Path, catalogBytes);
-                AtomicWrite(old.Path, catalogBytes);
             }
             else if (Hash(ManagedModelCatalogStore.Read(old.Path)) != Hash(catalogBytes)) throw new IOException("原模型目录已被其他程序修改，请核对后恢复。");
         }
-        if (record.AfterCatalogIndexHash is not null && Hash(current.CatalogIndex) != Hash(record.BeforeCatalogIndex))
-            AtomicWrite(Path.Combine(home, ManagedModelCatalogStore.IndexFile), record.BeforeCatalogIndex);
         var config = beforeConfig ? current.Config : CodexApplySnapshot.RebaseConfig(afterConfig, record.BeforeConfig, current.Config);
         var auth = beforeAuth ? current.Auth : CodexApplySnapshot.RebaseAuth(afterAuth, record.BeforeAuth, current.Auth);
-        if (Hash(current.Config) != Hash(config)) AtomicWrite(Path.Combine(home, "config.toml"), config);
-        if (Hash(current.Auth) != Hash(auth)) AtomicWrite(Path.Combine(home, "auth.json"), auth);
-        if (record.AfterBridgeHash is not null && Hash(current.Bridge) != Hash(record.BeforeBridge)) AtomicWrite(Path.Combine(home, MixedConnection.FileName), record.BeforeBridge);
-        if (record.AfterDetailsHash is not null && Hash(current.Details) != Hash(record.BeforeDetails)) AtomicWrite(Path.Combine(home, ConnectionDetails.FileName), record.BeforeDetails);
-        if (environment.Read() != record.BeforeEnv) environment.Write(record.BeforeEnv);
-        if (record.AfterTestBaselineHash is not null && Hash(baselineCurrent) != Hash(record.BeforeTestBaseline))
-            AtomicWrite(TestBaselinePath(home), record.BeforeTestBaseline);
+        return new(home, config, auth, record.BeforeEnv)
+        { Bridge = record.AfterBridgeHash is null ? current.Bridge : record.BeforeBridge,
+            Details = record.AfterDetailsHash is null ? current.Details : record.BeforeDetails,
+            CatalogIndex = record.AfterCatalogIndexHash is null ? current.CatalogIndex : record.BeforeCatalogIndex,
+            Catalog = record.BeforeCatalog ?? ManagedModelCatalogStore.Capture(home, config) };
     }
 
     private void EnsureUnchanged(ConfigSnapshot snapshot)
@@ -494,6 +521,11 @@ public sealed class ConfigStore(IUserEnvironment environment, Func<string, strin
     private static Backup ReadBackup(string path)
     {
         var encrypted = ReadFile(path) ?? throw new FileNotFoundException("备份不存在。");
+        return DecodeBackup(encrypted);
+    }
+
+    private static Backup DecodeBackup(byte[] encrypted)
+    {
         var bytes = ProtectedData.Unprotect(encrypted, Entropy, DataProtectionScope.CurrentUser);
         try { return JsonSerializer.Deserialize<Backup>(bytes) ?? throw new InvalidDataException("备份格式无效。"); }
         finally { CryptographicOperations.ZeroMemory(bytes); }

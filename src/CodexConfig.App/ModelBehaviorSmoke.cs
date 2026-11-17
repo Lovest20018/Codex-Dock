@@ -31,7 +31,7 @@ public partial class MainWindow
         try
         {
             fixture.Show(); fixture.ShowPage("preferences"); await fixture.Settle();
-            Check(fixture.modelSection.IsVisible && fixture.SpeedCompatibilityCard.IsVisible && fixture.reviewSection.IsVisible && !fixture.configurationTools.IsVisible, "Model, speed compatibility and reviewer share the common page without advanced source controls");
+            Check(fixture.modelSection.IsVisible && !fixture.SpeedCompatibilityCard.IsVisible && fixture.reviewSection.IsVisible && !fixture.configurationTools.IsVisible, "Model defaults and reviewer stay on the common page while runtime enhancements have a separate home");
             var before = fixtureStore.Load(directory);
             fixture.dedicatedReview.IsChecked = true; await fixture.Settle();
             Check(fixture.Dirty && before.SameContents(fixtureStore.Load(directory)), "Selecting dedicated approval stages a draft without touching files");
@@ -49,9 +49,9 @@ public partial class MainWindow
             Check(fixture.ModelBox.Text == "gpt-6-astra" && fixture.behaviorModel.Text == "gpt-6-astra" && fixture.Dirty, "Typing in the common model selector updates the shared draft without losing text");
             fixture.Reload();
             fixture.Width = 960; fixture.Height = 640; fixture.ShowPage("preferences"); await fixture.Settle(); fixture.Capture(output, "model-compact-light.png");
-            fixture.SpeedCompatibilityCard.BringIntoView(); await fixture.Settle(); fixture.Capture(output, "speed-compact-light.png");
+            fixture.Editor.SpeedSection!.BringIntoView(); await fixture.Settle(); fixture.Capture(output, "speed-compact-light.png");
             fixture.reviewSection.BringIntoView(); await fixture.Settle(); fixture.Capture(output, "review-compact-light.png");
-            Check(fixture.SpeedCompatibilityCard.Parent != fixture.ApplicationBody && fixture.catalogState.Text.Contains("Dock 管理"), "Compatibility lives beside the speed choice and catalog ownership is visible");
+            Check(fixture.Editor.SpeedSection is Button && fixture.catalogState.Text.Contains("Dock 管理"), "Speed defaults link to the dedicated enhancement page and catalog ownership remains visible");
             File.AppendAllText(source, " "); fixture.RefreshModelBehavior();
             Check(fixture.catalogState.Text.Contains("有更新待同步") && !fixture.Dirty, "Source updates are detected without silently writing or creating drafts");
             fixture.StageCatalog(); await fixture.Settle();

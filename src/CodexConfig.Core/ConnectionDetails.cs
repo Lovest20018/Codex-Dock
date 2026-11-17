@@ -4,9 +4,11 @@ using System.Text.Json;
 
 namespace CodexConfig.Core;
 
-// Dock-only labels live outside config.toml and never become provider/protocol options.
+// Dock-only connection preferences never become native provider/protocol options.
 public sealed record ConnectionDetails(string Name = "", string Note = "", string HttpOrigin = "")
 {
+    public const int DefaultHeaderTimeoutSeconds = 120;
+    public int GatewayHeaderTimeoutSeconds { get; init; } = DefaultHeaderTimeoutSeconds;
     public const string FileName = "codex-dock-details.dat";
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("CodexDock.details.v1");
 
@@ -18,7 +20,9 @@ public sealed record ConnectionDetails(string Name = "", string Note = "", strin
         if (note.Length > 500 || note.Any(c => char.IsControl(c) && c is not ('\n' or '\t'))) throw new ArgumentException("备注最多 500 个字符，请移除无效控制字符。");
         if (HttpOrigin.Length > 0 && HttpConnectionPolicy.RequiredOrigin(HttpOrigin) != HttpOrigin)
             throw new ArgumentException("HTTP 确认必须绑定完整站点，不含路径、查询参数或凭据。");
-        return new(name, note, HttpOrigin);
+        if (GatewayHeaderTimeoutSeconds is < 60 or > 3600)
+            throw new ArgumentException("模型网关等待响应头需为 60 至 3600 秒的整数。");
+        return this with { Name = name, Note = note };
     }
 
     public byte[]? Protect()

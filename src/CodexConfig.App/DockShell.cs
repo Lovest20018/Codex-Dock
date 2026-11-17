@@ -20,7 +20,7 @@ public partial class MainWindow
             SidebarColumn.Width = new(compact ? 176 : 196);
             PageHeading.Margin = compact ? new(28, 14, 28, 12) : new(28, 22, 28, 20);
         };
-        foreach (var (nav, glyph) in new[] { (OverviewNav, "\uE80F"), (ConnectionNav, "\uE774"), (CatalogNav, "\uE9D9"), (MobileNav, "\uE8EA"), (GatewayNav, "\uE7F4"), (TemplatesNav, "\uE8F1"), (AdvancedNav, "\uE9E9"), (AppNav, "\uE713") })
+        foreach (var (nav, glyph) in new[] { (OverviewNav, "\uE80F"), (ConnectionNav, "\uE774"), (CatalogNav, "\uE9D9"), (EnhancementsNav, "\uE734"), (MobileNav, "\uE8EA"), (GatewayNav, "\uE7F4"), (TemplatesNav, "\uE8F1"), (AdvancedNav, "\uE9E9"), (AppNav, "\uE713") })
         {
             var label = ((TextBlock)nav.Content).Text;
             var content = new Grid();
@@ -155,7 +155,7 @@ public partial class MainWindow
             foreach (var scale in new[] { 1.0, 1.25, 1.5 })
             {
                 RootPanel.LayoutTransform = new ScaleTransform(scale, scale);
-                foreach (var page in new[] { "overview", "connection", "preferences", "templates", "backup", "app" })
+                foreach (var page in new[] { "overview", "connection", "preferences", "enhancements", "templates", "backup", "app" })
                 {
                     ShowPage(page); await Settle();
                     if (CurrentDirectoryText.ActualHeight > 22) throw new InvalidOperationException("Long configuration path expanded the header.");
@@ -184,7 +184,7 @@ public partial class MainWindow
                     Capture(output, $"review-{page}-{(int)(scale * 100)}.png");
                 }
             }
-            checks.AddRange(["Long path stays on one header line", "Navigation remains scrollable above footer at minimum size", "Save actions remain within window at 100/125/150 percent", "Library tabs do not stretch over page content", "Settings retain a usable page scroll area", "Six pages captured at minimum size and three scales"]);
+            checks.AddRange(["Long path stays on one header line", "Navigation remains scrollable above footer at minimum size", "Save actions remain within window at 100/125/150 percent", "Library tabs do not stretch over page content", "Settings retain a usable page scroll area", "Seven pages captured at minimum size and three scales"]);
         }
         finally
         {

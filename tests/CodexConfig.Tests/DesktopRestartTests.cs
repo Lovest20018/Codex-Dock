@@ -162,6 +162,43 @@ internal static class DesktopRestartTests
             }
             finally { await host.Cleanup(); }
         }));
+        tests.Add(("native Windows scoped restart preserves a second GUI profile across normal and confirmed force launches", async () =>
+        {
+            var home = Home(); var firstProfile = Home(); var secondProfile = Home(); var host = new FixturePlatform(executable, home);
+            try
+            {
+                void Launch(string profile)
+                {
+                    var start = CodexDesktop.CreateStartInfo(executable, home, null);
+                    start.ArgumentList.Add("--user-data-dir=" + profile); start.Environment["CODEX_ELECTRON_USER_DATA_PATH"] = profile; host.Start(start);
+                }
+                Launch(firstProfile); Launch(secondProfile);
+                var desktop = new CodexDesktop(host); CodexDesktopTarget first, other;
+                var timer = Stopwatch.StartNew();
+                while (true)
+                {
+                    var targets = desktop.FindTargets();
+                    if (targets.Count == 2 && File.Exists(Path.Combine(firstProfile, "launched.json")) && File.Exists(Path.Combine(secondProfile, "launched.json")))
+                    { first = targets.Single(target => target.UserDataDirectory == firstProfile); other = targets.Single(target => target.UserDataDirectory == secondProfile); break; }
+                    if (timer.Elapsed > TimeSpan.FromSeconds(5)) throw new TimeoutException("Both native fixture windows must be ready");
+                    await Task.Delay(50);
+                }
+                var reopened = await desktop.RestartAsync(first, home, null);
+                Assert(reopened.MainProcess!.Id != first.MainProcess!.Id && reopened.UserDataDirectory == firstProfile && reopened.Processes.Count == 1);
+                Assert(host.Running().Any(process => CodexDesktop.SameProcess(process, other.MainProcess!)) && host.Starts == 3);
+                await Task.Delay(120); // Allow the newly opened fixture's window creation before the explicit force branch.
+                var forced = await desktop.RestartAsync(reopened, home, null, forceConfirmed: true);
+                Assert(forced.MainProcess!.Id != reopened.MainProcess!.Id && forced.UserDataDirectory == firstProfile &&
+                    host.Running().Any(process => CodexDesktop.SameProcess(process, other.MainProcess!)) && host.Starts == 4);
+                var batch = desktop.FindTargets();
+                var selected = batch.Single(target => target.UserDataDirectory == firstProfile);
+                var combined = selected.WithOtherInstancesToExit(batch.Where(target => target.UserDataDirectory != firstProfile).ToArray());
+                var one = await desktop.RestartAsync(combined, home, null, forceConfirmed: true);
+                Assert(one.UserDataDirectory == firstProfile && host.Running().Count == 1 && host.Starts == 5 &&
+                    !host.Running().Any(process => CodexDesktop.SameProcess(process, other.MainProcess!)));
+            }
+            finally { await host.Cleanup(); }
+        }));
     }
 
     private sealed class FakePlatform(string executable) : ICodexDesktopPlatform
@@ -192,7 +229,8 @@ internal static class DesktopRestartTests
         public void ForceClose(CodexDesktopProcess process) => native.ForceClose(process);
         public void Start(ProcessStartInfo start)
         {
-            start.ArgumentList.Add("--desktop-restart-fixture"); start.ArgumentList.Add(output);
+            var destination = start.Environment.TryGetValue("CODEX_ELECTRON_USER_DATA_PATH", out var profile) && profile is not null ? profile : output;
+            start.ArgumentList.Add("--desktop-restart-fixture"); start.ArgumentList.Add(destination);
             owned.Add(Process.Start(start)!); Starts++;
         }
         internal async Task Cleanup()

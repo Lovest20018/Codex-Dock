@@ -925,8 +925,9 @@ class ModelTests(unittest.TestCase):
 
     def test_array_patch(self):
         value = {'items': [1, 2]}
-        apply_patches(value, [{'op': 'add', 'path': ['items', 1], 'value': 3}, {'op': 'remove', 'path': '/items/0'}])
-        self.assertEqual(value, {'items': [3, 2]})
+        updated = apply_patches(value, [{'op': 'add', 'path': ['items', 1], 'value': 3}, {'op': 'remove', 'path': '/items/0'}])
+        self.assertEqual(updated, {'items': [3, 2]})
+        self.assertEqual(value, {'items': [1, 2]})
 
     def test_identity_verification_not_exposed(self):
         req = normalize_request({'id': 'x', 'method': 'mcpServer/elicitation/request', 'params': {'_meta': {'openai/userVerification': {'token': 'secret'}}}})
@@ -1368,6 +1369,7 @@ class HttpTests(unittest.TestCase):
         from bridge.clients.manager import DesktopSessions
         entry = 'wsl:' + 'a' * 32
         manager = DesktopSessions.__new__(DesktopSessions)
+        manager.providers = ('codex', 'claude', 'deepseek')
         manager.read_lock = threading.Lock()
         manager.config = {'enabled': {'codex': False, 'claude': True, 'deepseek': False}}
         manager.bridge = SimpleNamespace(entries=SimpleNamespace(hosts=lambda: {entry: {}}))

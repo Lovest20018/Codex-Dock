@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using CodexConfig.Core;
+using CodexConfig.Application;
 
 namespace CodexConfig.App;
 
@@ -9,6 +10,11 @@ public partial class MainWindow
     private void ShowSessionDiagnostics(object sender, RoutedEventArgs e)
     {
         var directory = home;
+        var service = new SessionDiagnosticService();
+        using var lifetime = new CancellationTokenSource();
+        SessionDiagnosticListing? listing = null;
+        CancellationTokenSource? reading = null;
+        var closed = false;
         var content = new StackPanel { Margin = new(22) };
         var window = new Window { Owner = this, Title = "本机聊天参数", Width = 760, Height = 500, MinWidth = 560, MinHeight = 380,
             Content = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }, WindowStartupLocation = WindowStartupLocation.CenterOwner };
@@ -17,23 +23,26 @@ public partial class MainWindow
         var files = new ComboBox { DisplayMemberPath = "Name", Margin = new(0, 0, 0, 12) }; content.Children.Add(files);
         var read = new Button { Content = "读取所选聊天", HorizontalAlignment = HorizontalAlignment.Left }; content.Children.Add(read);
         var result = new TextBlock { Text = "尚未读取。请选择明确对应本次操作的聊天记录。", TextWrapping = TextWrapping.Wrap, Margin = new(0, 16, 0, 0) }; content.Children.Add(result);
-        try { files.ItemsSource = SessionDiagnostics.List(directory); }
-        catch (Exception) { result.Text = "暂时无法列出本机聊天记录。"; }
+        window.Closed += (_, _) => { closed = true; lifetime.Cancel(); reading?.Cancel(); };
+        files.SelectionChanged += (_, _) => { reading?.Cancel(); result.Text = "尚未读取所选聊天。"; };
+        window.Loaded += async (_, _) =>
+        {
+            try { listing = await service.ListAsync(directory, () => home, lifetime.Token); if (!closed) files.ItemsSource = listing.Files; }
+            catch (Exception) { if (!closed) result.Text = "暂时无法列出本机聊天记录。"; }
+        };
         read.Click += async (_, _) =>
         {
-            if (files.SelectedItem is not SessionDiagnosticFile file) return;
+            if (files.SelectedItem is not SessionDiagnosticFile file || listing is null || reading is not null) return;
             read.IsEnabled = false;
+            reading = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
             try
             {
-                var observed = await Task.Run(() => SessionDiagnostics.Read(directory, file.Path));
-                result.Text = "记录时间：" + (observed.ObservedAt?.LocalDateTime.ToString("g") ?? "未提供") +
-                    "\n主模型：" + (observed.Model ?? "未观察到") + "\n推理强度：" + (observed.Reasoning ?? "未观察到") +
-                    "\n速度档位：" + (observed.ServiceTier ?? "未观察到") + "\n审批方式：" + (observed.Reviewer ?? "未观察到") +
-                    "\n实际审核模型：本记录未提供，不从配置值推断" +
-                    (observed.ContainsConfigurationUpdate ? "\n已读取会话中的推理档位更新；顶层请求值可能保留初始基线。" : "") + "\n\n来源：" + observed.File;
+                var observed = await service.ReadAsync(listing, file, () => (home, (files.SelectedItem as SessionDiagnosticFile)?.Path), reading.Token);
+                if (!closed) result.Text = SessionDiagnosticService.Describe(observed);
             }
-            catch (Exception) { result.Text = "暂时无法读取该聊天；请选择当前目录中的记录重试。"; }
-            finally { read.IsEnabled = true; }
+            catch (OperationCanceledException) { if (!closed) result.Text = "读取已取消，请重新选择并读取。"; }
+            catch (Exception) { if (!closed) result.Text = "暂时无法读取该聊天；请选择当前目录中的记录重试。"; }
+            finally { reading.Dispose(); reading = null; if (!closed) read.IsEnabled = true; }
         };
         window.ShowDialog();
     }

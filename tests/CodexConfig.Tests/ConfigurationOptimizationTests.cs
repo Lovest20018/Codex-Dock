@@ -178,7 +178,12 @@ internal static class ConfigurationOptimizationTests
                 await socket.SendAsync(Encoding.UTF8.GetBytes(request).AsMemory(), WebSocketMessageType.Text, true, CancellationToken.None);
                 foreach (var expected in EventObjects("ws" + iteration, true)) Assert(await Message(socket) == expected);
             }
-            socket.Abort();
+            using (var closing = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+            {
+                var close = await socket.ReceiveAsync(new byte[1024].AsMemory(), closing.Token);
+                Assert(close.MessageType == WebSocketMessageType.Close && socket.CloseStatus == WebSocketCloseStatus.NormalClosure);
+                await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "acknowledged", closing.Token);
+            }
             BridgeStatus? status = null;
             for (var i = 0; i < 50; i++) { status = await BridgeProcess.StatusAsync(connection); if (status?.Metrics is { Active: 0 }) break; await Task.Delay(20); }
             Assert(received.Count == 2 && received.All(body => body == request));

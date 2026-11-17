@@ -27,6 +27,9 @@
             <RadioButton x:Name="CatalogNav" Tag="preferences" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged">
               <TextBlock Text="模型与行为" />
             </RadioButton>
+            <RadioButton x:Name="EnhancementsNav" Tag="enhancements" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged">
+              <TextBlock Text="客户端增强" />
+            </RadioButton>
             <RadioButton x:Name="MobileNav" Tag="mobile" GroupName="Navigation" Style="{StaticResource NavigationButton}" Checked="NavigationChanged">
               <TextBlock Text="手机连接" />
             </RadioButton>
@@ -92,6 +95,42 @@
           <ScrollViewer x:Name="MobilePage" Visibility="Collapsed" Style="{StaticResource PageScroll}">
             <StackPanel x:Name="MobileBody" Margin="0,0,8,24" />
           </ScrollViewer>
+          <Grid x:Name="EnhancementsPage" Visibility="Collapsed">
+            <Grid.RowDefinitions><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <ScrollViewer x:Name="EnhancementsScroll" Style="{StaticResource PageScroll}" Padding="0,0,8,0"><StackPanel>
+              <Border Background="{DynamicResource AccentSoft}" CornerRadius="10" Padding="16" Margin="0,0,0,16"><StackPanel>
+                <TextBlock x:Name="EnhancementRuntimeHint" Text="以下增强需要 Dock 持续运行，可以收起到托盘；功能本身无需启动模型网关。API Key 直连可直接使用，混合连接仍需模型网关转发请求。" Style="{StaticResource Helper}"/>
+                <WrapPanel Margin="0,6,0,0">
+                  <Button Content="收起到托盘" Click="HideToTrayClicked" Style="{StaticResource QuietButton}" FontSize="12" MinHeight="30" Padding="8,4" Margin="0,0,8,0"/>
+                  <Button Content="Dock 开机启动设置" Click="EnhancementStartupClicked" Style="{StaticResource QuietButton}" FontSize="12" MinHeight="30" Padding="8,4"/>
+                </WrapPanel>
+              </StackPanel></Border>
+              <Border Style="{StaticResource SurfacePanel}" Margin="0,0,0,16"><StackPanel>
+                <TextBlock Text="启动与自动接回" Style="{StaticResource SectionTitle}" Margin="0,0,0,10"/>
+                <CheckBox x:Name="AutomaticEnhancementsBox" Content="启用增强启动与自动接回（当前配置目录）" Checked="AutomaticEnhancementsChanged" Unchecked="AutomaticEnhancementsChanged"/>
+                <TextBlock Text="创建专用快捷方式，一键打开 Codex 并加载下方增强。重开 Dock 时自动接回上次成功接入的实例，不刷新页面；需要首次加载或重启时由你确认。关闭 Codex 后不会自动重开。" Style="{StaticResource Helper}" Margin="0,8,0,0"/>
+                <TextBlock x:Name="AutomaticEnhancementsStatus" Text="已关闭。" Style="{StaticResource Helper}" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite"/>
+                <Button x:Name="CreateEnhancedShortcutButton" Content="创建增强启动快捷方式…" Click="CreateEnhancedShortcutClicked" HorizontalAlignment="Left" Margin="0,12,0,0" IsEnabled="False"/>
+              </StackPanel></Border>
+              <Border Style="{StaticResource SurfacePanel}" Margin="0,0,0,16"><StackPanel x:Name="ConnectionRecoveryPanel">
+                <TextBlock Text="旧聊天接续" Style="{StaticResource SectionTitle}" Margin="0,0,0,10"/>
+                <CheckBox x:Name="ConnectionRecoveryBox" Content="更换模型入口后继续原聊天" Checked="ConnectionRecoveryChanged" Unchecked="ConnectionRecoveryChanged"/>
+                <TextBlock Text="聊天空闲后接入当前已保存的入口，保留历史和已选参数。登录身份或模型目录改变时，仍需重新打开 Codex。" Style="{StaticResource Helper}" Margin="0,8,0,0"/>
+                <TextBlock x:Name="ConnectionRecoveryStatus" Text="已关闭。" Style="{StaticResource Helper}" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite"/>
+              </StackPanel></Border>
+              <Border Style="{StaticResource SurfacePanel}" Margin="0,0,0,16"><StackPanel x:Name="SpeedCompatibilityCard">
+                <TextBlock Text="速度档位兼容" Style="{StaticResource SectionTitle}" Margin="0,0,0,10"/>
+                <CheckBox x:Name="SpeedCompatibilityBox" Content="显示 API Key 直连的 Fast / Ultrafast 入口" Checked="SpeedCompatibilityChanged" Unchecked="SpeedCompatibilityChanged"/>
+                <TextBlock Text="适用于桌面端隐藏速度入口的 API Key 直连。可用档位来自模型目录和服务，默认速度仍在“模型与行为”中设置。" Style="{StaticResource Helper}" Margin="0,8,0,0"/>
+                <TextBlock x:Name="SpeedCompatibilityStatus" Text="已关闭。" Style="{StaticResource Helper}" Margin="0,8,0,0" AutomationProperties.LiveSetting="Polite"/>
+              </StackPanel></Border>
+              <Expander Header="首次应用、退出与工作方式" Margin="0,0,0,16"><TextBlock Text="通过下方按钮一次接入已开启的增强；发现多个 Codex 时可选择资料目录，并选择是否先退出其余旧实例。关闭 Dock 窗口会收起到托盘，增强继续工作。完全退出 Dock 后增强停用，已启动的网关会独立运行。开启自动接回后，重开 Dock 会核对并恢复上次成功的增强连接；首次加载或版本、连接发生变化时，仍需增强启动确认。" Style="{StaticResource Helper}" Margin="0,8,0,0"/></Expander>
+            </StackPanel></ScrollViewer>
+            <Border Grid.Row="1" Background="{DynamicResource Surface}" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="0,14,0,16" Margin="0,8,8,0"><StackPanel>
+              <TextBlock Text="开关立即保存 · 仅当前配置目录 · 一次应用已开启的增强" Style="{StaticResource Helper}" Margin="0,0,0,8"/>
+              <Button x:Name="ApplyDesktopEnhancementsButton" Content="打开或重启 Codex 并应用" Click="ApplyDesktopEnhancementsClicked" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" IsEnabled="False"/>
+            </StackPanel></Border>
+          </Grid>
           <ScrollViewer x:Name="GatewayPage" Visibility="Collapsed" Style="{StaticResource PageScroll}" Padding="0,0,8,24">
             <StackPanel>
               <Border Style="{StaticResource SurfacePanel}" Margin="0,0,0,16"><StackPanel>
@@ -150,8 +189,8 @@
                 </ListBoxItem>
               </ListBox>
               <TextBlock x:Name="ConnectionModeHint" Style="{StaticResource Helper}" Margin="0,10,0,18" AutomationProperties.LiveSetting="Polite"/>
-              <TextBlock x:Name="DirectFastCompatibilityHint" Text="Codex 26.1106 原生桌面在 API Key 登录下隐藏 Fast／闪电入口。可在软件设置启用 Fast / Ultrafast 兼容并重启 Codex；是否已应用请查看兼容状态，实际档位仍取决于模型目录与服务。" Style="{StaticResource Helper}" Margin="0,0,0,8"/>
-              <Button Content="管理 Fast / Ultrafast 兼容" Click="SpeedSettingsClicked" HorizontalAlignment="Left" Style="{StaticResource QuietButton}" Margin="0,0,0,18"/>
+              <TextBlock x:Name="DirectFastCompatibilityHint" Text="已核对的 Codex 26.1106 在 API Key 登录下隐藏 Fast／闪电入口。速度兼容和旧聊天接续统一在“客户端增强”管理，需保持 Dock 运行；API Key 直连无需模型网关。" Style="{StaticResource Helper}" Margin="0,0,0,8"/>
+              <Button Content="管理客户端增强" Click="SpeedSettingsClicked" HorizontalAlignment="Left" Style="{StaticResource QuietButton}" Margin="0,0,0,18"/>
               <Border x:Name="LegacyPatPanel" Visibility="Collapsed" Background="{DynamicResource AccentSoft}" CornerRadius="8" Padding="16" Margin="0,0,0,20">
                 <StackPanel>
                   <TextBlock Text="旧 PAT 需要迁移" FontWeight="SemiBold"/>
@@ -171,25 +210,6 @@
                   <TextBlock Text="模型 API Key 在下方单独填写；官方令牌不会发送给模型服务。API Key 直连无需官方登录。" Style="{StaticResource Helper}" Margin="0,7,0,0"/>
                 </StackPanel>
               </Border>
-              <Grid Style="{StaticResource FormRow}">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="120" />
-                  <ColumnDefinition />
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="服务商" Style="{StaticResource FieldLabel}" />
-                <ComboBox x:Name="ProviderBox" Grid.Column="1" SelectedIndex="0" SelectionChanged="ServiceProviderChanged" AutomationProperties.Name="服务商">
-                  <ComboBoxItem Content="自定义服务" />
-                  <ComboBoxItem Content="Krill" />
-                </ComboBox>
-              </Grid>
-              <Grid x:Name="LinePresetRow" Visibility="Collapsed" Style="{StaticResource FormRow}">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="120" />
-                  <ColumnDefinition />
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="线路" Style="{StaticResource FieldLabel}" />
-                <ComboBox x:Name="LinePresetBox" Grid.Column="1" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="LinePresetChanged" AutomationProperties.Name="线路" />
-              </Grid>
               <Grid Style="{StaticResource FormRow}">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="120" />
@@ -280,7 +300,6 @@
                 </StackPanel>
               </Expander>
               <Expander x:Name="ConnectionHelp" Header="了解连接设置" Margin="0,8,0,0" />
-              <Button x:Name="ServiceTemplateButton" Visibility="Collapsed" Content="查看相关模板" Click="TemplatesClicked" Style="{StaticResource QuietButton}" HorizontalAlignment="Left" Margin="0,12,0,0" />
               <TextBlock x:Name="ConnectionError" Foreground="{DynamicResource Error}" FontSize="12" Margin="0,14,0,0" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite" />
             </StackPanel></Border>
           </ScrollViewer>
@@ -308,15 +327,6 @@
                 <Button Content="GitHub 发布页" Click="ReleasePageClicked" Style="{StaticResource QuietButton}" Margin="0,0,0,8"/>
               </WrapPanel>
               <TextBlock x:Name="UpdateStatusText" Text="从 GitHub 检查正式版本，下载后校验安装器。" Style="{StaticResource Helper}" AutomationProperties.LiveSetting="Polite"/>
-              <StackPanel x:Name="SpeedCompatibilityCard">
-                <TextBlock Text="桌面速度兼容" FontWeight="SemiBold" Margin="0,12,0,8"/>
-                <CheckBox x:Name="SpeedCompatibilityBox" Content="启用纯 API 的速度档位兼容（当前配置目录）" Checked="SpeedCompatibilityChanged" Unchecked="SpeedCompatibilityChanged"/>
-                <TextBlock Text="API Key 桌面隐藏速度入口时，在此应用兼容。需保持 Dock 运行，可收起到托盘。可用档位仍以模型目录和服务为准。" Style="{StaticResource Helper}" Margin="0,8,0,0"/>
-                <Expander Header="兼容方式与退出行为" Margin="0,6,0,0"><TextBlock Text="仅通过本机调试连接处理界面模块，不改安装文件。关闭开关或退出 Dock 后停用；重开 Dock 时需再次应用。" Style="{StaticResource Helper}" Margin="0,8,0,0"/></Expander>
-                <TextBlock Text="兼容状态" FontWeight="SemiBold" Margin="0,12,0,0"/>
-                <TextBlock x:Name="SpeedCompatibilityStatus" Text="已关闭。" Style="{StaticResource Helper}" Margin="0,4,0,0" AutomationProperties.LiveSetting="Polite"/>
-                <Button x:Name="ApplySpeedCompatibilityButton" Content="打开或重启 Codex" Click="ApplySpeedCompatibilityClicked" HorizontalAlignment="Left" Margin="0,12,0,0" IsEnabled="False"/>
-              </StackPanel>
               <Border Height="1" Background="{DynamicResource Line}" Margin="0,22,0,20"/>
               <TextBlock Text="启动" Style="{StaticResource SectionTitle}" Margin="0,0,0,12"/>
               <CheckBox x:Name="AutoStartBox" Content="登录 Windows 后启动 Dock（当前配置目录）" Checked="AutoStartChanged" Unchecked="AutoStartChanged"/>
