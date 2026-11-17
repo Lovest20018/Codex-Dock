@@ -40,6 +40,9 @@ internal interface ICodexDesktopPlatform
     IReadOnlyList<CodexDesktopProcess> Running();
     IReadOnlyList<string> Installed();
     void Close(CodexDesktopProcess process);
+    Task CloseAsync(CodexDesktopProcess process, CancellationToken cancellation)
+    { cancellation.ThrowIfCancellationRequested(); Close(process); return Task.CompletedTask; }
+    Task CloseAsync(CodexDesktopProcess process, CancellationToken cancellation, string home) => CloseAsync(process, cancellation);
     void ForceClose(CodexDesktopProcess process) => throw new NotSupportedException("该桌面启动方式不支持结束实例。");
     void PrepareStart(ProcessStartInfo start) { }
     void Start(ProcessStartInfo start);
@@ -179,7 +182,7 @@ public sealed class CodexDesktop
             try
             {
                 // Only the UI's separate, explicit confirmation can select this path.
-                if (forceConfirmed) platform.ForceClose(root); else platform.Close(root);
+                if (forceConfirmed) platform.ForceClose(root); else await platform.CloseAsync(root, cancellation, home).ConfigureAwait(false);
             }
             catch (Exception error) when (error is InvalidOperationException or IOException)
             { throw new CodexDesktopCloseException(error.Message, error); }
@@ -189,7 +192,7 @@ public sealed class CodexDesktop
         {
             if (timer.Elapsed >= exitTimeout)
                 throw new CodexDesktopExitTimeoutException("所选 Codex 尚未全部退出（主进程：" + string.Join("、", current.Where(process => target.ExitRoots.Any(root => SameProcess(root, process))).Select(process => process.Id)) +
-                    "），可能已取消退出或仍驻留托盘。本次未打开新实例；请完成退出，或确认结束本次所选实例后重试。");
+                    "），可能正在等待保存或已取消退出。本次未打开新实例；请完成退出，或确认结束本次所选实例后重试。");
             await Task.Delay(100, cancellation).ConfigureAwait(false);
         }
         cancellation.ThrowIfCancellationRequested(); validateSaved?.Invoke();
@@ -336,13 +339,27 @@ internal sealed class WindowsCodexDesktopPlatform(string? fixtureExecutable = nu
                 yield return Path.GetFullPath(Path.Combine(root, folder, "Codex.exe"));
     }
 
-    public void Close(CodexDesktopProcess expected)
+    public void Close(CodexDesktopProcess expected) => CloseAsync(expected, CancellationToken.None).GetAwaiter().GetResult();
+
+    public Task CloseAsync(CodexDesktopProcess expected, CancellationToken cancellation) => CloseAsync(expected, cancellation, null);
+
+    public async Task CloseAsync(CodexDesktopProcess expected, CancellationToken cancellation, string? home)
     {
+        cancellation.ThrowIfCancellationRequested();
         if (!Running().Any(process => CodexDesktop.SameProcess(process, expected))) throw new InvalidOperationException("Codex 桌面实例已变化，请重新确认。");
         using var process = Process.GetProcessById(expected.Id);
         _ = process.Handle;
         if (process.StartTime.ToFileTimeUtc() != expected.Started || !CodexDesktop.SamePath(process.MainModule!.FileName, expected.Executable))
             throw new InvalidOperationException("Codex 进程身份已改变，已取消退出请求。");
+        if (fixtureExecutable is null)
+        {
+            // Electron's window close hides Codex to its tray. Use the bundled
+            // native Quit command, which also preserves Codex's save prompts.
+            await RestoreHiddenForQuitAsync(process, expected, home, cancellation).ConfigureAwait(false);
+            await new CodexDesktopQuitClient().RequestAsync(expected, cancellation).ConfigureAwait(false);
+            return;
+        }
+        // The native unit-test fixture is a plain Win32 window without a menu.
         var window = process.MainWindowHandle;
         if (window == IntPtr.Zero)
             throw new InvalidOperationException("Codex 没有可关闭的主窗口。请先在 Codex 托盘或菜单中完成退出，再重试。");
@@ -350,6 +367,59 @@ internal sealed class WindowsCodexDesktopPlatform(string? fixtureExecutable = nu
         GetWindowThreadProcessId(window, out var owner);
         if (owner != expected.Id || !PostMessage(window, 0x0010, IntPtr.Zero, IntPtr.Zero))
             throw new IOException("无法请求 Codex 正常退出，请在 Codex 菜单中完成退出后重试。");
+    }
+
+    private async Task RestoreHiddenForQuitAsync(Process process, CodexDesktopProcess expected, string? home, CancellationToken cancellation)
+    {
+        var candidates = new List<IntPtr>();
+        EnumWindows((window, _) =>
+        {
+            GetWindowThreadProcessId(window, out var owner);
+            if (owner != expected.Id || GetWindow(window, 4) != IntPtr.Zero) return true;
+            var name = new StringBuilder(128); GetClassName(window, name, name.Capacity);
+            var title = new StringBuilder(512); GetWindowText(window, title, title.Capacity);
+            var style = IntPtr.Size == 8 ? GetWindowLongPtr(window, -20).ToInt64() : GetWindowLong(window, -20);
+            var cloaked = DwmGetWindowAttribute(window, 14, out var hidden, 4) == 0 && hidden != 0;
+            if ((style & 0x80) == 0 && !cloaked && name.ToString() == "Chrome_WidgetWin_1" && title.Length > 0 &&
+                !title.ToString().StartsWith("DevTools", StringComparison.Ordinal) &&
+                !title.ToString().StartsWith("Developer Tools", StringComparison.Ordinal) &&
+                !title.ToString().StartsWith("开发者工具", StringComparison.Ordinal)) candidates.Add(window);
+            return true;
+        }, IntPtr.Zero);
+        if (candidates.Count != 1) return; // Report ambiguity without changing any window.
+        var selected = candidates[0];
+        if (IsWindowVisible(selected) && !IsIconic(selected) || !IsWindowEnabled(selected)) return;
+        GetWindowThreadProcessId(selected, out var actual);
+        if (actual != expected.Id || process.HasExited || process.StartTime.ToFileTimeUtc() != expected.Started) return;
+        if (home is null || expected.Arguments.UserDataDirectory is not { } profile || !Directory.Exists(profile))
+            throw new IOException("请先从 Codex 托盘打开所选实例，再点击重启；尚未提交退出命令。");
+        // Native ShowWindow cannot restore Electron's internal hidden state.
+        // Its profile-specific single-instance activation asks that same owner
+        // to show itself, without navigating a chat or creating another profile.
+        var before = CodexDesktop.Group(Running());
+        if (before.Any(target => target.MainProcess is { } root && !CodexDesktop.SameProcess(root, expected) &&
+                (target.UserDataDirectory is null || CodexDesktop.SameDirectory(target.UserDataDirectory, profile))))
+            throw new IOException("无法独立唤回所选 Codex 资料目录，请从托盘打开后重试。");
+        var start = CodexDesktop.CreateStartInfo(expected.Executable, home, null);
+        start.Environment["CODEX_ELECTRON_USER_DATA_PATH"] = profile;
+        start.ArgumentList.Add("--user-data-dir=" + profile);
+        PrepareStart(start);
+        cancellation.ThrowIfCancellationRequested();
+        if (process.HasExited || process.StartTime.ToFileTimeUtc() != expected.Started)
+            throw new IOException("Codex 实例在唤回前已变化，请重新核对。");
+        try
+        {
+            using var activation = Process.Start(start) ?? throw new IOException("无法唤回所选 Codex，请从托盘打开后重试。");
+            try { await activation.WaitForExitAsync(cancellation).WaitAsync(TimeSpan.FromSeconds(5), cancellation).ConfigureAwait(false); }
+            catch (TimeoutException error) { throw new IOException("尚未确认所选 Codex 已唤回，请从托盘打开后重试；尚未提交退出命令。", error); }
+        }
+        catch (Win32Exception error) { throw new IOException("无法唤回所选 Codex，请从托盘打开后重试。", error); }
+        var current = CodexDesktop.Group(Running());
+        if (!current.Any(target => target.MainProcess is { } root && CodexDesktop.SameProcess(root, expected) &&
+                target.UserDataDirectory is { } directory && CodexDesktop.SameDirectory(directory, profile)) ||
+            current.Any(target => target.MainProcess is { } root && !before.Any(old => old.MainProcess is { } prior && CodexDesktop.SameProcess(prior, root))))
+            throw new IOException("Codex 实例在唤回时已变化，尚未提交退出命令，请重新核对。");
+        await Task.Delay(250, cancellation).ConfigureAwait(false);
     }
 
     public bool Activate(CodexDesktopProcess expected)
@@ -442,6 +512,16 @@ internal sealed class WindowsCodexDesktopPlatform(string? fixtureExecutable = nu
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern int GetPackagePathByFullName(string name, ref uint length, StringBuilder path);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsWindowEnabled(IntPtr window);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+    private delegate bool EnumWindow(IntPtr window, IntPtr data);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool EnumWindows(EnumWindow callback, IntPtr data);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool IsIconic(IntPtr window);
+    [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr window, uint command);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr window, StringBuilder value, int size);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr window, StringBuilder value, int size);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr(IntPtr window, int index);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] private static extern int GetWindowLong(IntPtr window, int index);
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr window, uint attribute, out uint value, uint size);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool PostMessage(IntPtr window, uint message, IntPtr wparam, IntPtr lparam);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool ShowWindowAsync(IntPtr window, int command);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool SetForegroundWindow(IntPtr window);

@@ -1,4 +1,4 @@
-param([string]$Version = '0.19.0')
+param([string]$Version = '0.19.1')
 $ErrorActionPreference = 'Stop'
 $taskRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $taskArtifacts = Join-Path $taskRoot 'artifacts'
@@ -36,6 +36,7 @@ try {
     Stop-InstallerMobileFixture $taskOtherWorker
 }
 $taskExe = Join-Path $taskInstall 'CodexDock.exe'
+if (-not (Test-Path -LiteralPath (Join-Path $taskInstall 'mobile\runtime\client-helpers\codex-quit-helper.exe'))) { throw 'The installed native Codex Quit helper is missing.' }
 foreach ($taskName in $taskLegacyNames) { if (Test-Path -LiteralPath (Join-Path $taskInstall $taskName)) { throw "Legacy application file remains after upgrade: $taskName" } }
 if (-not (Test-Path -LiteralPath $taskSentinel)) { throw 'Upgrade removed a user-owned file.' }
 $taskExpectedHash = (Get-FileHash -LiteralPath (Join-Path $taskRelease 'CodexDock.exe') -Algorithm SHA256).Hash

@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using CodexConfig.Core;
 
@@ -6,7 +8,7 @@ using CodexConfig.Core;
 // the automatic suite and never selects or closes an existing user's instance.
 internal static class InstalledDesktopAcceptance
 {
-    internal static async Task RunAsync(string root)
+    internal static async Task RunAsync(string root, bool inspect = false)
     {
         root = Path.GetFullPath(root);
         var allowed = Path.GetFullPath("artifacts") + Path.DirectorySeparatorChar;
@@ -15,7 +17,22 @@ internal static class InstalledDesktopAcceptance
         Directory.CreateDirectory(root);
         var home = Path.Combine(root, "codex-home"); var profile = Path.Combine(root, "electron-profile");
         Directory.CreateDirectory(home); Directory.CreateDirectory(profile);
-        File.WriteAllText(Path.Combine(home, "config.toml"), "# Isolated installed desktop acceptance; no account or tasks\nmodel='gpt-6.1-sol'\n");
+        File.WriteAllText(Path.Combine(home, "config.toml"), "# Isolated desktop fixture; all model traffic stays on loopback\nmodel='fixture-model'\nmodel_provider='desktop_fixture'\n[model_providers.desktop_fixture]\nname='Desktop acceptance fixture'\nbase_url='http://127.0.0.1:9/v1'\nwire_api='responses'\nrequires_openai_auth=true\n");
+        var auth = JsonSerializer.Serialize(new { OPENAI_API_KEY = "fixture-key-do-not-send" });
+        File.WriteAllText(Path.Combine(home, "auth.json"), auth);
+        // A new profile otherwise stops in first-run onboarding, which has no
+        // application menu. Seed only the flags observed after skipping it in
+        // this empty fixture; never copy another profile or import its data.
+        File.WriteAllText(Path.Combine(home, ".codex-global-state.json"), JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["electron-persisted-atom-state"] = new Dictionary<string, object>
+            { ["electron:onboarding-projectless-completed"] = true, ["last_completed_onboarding"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds() },
+            ["electron-owner-atoms:signed-out"] = new Dictionary<string, object>
+            {
+                ["electron:onboarding-welcome-v2-role-state"] = new
+                { completedConversationalOnboarding = true, conversationalOnboardingSkipped = true, roles = Array.Empty<string>(), personalizedSuggestionsEnabled = false, workMode = "coding" }
+            }
+        }));
         var native = new WindowsCodexDesktopPlatform(); var before = native.Running();
         var executable = native.Installed().Single();
         var platform = new ScopedPlatform(native, before, home, profile);
@@ -30,46 +47,77 @@ internal static class InstalledDesktopAcceptance
                 if (!native.Running().Any(current => CodexDesktop.SameProcess(current, existing)))
                     throw new IOException("A pre-existing desktop changed; the acceptance run must stop.");
         }
+        async Task InspectAsync(CodexDesktopProcess process, string stage)
+        {
+            if (!inspect) return;
+            File.WriteAllText(Path.Combine(root, "fixture" + stage + ".json"), JsonSerializer.Serialize(new { MainProcess = process, profile }));
+            var inspection = Stopwatch.StartNew();
+            while (!File.Exists(Path.Combine(root, "continue" + stage)))
+            { if (inspection.Elapsed > TimeSpan.FromMinutes(15)) throw new TimeoutException("Isolated inspection timed out"); await Task.Delay(200); }
+        }
         try
         {
             var first = await desktop.RestartAsync(target, home, null, Validate);
             openedIds.Add(first.MainProcess!.Id);
             Check(first.IsRunning && first.UserDataDirectory == profile && before.All(old => !CodexDesktop.SameProcess(old, first.MainProcess)),
                 "The installed Store application opens a separate explicit profile and a temporary Codex home");
-            await Task.Delay(1500);
+            await WaitForWindowAsync(native, first.MainProcess);
+            await Task.Delay(10000); // Cold renderer startup is outside the user's restart request.
             Validate();
-            Check(Directory.EnumerateFileSystemEntries(profile).Any() && !File.Exists(Path.Combine(home, "auth.json")),
-                "The installed application initializes only the temporary profile without importing a signed-in account");
+            Check(Directory.EnumerateFileSystemEntries(profile).Any() && File.ReadAllText(Path.Combine(home, "auth.json")) == auth,
+                "The installed application uses only a fictional API credential and a loopback provider without importing an account");
+            await InspectAsync(first.MainProcess, "");
             // Use a fresh inventory carrying the actual process identities.
             var selected = desktop.FindTargets().Single(candidate => candidate.UserDataDirectory == profile);
-            CodexDesktopTarget next;
-            try { next = await desktop.RestartAsync(selected, home, null, Validate); }
-            catch (CodexDesktopExitTimeoutException)
-            {
-                Check(platform.Starts == 1, "Close-to-tray blocks normal restart and does not launch a duplicate installed desktop");
-                next = await desktop.RestartAsync(selected, home, null, Validate, forceConfirmed: true);
-            }
+            var next = await desktop.RestartAsync(selected, home, null, Validate);
             openedIds.Add(next.MainProcess!.Id);
-            Check(next.MainProcess.Id != first.MainProcess.Id && next.UserDataDirectory == profile && platform.Starts == 2,
-                "An explicitly confirmed restart of the isolated installed desktop returns a new verified root in the same profile");
+            Check(next.MainProcess.Id != first.MainProcess.Id && next.UserDataDirectory == profile && platform.Starts == 2 && platform.Forced == 0,
+                "Native Quit restarts the visible installed desktop in the same profile without ending its process");
+            var window = await WaitForWindowAsync(native, next.MainProcess);
+            await Task.Delay(10000); // Test an initialized app being closed to its tray.
+            await InspectAsync(next.MainProcess, "-next");
+            Validate(); platform.ValidateOwned(next.MainProcess);
+            if (!PostMessage(window, 0x0010, IntPtr.Zero, IntPtr.Zero)) throw new IOException("Could not close the isolated fixture to its tray.");
+            var hiding = Stopwatch.StartNew();
+            while (IsWindowVisible(window))
+            { if (hiding.Elapsed > TimeSpan.FromSeconds(10)) throw new IOException("The isolated fixture did not hide to its tray."); await Task.Delay(100); }
+            platform.ValidateOwned(next.MainProcess);
+            Check(true, "The isolated desktop remains running after its actual window closes to the tray");
+            await InspectAsync(next.MainProcess, "-tray");
+            selected = desktop.FindTargets().Single(candidate => candidate.UserDataDirectory == profile);
+            var fromTray = await desktop.RestartAsync(selected, home, null, Validate);
+            openedIds.Add(fromTray.MainProcess!.Id);
+            Check(fromTray.MainProcess.Id != next.MainProcess.Id && fromTray.UserDataDirectory == profile && platform.Starts == 3 && platform.Forced == 0,
+                "Native Quit restarts the tray-hidden installed desktop without force and without a duplicate profile");
+            await WaitForWindowAsync(native, fromTray.MainProcess);
+            await Task.Delay(15000);
             Validate(); Check(true, "Every pre-existing main desktop process retained its original identity through the restart");
+        }
+        catch when (inspect)
+        {
+            var current = desktop.FindTargets().SingleOrDefault(candidate => candidate.UserDataDirectory == profile);
+            if (current?.MainProcess is { } main) await InspectAsync(main, "-failure");
+            throw;
         }
         finally
         {
             // Only request normal close for a process whose parsed profile is ours.
             foreach (var owned in CodexDesktop.Group(native.Running()).Where(candidate => candidate.UserDataDirectory == profile))
-                if (owned.MainProcess is { } main) { try { platform.Close(main); } catch (InvalidOperationException) { } }
+                if (owned.MainProcess is { } main) { try { await platform.CloseAsync(main, CancellationToken.None); } catch (Exception error) when (error is InvalidOperationException or IOException) { } }
             var deadline = Stopwatch.StartNew();
             while (deadline.Elapsed < TimeSpan.FromSeconds(25) && native.Running().Any(process => process.Arguments.UserDataDirectory == profile))
                 await Task.Delay(100);
             if (native.Running().Any(process => process.Arguments.UserDataDirectory == profile))
-                await CleanupAsync(root);
+            { platform.Forced++; await CleanupAsync(root); }
         }
         Validate(); Check(true, "The temporary installed desktop is cleaned up and leaves existing desktops running");
+        Check(platform.Forced == 0, "Normal restart and final cleanup never request the force-exit path");
         await File.WriteAllTextAsync(Path.Combine(root, "report.json"), JsonSerializer.Serialize(new
         {
-            status = "PASS", scope = "Installed desktop open and confirmed restart in an isolated profile; close-to-tray is reported as blocked and force confirmation is tested only on this empty fixture; no login, task, message or enhancement injection",
+            status = "PASS", scope = "Installed desktop visible and tray-hidden normal Quit/restart in an isolated empty profile; no force-exit, login, task, message or enhancement injection",
             executable, home, profile, openedIds, tests = checks,
+            forceExitRequests = platform.Forced,
+            quitHelperSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "mobile", "runtime", "client-helpers", "codex-quit-helper.exe")))),
             preservedMainProcesses = before.Where(process => process.Arguments.Role == DesktopProcessRole.Main).Select(process => new { process.Id, process.Started }),
             coreSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(typeof(CodexDesktop).Assembly.Location)))
         }, new JsonSerializerOptions { WriteIndented = true }));
@@ -90,23 +138,27 @@ internal static class InstalledDesktopAcceptance
 
     private sealed class ScopedPlatform(WindowsCodexDesktopPlatform native, IReadOnlyList<CodexDesktopProcess> protectedProcesses, string home, string profile) : ICodexDesktopPlatform
     {
-        internal int Starts;
+        internal int Starts, Forced;
         public IReadOnlyList<CodexDesktopProcess> Running() => native.Running();
         public IReadOnlyList<string> Installed() => native.Installed();
         public void PrepareStart(ProcessStartInfo start) => native.PrepareStart(start);
-        public void Close(CodexDesktopProcess process)
+        internal void ValidateOwned(CodexDesktopProcess process)
         {
             if (protectedProcesses.Any(existing => CodexDesktop.SameProcess(existing, process)) ||
                 !native.Running().Any(current => CodexDesktop.SameProcess(current, process) && current.Arguments.UserDataDirectory == profile))
                 throw new IOException("Refused to close an unowned desktop process.");
-            native.Close(process);
         }
+        public void Close(CodexDesktopProcess process) => CloseAsync(process, CancellationToken.None).GetAwaiter().GetResult();
+        public Task CloseAsync(CodexDesktopProcess process, CancellationToken cancellation)
+        { ValidateOwned(process); return native.CloseAsync(process, cancellation, home); }
+        public Task CloseAsync(CodexDesktopProcess process, CancellationToken cancellation, string savedHome)
+        { if (savedHome != home) throw new IOException("Refused another Codex home"); return CloseAsync(process, cancellation); }
         public void ForceClose(CodexDesktopProcess process)
         {
             if (protectedProcesses.Any(existing => CodexDesktop.SameProcess(existing, process)) ||
                 !native.Running().Any(current => CodexDesktop.SameProcess(current, process) && current.Arguments.UserDataDirectory == profile))
                 throw new IOException("Refused to end an unowned desktop process.");
-            native.ForceClose(process);
+            native.ForceClose(process); Forced++;
         }
         public void Start(ProcessStartInfo start)
         {
@@ -114,9 +166,37 @@ internal static class InstalledDesktopAcceptance
                 start.ArgumentList.Count != 1 || start.ArgumentList[0] != "--user-data-dir=" + profile)
                 throw new IOException("Refused a launch outside the isolated profile.");
             foreach (var name in start.Environment.Keys.Where(name => name.EndsWith("_KEY", StringComparison.OrdinalIgnoreCase) ||
-                name.EndsWith("_TOKEN", StringComparison.OrdinalIgnoreCase) || name is "OPENAI_BASE_URL" or "CODEX_AUTHAPI_BASE_URL" or "NODE_OPTIONS" or "ELECTRON_RUN_AS_NODE").ToArray())
+                name.EndsWith("_TOKEN", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("CODEX_", StringComparison.OrdinalIgnoreCase) && name is not "CODEX_HOME" and not "CODEX_ELECTRON_USER_DATA_PATH" ||
+                name is "OPENAI_BASE_URL" or "NODE_OPTIONS" or "ELECTRON_RUN_AS_NODE").ToArray())
                 start.Environment.Remove(name);
             native.Start(start); Starts++;
         }
     }
+
+    private static async Task<IntPtr> WaitForWindowAsync(WindowsCodexDesktopPlatform native, CodexDesktopProcess expected)
+    {
+        var timer = Stopwatch.StartNew();
+        while (timer.Elapsed < TimeSpan.FromSeconds(30))
+        {
+            if (!native.Running().Any(process => CodexDesktop.SameProcess(process, expected))) throw new IOException("The isolated desktop changed before the tray test.");
+            var windows = new List<IntPtr>();
+            EnumWindows((window, _) =>
+            {
+                GetWindowThreadProcessId(window, out var pid);
+                if (pid == expected.Id && IsWindowVisible(window))
+                { var name = new StringBuilder(128); GetClassName(window, name, name.Capacity); if (name.ToString() == "Chrome_WidgetWin_1") windows.Add(window); }
+                return true;
+            }, IntPtr.Zero);
+            if (windows.Count == 1) return windows[0];
+            await Task.Delay(100);
+        }
+        throw new TimeoutException("The isolated desktop main window did not appear.");
+    }
+    private delegate bool EnumWindow(IntPtr window, IntPtr data);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindow callback, IntPtr data);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr window, StringBuilder name, int size);
+    [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr window, uint message, IntPtr wparam, IntPtr lparam);
 }

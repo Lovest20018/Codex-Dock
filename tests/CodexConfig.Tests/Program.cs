@@ -15,11 +15,15 @@ catch (Exception error)
 
 static async Task<int> RunAsync(string[] args)
 {
+if (args is ["--desktop-quit-fixture", var quitScenario, var quitRoot, .. var quitArguments])
+    return await DesktopQuitTests.RunFixtureAsync(quitScenario, quitRoot, quitArguments);
 if (ExperimentalFeatureTests.IsFixture(args)) return await ExperimentalFeatureTests.RunFixtureAsync();
 if (args is ["--native-feature-read", var nativeFeatureRoot, var nativeFeatureExecutable])
 { await ExperimentalFeatureTests.ReadNativeAsync(nativeFeatureRoot, nativeFeatureExecutable); return 0; }
 if (args is ["--installed-desktop-acceptance", var installedDesktopRoot])
 { await InstalledDesktopAcceptance.RunAsync(installedDesktopRoot); return 0; }
+if (args is ["--installed-desktop-inspect", var inspectionRoot])
+{ await InstalledDesktopAcceptance.RunAsync(inspectionRoot, inspect: true); return 0; }
 if (args is ["--cleanup-installed-desktop-acceptance", var installedCleanupRoot])
 { await InstalledDesktopAcceptance.CleanupAsync(installedCleanupRoot); return 0; }
 if (args is ["--model-bridge", var workerHome]) return await BridgeProcess.RunAsync(workerHome);
@@ -29,7 +33,7 @@ if (args is ["--desktop-unit", var desktopRoot])
 {
     desktopRoot = Path.GetFullPath(desktopRoot);
     var desktopTests = new List<(string Name, Func<Task> Run)>(); Directory.CreateDirectory(desktopRoot);
-    DesktopRestartTests.Register(desktopTests, desktopRoot); DesktopInstanceTests.Register(desktopTests, desktopRoot);
+    DesktopRestartTests.Register(desktopTests, desktopRoot); DesktopInstanceTests.Register(desktopTests, desktopRoot); DesktopQuitTests.Register(desktopTests, desktopRoot);
     foreach (var test in desktopTests) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
 }
 if (args is ["--desktop-targets"])
@@ -749,6 +753,7 @@ ApiKeyMigrationTests.Register(tests, runRoot);
 ConfigurationOptimizationTests.Register(tests, runRoot);
 SuperbaReuseTests.Register(tests, runRoot);
 DesktopRestartTests.Register(tests, runRoot);
+DesktopQuitTests.Register(tests, runRoot);
 DesktopSpeedTests.Register(tests, runRoot);
 ManagedCatalogTests.Register(tests, runRoot);
 CodexApplyTests.Register(tests, runRoot);

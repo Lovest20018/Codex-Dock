@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.19.0',
+    [string]$Version = '0.19.1',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
@@ -32,6 +32,9 @@ foreach ($taskResource in @('CodexDock.pri','App.xbf','MainWindow.xbf','hostfxr.
     if (-not (Test-Path -LiteralPath (Join-Path $taskRelease $taskResource))) { throw "Missing self-contained WinUI file: $taskResource" }
 }
 if (-not (Test-Path -LiteralPath (Join-Path $taskRelease 'mobile\CodexDock.Mobile.exe'))) { throw 'Missing self-contained mobile worker.' }
+if (-not (Test-Path -LiteralPath (Join-Path $taskRelease 'mobile\runtime\client-helpers\codex-quit-helper.exe'))) { throw 'Missing native Codex Quit helper required for desktop restart.' }
+& (Join-Path $taskRelease 'mobile\runtime\client-helpers\codex-quit-helper.exe') --self-check
+if ($LASTEXITCODE -ne 0) { throw 'The bundled native Codex Quit helper self-check failed.' }
 if (-not (Test-Path -LiteralPath $InnoCompiler)) { throw 'Inno Setup 6 compiler not found.' }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'README.md'),(Join-Path $taskRoot 'LICENSE'),(Join-Path $taskRoot 'THIRD-PARTY-NOTICES.md') -Destination $taskRelease -Force
 foreach ($taskFolder in @('docs','third_party','brand')) { New-Item -ItemType Directory -Path (Join-Path $taskRelease $taskFolder) -Force | Out-Null }
@@ -96,6 +99,7 @@ $taskExeHash = (Get-FileHash -LiteralPath $taskExe -Algorithm SHA256).Hash.ToLow
     createdAtUtc=[DateTimeOffset]::UtcNow.ToString('o'); sourceCommit=$taskCommit; executableSha256=$taskExeHash; applicationAssemblySha256=$taskAssemblyHash
     installer='Inno Setup, per-user'; settings='Codex configuration shares a draft; mobile access saves independently'
     mobileWorkerSha256=(Get-FileHash -LiteralPath (Join-Path $taskRelease 'mobile\CodexDock.Mobile.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+    desktopQuitHelperSha256=(Get-FileHash -LiteralPath (Join-Path $taskRelease 'mobile\runtime\client-helpers\codex-quit-helper.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
     mobileUpstreamCommit='0721aa7dafa6177751ba7e568e0ad0efee05655b'
     configSchema=(Get-Content -LiteralPath (Join-Path $taskRoot 'config\config-schema.json') -Raw -Encoding UTF8 | ConvertFrom-Json).schema_version
     configSchemaSha256=(Get-FileHash -LiteralPath (Join-Path $taskRoot 'config\config-schema.json') -Algorithm SHA256).Hash.ToLowerInvariant()
