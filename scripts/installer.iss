@@ -1,8 +1,8 @@
 #ifndef AppVersion
-  #define AppVersion "0.19.3"
+  #define AppVersion "0.19.4"
 #endif
 #ifndef PayloadDir
-  #define PayloadDir "..\artifacts\CodexDock-0.19.3-win-x64"
+  #define PayloadDir "..\artifacts\CodexDock-0.19.4-win-x64"
 #endif
 
 [Setup]
@@ -50,7 +50,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "快捷方式："; Flags: unchecked; Check: ShouldRegister
 
 [Files]
-Source: "installer-stop-mobile.ps1"; Flags: dontcopy
+Source: "installer-stop-dock.ps1"; Flags: dontcopy
+Source: "installer-processes.cs"; Flags: dontcopy
 Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
@@ -92,16 +93,24 @@ function PrepareToInstall(var NeedsRestart: Boolean): String;
 var ExitCode: Integer; Arguments: String;
 begin
   Result := '';
-  ExtractTemporaryFile('installer-stop-mobile.ps1');
-  Arguments := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\installer-stop-mobile.ps1') +
-    '" -InstallDir "' + ExpandConstant('{app}') + '"';
+  ExtractTemporaryFile('installer-stop-dock.ps1');
+  ExtractTemporaryFile('installer-processes.cs');
+  Arguments := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\installer-stop-dock.ps1') +
+    '" -InstallDir "' + AddBackslash(ExpandConstant('{app}')) + '."';
   if IsVerificationInstall and (ExpandConstant('{param:MOBILESTATEROOT|}') <> '') then
-    Arguments := Arguments + ' -StateRoot "' + ExpandConstant('{param:MOBILESTATEROOT|}') + '"';
+    Arguments := Arguments + ' -StateRoot "' + AddBackslash(ExpandConstant('{param:MOBILESTATEROOT|}')) + '."';
   if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
     Arguments, '', SW_HIDE, ewWaitUntilTerminated, ExitCode) then
     ExitCode := -1;
-  if ExitCode <> 0 then
-    Result := '手机网关尚未完全退出。请在旧版 Dock 的“手机连接”页点击“停止”，退出 Dock 后重试安装。';
+  Log('Codex Dock shutdown check returned ' + IntToStr(ExitCode));
+  case ExitCode of
+    0: Result := '';
+    10: Result := 'Codex Dock 尚未退出。请处理 Dock 窗口里的待确认操作，或在任务栏托盘右键选择“退出 Codex Dock”，然后重试安装。';
+    11: Result := '模型网关尚未退出。请打开 Dock，在“运行与增强 → 模型网关”停止服务，再退出 Dock 并重试。';
+    12: Result := '手机服务尚未退出。请打开 Dock，在“手机访问 → 服务设置”停止服务，再退出 Dock 并重试。';
+  else
+    Result := '无法确认安装目录中的 Dock 已退出。请从托盘选择“停止网关并退出”，然后重试安装。';
+  end;
 end;
 
 function StartupTargetsThisInstall(const Command: String): Boolean;

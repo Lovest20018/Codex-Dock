@@ -10,14 +10,18 @@ internal sealed class NativeTrayIcon : IDisposable
     private readonly IntPtr window, icon;
     private readonly Subclass callback;
     private readonly Action restore, enhancements, gateways, stopAndExit, exit, unavailable;
-    private readonly uint taskbarCreated;
+    private readonly Func<bool> installerExit;
+    private readonly uint taskbarCreated, setupExitMessage;
     private bool disposed;
     internal bool IsAvailable { get; private set; }
 
-    internal NativeTrayIcon(IntPtr window, string iconPath, Action restore, Action enhancements, Action gateways, Action stopAndExit, Action exit, Action unavailable)
+    internal NativeTrayIcon(IntPtr window, string iconPath, Action restore, Action enhancements, Action gateways, Action stopAndExit,
+        Action exit, Action unavailable, Func<bool> installerExit)
     {
         this.window = window; this.restore = restore; this.enhancements = enhancements; this.gateways = gateways; this.stopAndExit = stopAndExit; this.exit = exit; this.unavailable = unavailable;
+        this.installerExit = installerExit;
         taskbarCreated = RegisterWindowMessage("TaskbarCreated");
+        setupExitMessage = RegisterWindowMessage("CodexDock.ExitForSetup.1");
         icon = LoadImage(IntPtr.Zero, iconPath, 1, 0, 0, 0x10 | 0x40);
         if (icon == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error(), "无法载入托盘图标。");
         callback = WindowMessage;
@@ -32,6 +36,8 @@ internal sealed class NativeTrayIcon : IDisposable
         {
             if (!disposed && message == taskbarCreated)
             { IsAvailable = Notify(0); if (!IsAvailable) unavailable(); }
+            if (!disposed && setupExitMessage != 0 && message == setupExitMessage)
+                return installerExit() ? new IntPtr(1) : IntPtr.Zero;
             if (!disposed && message == CallbackMessage)
             {
                 var mouse = (uint)(long)lparam;

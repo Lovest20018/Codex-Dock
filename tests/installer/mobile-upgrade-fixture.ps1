@@ -1,7 +1,9 @@
 function New-InstallerMobileFixture([string]$ApplicationDirectory, [string]$StateRoot) {
     $taskWorkerSource = Join-Path $taskRoot 'artifacts\mobile-worker\CodexDock.Mobile'
     New-Item -ItemType Directory -Path $ApplicationDirectory -Force | Out-Null
-    Copy-Item -LiteralPath $taskWorkerSource -Destination (Join-Path $ApplicationDirectory 'mobile') -Recurse -Force
+    if (-not (Test-Path -LiteralPath (Join-Path $ApplicationDirectory 'mobile\CodexDock.Mobile.exe'))) {
+        Copy-Item -LiteralPath $taskWorkerSource -Destination (Join-Path $ApplicationDirectory 'mobile') -Recurse -Force
+    }
     $taskFixtureHome = Join-Path $ApplicationDirectory 'fixture-home'
     New-Item -ItemType Directory -Path $taskFixtureHome -Force | Out-Null
     [IO.File]::WriteAllText((Join-Path $taskFixtureHome 'config.toml'), '# Isolated installer fixture; no external requests.')

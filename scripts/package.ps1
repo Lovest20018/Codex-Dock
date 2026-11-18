@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.19.3',
+    [string]$Version = '0.19.4',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
@@ -79,6 +79,7 @@ Copy-Item -LiteralPath $taskUiReport -Destination (Join-Path $taskRelease 'verif
     "Codex Dock $Version / Windows x64"
     ''
     '运行 Setup EXE 安装；也可解压便携包并打开 CodexDock.exe。无需安装 .NET。'
+    '覆盖安装到原目录时，安装器会请求 Dock 正常退出并停止该安装目录的网关。若出现未保存修改的提示，请在 Dock 中处理后再继续。'
     '工作台、Codex 配置、运行与增强、手机访问、诊断与恢复在同一窗口。保存后明确应用到 Codex，再新建聊天核对。'
     'Ctrl+S 查看并确认修改；Ctrl+F 搜索；Esc 返回调整。'
     '模型目录获取为可选操作，不会改变所选认证方式。'

@@ -29,7 +29,8 @@ public sealed partial class MainWindow
                 () => DispatcherQueue.TryEnqueue(() => { RestoreWindow(); NavigateTo(GatewaysNav); }),
                 () => DispatcherQueue.TryEnqueue(async () => { RestoreWindow(); await StopGatewaysAndExitAsync(); }),
                 () => DispatcherQueue.TryEnqueue(async () => { RestoreWindow(); exitRequested = true; await ExitWindowAsync(); }),
-                () => DispatcherQueue.TryEnqueue(() => { RestoreWindow(); backgroundStatus = "托盘暂不可用，请保持窗口运行；关闭窗口将退出程序。"; RefreshView(); }));
+                () => DispatcherQueue.TryEnqueue(() => { RestoreWindow(); backgroundStatus = "托盘暂不可用，请保持窗口运行；关闭窗口将退出程序。"; RefreshView(); }),
+                () => DispatcherQueue.TryEnqueue(async () => await RequestInstallerExitAsync()));
         }
         catch (Exception error)
         { backgroundStatus = "托盘未能创建：" + error.Message + " 关闭窗口将退出程序。"; }
@@ -55,6 +56,20 @@ public sealed partial class MainWindow
         if (await StopBeforeCloseAsync())
         { runtimeTimer.Stop(); lifetime.Cancel(); tray?.Dispose(); tray = null; allowClose = true; Close(); }
         else exitRequested = false;
+    }
+
+    private async Task RequestInstallerExitAsync()
+    {
+        if (closing) return;
+        if (ApplicationBusy || dialogOpen || closePrompt || enhancedLaunchBusy)
+        {
+            RestoreWindow();
+            SetShellError("安装正在等待 Dock 退出", "请先完成或取消当前操作，再从托盘退出 Codex Dock。");
+            return;
+        }
+        if (connectionDraft.HasDraft || profileDraft.HasDraft || HasTemplateDraft || mobileDraft.HasDraft || applicationRuntime.IsEnhancementRunning)
+            RestoreWindow();
+        await RequestWindowExitAsync();
     }
 
     private async Task TryAutomaticEnhancementsAsync()

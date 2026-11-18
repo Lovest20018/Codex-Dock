@@ -138,6 +138,13 @@ public sealed partial class MainWindow : Window
                     await WriteSmokeReportAsync(output, checks);
                 }
                 else if (filter == "native-acceptance") await RunNativeAcceptanceHostAsync(output);
+                else if (filter == "installer-host")
+                {
+                    InitializeTray();
+                    if (!TryHideToTray()) throw new InvalidOperationException("The installer fixture must run in the tray.");
+                    File.WriteAllText(Path.Combine(output, "installer-host.ready"), options.Home);
+                    return;
+                }
                 else if (filter == "environment-native")
                 {
                     var checks = new List<string>(); await RunNativeEnvironmentSmokeAsync(output, checks);
