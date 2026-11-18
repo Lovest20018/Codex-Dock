@@ -194,7 +194,10 @@ public sealed class ConnectionDraftViewModel(ConfigStore store) : WorkspaceObser
         ClearServiceCatalog();
         // Explicit file imports keep their chosen source. Ordinary discovery and
         // user-review mode do not silently enable a managed reviewer.
-        if (catalogSource is not null || Document().String("approvals_reviewer") != "auto_review" || result.NativeCatalog is null)
+        var dedicated = reviewChanged || snapshot.Catalog?.Content is not null &&
+            ManagedModelCatalogStore.Inspect(snapshot).ReviewModel == "codex-auto-review";
+        if (catalogSource is not null || edits.ContainsKey("model_catalog_json") || !dedicated ||
+            Document().String("approvals_reviewer") != "auto_review" || result.NativeCatalog is null)
         { if (previousServiceDraft) DraftChanged(); return false; }
         ManagedModelCatalogStore.ValidateNative(result.NativeCatalog);
         serviceCatalog = result.NativeCatalog.ToArray(); serviceCatalogFingerprint = fingerprint;

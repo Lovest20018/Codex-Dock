@@ -39,6 +39,8 @@ public sealed class ConfigurationSaveService(ConfigStore store, WorkspaceApplyCo
         if (store.HasPending(request.Before.Home)) throw new InvalidOperationException("请先恢复未完成的保存，再核对修改。");
         var plan = store.Plan(request.Before, request.Settings, request.Edits, request.UpdateConnection, request.UpdateModel, request.UpdateDetails, request.OfficialAuth);
         var doc = new TomlDocument(plan.Config);
+        if (request.ServiceCatalog is not null && (request.CatalogSource is not null || request.Edits?.ContainsKey("model_catalog_json") == true))
+            throw new InvalidOperationException("已有明确的能力目录来源草稿，请保留一种来源后重新确认。");
         if (request.ServiceCatalog is not null && request.ServiceCatalogFingerprint != (request.Settings with { Model = "model-catalog" }).Fingerprint())
             throw new InvalidOperationException("连接设置已改变，请重新获取当前服务的模型能力。");
         if (request.SynchronizeCatalog || request.ReviewPolicyChanged && doc.String("approvals_reviewer") == "auto_review")

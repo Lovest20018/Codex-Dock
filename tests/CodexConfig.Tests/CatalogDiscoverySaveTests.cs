@@ -42,6 +42,17 @@ internal static class CatalogDiscoverySaveTests
             var oversized = JsonNode.Parse(Latest)!; oversized["models"]![0]!["extra"] = new string('x', ManagedModelCatalogStore.MaxBytes);
             using var large = JsonDocument.Parse(oversized.ToJsonString()); Assert(NativeModelCatalog.DeclaredCatalog(large.RootElement.GetProperty("models")) is null);
         });
+        Test("model discovery does not pin a native automatic reviewer without an explicit dedicated policy", () =>
+        {
+            using var f = new Fixture(root); var doc = new TomlDocument(f.Before.Config); doc.Remove("model_catalog_json");
+            var nativeChoice = f.Before with { Config = doc.Bytes, Catalog = null, CatalogIndex = null };
+            File.WriteAllBytes(Path.Combine(f.Home, "models_cache.json"), f.Before.Catalog!.Content!);
+            f.Draft.Load(nativeChoice);
+            Assert(!f.Draft.AdoptDiscoveredCatalog(new([], 1, Latest), f.Draft.Settings()) && f.Draft.Request().ServiceCatalog is null &&
+                !f.Draft.SynchronizeCatalog && !f.Draft.HasDraft && f.Draft.Document().String("approvals_reviewer") == "auto_review");
+            f.Draft.SetDedicatedReviewer(true);
+            Assert(f.Draft.AdoptDiscoveredCatalog(new([], 1, Latest), f.Draft.Settings()) && f.Draft.SynchronizeCatalog);
+        });
         Test("new main model and approval inheritance are reviewed saved and restored with the fixed reviewer", () =>
         {
             using var f = new Fixture(root); var before = f.Before; f.Draft.Model = NewModel; f.Draft.SetOverride("approval_policy", null);
@@ -98,6 +109,10 @@ internal static class CatalogDiscoverySaveTests
             f.Draft.AdoptDiscoveredCatalog(new([], 1, Latest), f.Draft.Settings()); f.Draft.StageCatalog(file);
             Assert(f.Draft.Request().ServiceCatalog is null && !f.Draft.AdoptDiscoveredCatalog(new([], 1, Latest), f.Draft.Settings()));
             var plan = f.Service.PreparePlan(f.Draft.Request()); Assert(plan.CatalogUpdate is { EmbeddedSource: false } && plan.CatalogUpdate.SourcePath == file);
+            f.Draft.Load(f.Before); f.Draft.AdoptDiscoveredCatalog(new([], 1, Latest), f.Draft.Settings());
+            var downloaded = f.Draft.Request(); Throws(() => f.Service.PreparePlan(downloaded with { CatalogSource = file }));
+            f.Draft.SetOverride("model_catalog_json", TomlDocument.Quote(file)); Throws(() => f.Service.PreparePlan(f.Draft.Request()));
+            Assert(!f.Draft.AdoptDiscoveredCatalog(new([], 1, Latest), f.Draft.Settings()) && f.Draft.Request().ServiceCatalog is null);
         });
         Test("service provenance must match the current request and cannot bypass embedded source integrity", () =>
         {
