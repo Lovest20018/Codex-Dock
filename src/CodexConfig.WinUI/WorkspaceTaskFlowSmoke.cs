@@ -77,6 +77,9 @@ public sealed partial class MainWindow
             Check(mobilePair is null && MobilePairHint.Text.Contains("手机已配对") && MobileCodexReadinessText.Text.Contains("尚无") && OpenMobileManagerButton.IsEnabled,
                 "Successful scanning is distinct from enabling a Codex source that the phone can access");
             Root.RequestedTheme = ElementTheme.Dark; AppWindow.Resize(new(720, 540)); await Settle();
+            var primaryPosition = CreateMobilePairButton.TransformToVisual(Root).TransformPoint(new());
+            Check(primaryPosition.Y >= 0 && primaryPosition.Y + CreateMobilePairButton.ActualHeight <= Root.ActualHeight,
+                "Generating the next phone pairing code is visible at the top of the compact layout");
             await CaptureAsync(output, "task-flow-phone-compact-dark.png");
             NavigateTo(WorkspaceNav); AppWindow.Resize(new(1120, 820)); Root.RequestedTheme = ElementTheme.Light;
             lastApplication = new(DesktopApplyOutcome.ExitBlocked, original, null, false, false, new("退出受阻", "模拟实例仍未退出", true)); RefreshView(); await Settle();

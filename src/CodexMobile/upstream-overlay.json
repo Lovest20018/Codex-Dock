@@ -359,7 +359,7 @@
       ]
     },
     "bridge/features/sessions/create.py": {
-      "sha256": "1e0c4857eb9c44b5dbd09f793b99f349ecf0f0ed31c320a78cf68824adfa28f0",
+      "sha256": "a6fc295119b3312125d8eac5a921d5c903d29f26ed36b3d88db37cc243872d0c",
       "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
       "backports": [
         {

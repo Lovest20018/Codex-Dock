@@ -263,8 +263,10 @@ public sealed partial class MainWindow
         using var memory = new InMemoryRandomAccessStream();
         using (var writer = new DataWriter(memory.GetOutputStreamAt(0))) { writer.WriteBytes(grant.Image); await writer.StoreAsync(); }
         memory.Seek(0); var bitmap = new BitmapImage(); await bitmap.SetSourceAsync(memory);
-        mobilePair = grant; mobilePaired = false; MobilePairImage.Source = bitmap; MobilePairImage.Visibility = Visibility.Visible;
+        mobilePair = grant; mobilePaired = false; mobileMessage = "";
+        MobilePairImage.Source = bitmap; MobilePairImage.Visibility = Visibility.Visible;
         mobilePairMessage = "使用安卓 App 扫描。有效至 " + grant.Expires.ToLocalTime().ToString("HH:mm:ss") + "，仅可使用一次。";
+        if (currentPage == MobileNav) PageScroll.ChangeView(null, 0, null, true);
     });
     private async void RevokeMobilePairClicked(object sender, RoutedEventArgs args) => await RevokeMobilePairAsync();
     private async Task RevokeMobilePairAsync()

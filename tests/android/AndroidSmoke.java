@@ -203,6 +203,11 @@ target.getSharedPreferences("bridge",0).edit().clear().putBoolean("alerts",true)
     !Boolean.TRUE.equals(call("previewShell",new Class<?>[]{String.class},"https://outside.invalid/visualize-shell"));
   });
   check(preview[0],"Android allows only the exact paired origin visualization shell");
+  js("(()=>{const box=document.createElement('dialog');box.id='qa-fullscreen-chart';box.className='visualize-surface visualize-dialog';document.body.append(box);box.showModal();return box.open;})()");
+  ui(()->call("handleBack"));
+  until(()->Boolean.TRUE.equals(js("document.getElementById('qa-fullscreen-chart')?.open===false")),"System back closes the full-screen visualization dialog");
+  check("chat".equals(field("selectedPage"))&&field("web")!=null,"Closing the full-screen dialog returns to the same native chat");
+  js("document.getElementById('qa-fullscreen-chart').remove();true");
   result.putString("report",new JSONObject().put("status","PASS").put("checks",checks).toString());finish(Activity.RESULT_OK,result);
  }catch(Throwable failure){try{shot("failure");}catch(Exception ignored){}result.putString("report","FAIL "+failure);result.putString("stack",android.util.Log.getStackTraceString(failure));finish(Activity.RESULT_CANCELED,result);}}
  private void composerSend(Context target)throws Exception{

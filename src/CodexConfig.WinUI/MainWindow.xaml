@@ -533,6 +533,19 @@
                                 <Button Content="刷新手机服务状态" Click="RefreshGatewaysClicked" HorizontalAlignment="Left" />
                             </StackPanel>
                         </Border>
+                        <Border x:Name="MobilePairCard" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="安卓扫码登录" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <TextBlock Text="在 Lovest Code 的“电脑”页点“扫码连接电脑”。配对码有效 5 分钟，每次只能用一次。" TextWrapping="Wrap" Opacity="0.7" />
+                                <local:ActionWrapPanel>
+                                    <Button x:Name="CreateMobilePairButton" Content="生成配对码" Click="CreateMobilePairClicked" Style="{StaticResource AccentButtonStyle}" />
+                                    <Button x:Name="RevokeMobilePairButton" Content="撤销配对码" Click="RevokeMobilePairClicked" />
+                                </local:ActionWrapPanel>
+                                <Image x:Name="MobilePairImage" Width="240" Height="240" HorizontalAlignment="Left" Visibility="Collapsed" />
+                                <TextBlock x:Name="MobilePairHint" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                                <TextBlock x:Name="MobileCodexReadinessText" TextWrapping="Wrap" Opacity="0.75" AutomationProperties.LiveSetting="Polite" />
+                            </StackPanel>
+                        </Border>
                         <Border x:Name="MobileStatusCard" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                             <StackPanel Spacing="12">
                                 <TextBlock Text="手机连接状态" Style="{StaticResource SubtitleTextBlockStyle}" />
@@ -546,19 +559,6 @@
                                     <Button x:Name="MobileEntryHelpButton" Content="转发设置说明" Click="MobileEntryHelpClicked" Visibility="Collapsed" />
                                 </local:ActionWrapPanel>
                                 <Button x:Name="MobileSetupLinkButton" Content="服务设置与启停" Click="OpenMobileSettingsClicked" HorizontalAlignment="Left" />
-                            </StackPanel>
-                        </Border>
-                        <Border x:Name="MobilePairCard" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                            <StackPanel Spacing="12">
-                                <TextBlock Text="安卓扫码登录" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                <TextBlock Text="在 Lovest Code 的“电脑”页点“扫码连接电脑”。配对码有效 5 分钟，每次只能用一次。" TextWrapping="Wrap" Opacity="0.7" />
-                                <Image x:Name="MobilePairImage" Width="240" Height="240" HorizontalAlignment="Left" Visibility="Collapsed" />
-                                <TextBlock x:Name="MobilePairHint" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
-                                <TextBlock x:Name="MobileCodexReadinessText" TextWrapping="Wrap" Opacity="0.75" AutomationProperties.LiveSetting="Polite" />
-                                <local:ActionWrapPanel>
-                                    <Button x:Name="CreateMobilePairButton" Content="生成配对码" Click="CreateMobilePairClicked" Style="{StaticResource AccentButtonStyle}" />
-                                    <Button x:Name="RevokeMobilePairButton" Content="撤销配对码" Click="RevokeMobilePairClicked" />
-                                </local:ActionWrapPanel>
                             </StackPanel>
                         </Border>
                         <Border x:Name="MobileDevicesCard" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">

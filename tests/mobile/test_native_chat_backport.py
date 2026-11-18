@@ -1,5 +1,6 @@
 """Regression checks for read-only native metadata and bounded output hydration."""
 import json
+import os
 import sqlite3
 import sys
 import tempfile
@@ -84,12 +85,12 @@ class NativeChatTests(unittest.TestCase):
             timeline.deferred_detail(cursor, condition=condition, read_output=output)
 
     def test_native_deferred_read_rechecks_thread_directory_and_item(self):
-        calls, result_turn = [], self.turn
+        calls, result_turn, reported = [], self.turn, 'workspace'
         def run(executable, home, cwd, operation, **options):
             def request(method, params):
                 calls.append((method, params))
                 if method == 'thread/read':
-                    return {'thread': {'id': self.child, 'cwd': 'workspace'}}
+                    return {'thread': {'id': self.child, 'cwd': reported}}
                 return {'data': [{'turnId': result_turn, 'outputDeferred': False, 'item': {
                     'id': 'one', 'type': 'commandExecution', 'status': 'completed', 'aggregatedOutput': 'body'}}]}
             return operation(request)
@@ -97,6 +98,12 @@ class NativeChatTests(unittest.TestCase):
             result = read_deferred_item('native', 'home', 'workspace', self.child, self.turn, 'one', 'commandExecution')
             self.assertEqual('body', result['aggregatedOutput'])
             self.assertEqual(('thread/items/read', {'threadId': self.child, 'turnId': self.turn, 'itemIds': ['one']}), calls[-1])
+            if os.name == 'nt':
+                with tempfile.TemporaryDirectory() as folder:
+                    reported = str(Path(folder).resolve())
+                    result = read_deferred_item('native', 'home', '\\\\?\\'+reported, self.child, self.turn, 'one', 'commandExecution')
+                    self.assertEqual('body', result['aggregatedOutput'])
+                reported = 'workspace'
             result_turn = self.other
             with self.assertRaises(CreationError):
                 read_deferred_item('native', 'home', 'workspace', self.child, self.turn, 'one', 'commandExecution')

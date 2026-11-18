@@ -123,9 +123,18 @@ def read_deferred_item(executable, codex_home, cwd, thread_id, turn_id, item_id,
 
     def read(request):
         thread = request('thread/read', {'threadId': thread_id, 'includeTurns': False})['thread']
-        if thread.get('id') != thread_id or not isinstance(thread.get('cwd'), str) or (
-                Path(thread['cwd']).resolve() != Path(cwd).resolve()):
+        if thread.get('id') != thread_id or not isinstance(thread.get('cwd'), str):
             raise CreationError(message)
+        original, reported = Path(cwd), Path(thread['cwd'])
+        if original.resolve() != reported.resolve():
+            try:
+                # Store metadata can use a Windows extended-length prefix that
+                # app-server omits for the same existing workspace.
+                matches = original.samefile(reported)
+            except OSError:
+                matches = False
+            if not matches:
+                raise CreationError(message)
         data = request('thread/items/read', {'threadId': thread_id, 'turnId': turn_id, 'itemIds': [item_id]}).get('data')
         if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], dict):
             raise CreationError(message)
