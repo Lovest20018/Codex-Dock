@@ -34,7 +34,7 @@
       "reason": "Explicit legacy Dock import and content-only revisions; clear confirmed provisional promotions without deleting later drafts."
     },
     "web/shell/app.js": {
-      "sha256": "92fed7fff567714de7d5b58b423e51b2865ec6160568e0e93a2dc2a76d2147f5",
+      "sha256": "a5917dcabcbf11e3d54e9a028f4473723da9fe130672857d3bfd4a6469aa12b1",
       "reason": "Legacy Dock draft cleanup plus optional presentation hooks for scoped delivery, list and queue; uncertain identical submissions open existing message management, IME composition cannot submit. Keep Dock composer hooks; retain model drafts across discovery success/failure, reject old-account results and preserve native default effort. See docs/mobile-upstream-backport-2026-11-15.md.",
       "backports": [
         {
@@ -238,7 +238,7 @@
       }
     },
     "web/shared/i18n.js": {
-      "sha256": "0470a65e83ab6f42a3da6a1723c89c76304386495df2c50db531e200aa951d0c",
+      "sha256": "ba48913f8303055fb34dc48316b9ffc56fc3df0ee0511ef9e9ca5bd9cd88402d",
       "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md. Translate the scoped model recovery/default-effort and protocol compatibility messages without changing chat or model text. See docs/mobile-upstream-backport-2026-11-15.md.",
       "backport": {
         "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",

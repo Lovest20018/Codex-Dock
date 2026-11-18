@@ -99,13 +99,15 @@ const stamp=Date.UTC(2026,10,18,9,17);
         try{
           const submit=()=>$('new-chat-form').onsubmit({preventDefault(){}});
           const first=submit();await submit();await first;await submit();
-          return {valid:title.checkValidity(),requests};
+          const pending=JSON.parse(localStorage.getItem(newChatAttemptKey())||'null');
+          return {valid:title.checkValidity(),requests,pendingId:pending?.id};
         }finally{window.fetch=fetchOriginal;dialog.close();}
       });
       assert.equal(creation.valid,true);
       assert.equal(creation.requests.length,2);
       assert.equal(creation.requests[0].title,'');
       assert.equal(creation.requests[1],'receipt');
+      assert.equal(creation.pendingId,creation.requests[0].id);
       await page.screenshot({path:path.join(output,'chat-visualization-'+width+'.png')});
       assert.deepEqual(errors,[]);
       console.log('PASS '+language+' '+width+'px: chart state, full screen, draft, IME and creation receipt');

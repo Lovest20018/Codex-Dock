@@ -564,13 +564,17 @@ const newChatUrl=path=>path+(newChatEntry.startsWith('wsl:')?'?entry='+encodeURI
 const independentProject=()=>newChatEntry.startsWith('wsl:')?newChatEntry+'|independent':'local|independent';
 const newChatAttemptKey=()=>draftGateway?'new-chat-attempt:'+draftGateway:'';
 function readNewChatAttempt(key){
-  try{return key?JSON.parse(sessionStorage.getItem(key)||'null'):null;}catch{return null;}
+  try{return key?JSON.parse(localStorage.getItem(key)||sessionStorage.getItem(key)||'null'):null;}catch{return null;}
+}
+function clearNewChatAttempt(key,id){
+  if(readNewChatAttempt(key)?.id!==id)return;
+  localStorage.removeItem(key);sessionStorage.removeItem(key);
 }
 $('new-chat-after-check').onclick=()=>{
   if(creatingChat)return;
   const key=newChatAttemptKey(),attempt=readNewChatAttempt(key);
   if(!attempt?.submitted)return;
-  sessionStorage.removeItem(key);
+  clearNewChatAttempt(key,attempt.id);
   $('new-chat-after-check').hidden=true;$('new-chat-error').textContent='';
   $('new-chat-title').value='';$('new-chat-title').focus();
 };
@@ -688,7 +692,7 @@ $('new-chat-form').onsubmit=async event=>{
   let attempt=readNewChatAttempt(key);
   const attemptKind=kind==='wsl'?undefined:kind;
   const matches=attempt?.selection===selection&&attempt.title===title&&attempt.entry===newChatEntry&&attempt.kind===attemptKind;
-  const persist=()=>sessionStorage.setItem(key,JSON.stringify(attempt));
+  const persist=()=>localStorage.setItem(key,JSON.stringify(attempt));
   newChatRequest++;creatingChat=true;setLanguageBusy();$('new-chat-error').textContent='';$('new-chat-submit').textContent=t('正在创建…');
   $('new-chat-form').querySelectorAll('input,select,button').forEach(n=>n.disabled=true);
   document.querySelector('[data-close="new-chat-dialog"]').disabled=true;
@@ -722,11 +726,12 @@ $('new-chat-form').onsubmit=async event=>{
         }
       }
       if(!active())return;
+      if(readNewChatAttempt(key)?.id!==attempt.id)throw Error(t('另一个窗口已在创建聊天，请先核对聊天列表。'));
       attempt.submitted=true;persist();
       result=await api(newChatUrl('/api/sessions'),{id:attempt.id,project:attempt.project,title:attempt.title,...(attempt.kind?{kind:attempt.kind}:{})},undefined,active);
     }
     if(!active())return;
-    sessionStorage.removeItem(key);$('new-chat-dialog').close();
+    clearNewChatAttempt(key,attempt.id);$('new-chat-dialog').close();
     $('search').value='';$('archived').checked=false;
     loadList(true).catch(e=>toast(e.message));toast(result.message);
     await openChat(result.id,result.host);

@@ -2,6 +2,7 @@
 // UI messages only. Never translate chat content, commands, model IDs or user input.
 const BridgeI18n=(()=>{
 const en={
+  "另一个窗口已在创建聊天，请先核对聊天列表。": "Another window is creating a chat. Check the chat list first.",
   "已核对，开始新建": "Checked, start a new chat",
   "附属聊天": "Attached chats",
   "当前接入未提供附属聊天目录": "This connection does not provide an attached chats list.",
