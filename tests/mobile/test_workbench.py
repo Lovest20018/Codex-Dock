@@ -22,7 +22,7 @@ from bridge.features.auth.auth import password_record
 from gateway import PROTOCOL, Server
 from local_manager import ManagerControlHandler
 from main import validate
-from workbench import Workbench
+from workbench import CodexHandler, Workbench
 
 ORIGIN = 'https://phone.example.com'
 AGENT = 'BridgeMobile/2.1.7-Android'
@@ -114,14 +114,29 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(self.request('/visualize-shell')[0], 401)
         self.assertEqual(self.request(source)[0], 401)
         self.login()
-        status, body, headers = self.request('/visualize-shell')
+        served_csp, served_body = {}, {}
+        emit_header, emit_body = CodexHandler.send_header, CodexHandler.output
+        def capture_header(handler, name, value):
+            if name == 'Content-Security-Policy':
+                served_csp[handler.path] = value
+            return emit_header(handler, name, value)
+        def capture_body(handler, status, data, *args, **kwargs):
+            served_body[handler.path] = data
+            return emit_body(handler, status, data, *args, **kwargs)
+        # Capture the gateway's bytes before local HTTP filtering can rewrite CSP.
+        with patch.object(CodexHandler, 'send_header', capture_header), patch.object(CodexHandler, 'output', capture_body):
+            status, _, _ = self.request('/visualize-shell')
+            self.assertEqual(self.request('/')[0], 200)
         self.assertEqual(status, 200)
+        body = served_body['/visualize-shell']
+        csp = served_csp['/visualize-shell']
         self.assertIn(b'bridge-visualize-ready', body)
-        self.assertIn('sandbox allow-scripts', headers['Content-Security-Policy'])
+        self.assertIn('sandbox allow-scripts', csp)
+        self.assertIn("connect-src 'none'", csp)
         self.assertIn("connect-src 'none'", unescape(body.decode('utf-8')))
-        self.assertNotIn('allow-same-origin', headers['Content-Security-Policy'])
-        self.assertNotIn('allow-top-navigation', headers['Content-Security-Policy'])
-        self.assertIn('/visualize-shell', self.request('/')[2]['Content-Security-Policy'])
+        self.assertNotIn('allow-same-origin', csp)
+        self.assertNotIn('allow-top-navigation', csp)
+        self.assertIn('/visualize-shell', served_csp['/'])
         self.assertEqual(self.request('/visualize-shell?arbitrary=1')[0], 405)
         self.assertIsNone(session_visualization_path({'turns': [{'messages': [
             {'role': 'user', 'text': marker}, {'role': 'assistant', 'text': '```text\n' + marker + '\n```'}]}]}, identifier(str(chart))))
