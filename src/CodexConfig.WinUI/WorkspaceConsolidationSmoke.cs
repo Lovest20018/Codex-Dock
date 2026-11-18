@@ -31,6 +31,7 @@ public sealed partial class MainWindow
             return point.Y >= viewport.Y - 1 && point.Y + control.ActualHeight <= viewport.Y + PageScroll.ActualHeight + 1 && point.X >= 0 && point.X + control.ActualWidth <= Root.ActualWidth + 1;
         }
         var previous = viewModel.Home; var originalSize = AppWindow.Size;
+        var originalPaneOpen = Navigation.IsPaneOpen;
         var home = Path.Combine(output, "consolidation-home"); Directory.CreateDirectory(home);
         File.WriteAllText(Path.Combine(home, "config.toml"), "model='saved-task-model'\nopenai_base_url='https://tasks.invalid/v1'\n");
         File.WriteAllText(Path.Combine(home, "auth.json"), "{\"auth_mode\":\"apikey\",\"OPENAI_API_KEY\":\"fake-task-key\"}");
@@ -58,7 +59,7 @@ public sealed partial class MainWindow
                 "The Home summary presents the model, service, configuration name and runtime status in aligned rows");
             NavigateTo(AdvancedNav, revealStart: true);
             await CaptureAsync(output, "advanced-tools-standard.png");
-            CheckAdvancedToolGrid(3, Check);
+            CheckAdvancedToolGrid(Check);
             foreach (var route in Pages)
             {
                 NavigateTo(route); await Settle();
@@ -136,7 +137,8 @@ public sealed partial class MainWindow
         {
             editingTemplate = null; profileDraft.Load(null); mobileDraft.Load(mobileDraft.Settings); LoadConnectionDraft();
             smokeDialog = _ => Task.FromResult(ContentDialogResult.Secondary); await SwitchHomeAsync(previous); smokeDialog = null;
-            Root.RequestedTheme = ElementTheme.Light; AppWindow.Resize(originalSize); NavigateTo(WorkspaceNav);
+            Root.RequestedTheme = ElementTheme.Light; AppWindow.Resize(originalSize); Navigation.IsPaneOpen = originalPaneOpen;
+            NavigateTo(WorkspaceNav);
         }
     }
 
@@ -176,8 +178,18 @@ public sealed partial class MainWindow
         }
     }
 
-    private void CheckAdvancedToolGrid(int columns, Action<bool, string> check)
+    // The monitor can cap the requested window size. Assert the layout for the measured tool area.
+    private int ExpectedAdvancedToolColumns() => AdvancedToolsList.ActualWidth switch { < 500 => 1, < 760 => 2, _ => 3 };
+
+    private double ExpectedAdvancedToolColumnWidth()
     {
+        var columns = ExpectedAdvancedToolColumns();
+        return (AdvancedToolsList.ActualWidth - 12 * (columns - 1)) / columns;
+    }
+
+    private void CheckAdvancedToolGrid(Action<bool, string> check)
+    {
+        var columns = ExpectedAdvancedToolColumns();
         var cards = AdvancedToolsList.Children.OfType<Border>().ToArray();
         var sections = cards.Select(card => (StackPanel)card.Child).ToArray();
         check(cards.Length == 3 && AdvancedToolsList.ColumnDefinitions.Count == columns &&
@@ -189,6 +201,7 @@ public sealed partial class MainWindow
         {
             var cardPosition = card.TransformToVisual(AdvancedToolsList).TransformPoint(new());
             check(cardPosition.X >= -1 && cardPosition.X + card.ActualWidth <= AdvancedToolsList.ActualWidth + 1 &&
+                Math.Abs(card.ActualWidth - ExpectedAdvancedToolColumnWidth()) <= 2 &&
                 VisualDescendants<Button>(card).All(tool =>
                 {
                     var point = tool.TransformToVisual(card).TransformPoint(new());
@@ -207,28 +220,33 @@ public sealed partial class MainWindow
 
         Root.RequestedTheme = ElementTheme.Light;
         ResizeConsolidationWindow(1840, 900);
+        await Task.Delay(150); Root.UpdateLayout();
+        // Hosted desktops can need the compact rail to give the three-column case enough room.
+        if (AdvancedToolsList.ActualWidth < 760 && Navigation.IsPaneOpen) Navigation.IsPaneOpen = false;
         await CaptureAsync(output, "advanced-tools-wide.png");
         var start = Left(PageTitle);
-        check(PageScroll.ActualWidth > 1200 && Math.Abs(Left(AdvancedSearchInput) - start) <= 2 &&
-            Math.Abs(Left(AdvancedToolsList) - start) <= 2 && AdvancedSearchInput.ActualWidth is > 350 and <= 482 &&
+        var width = AdvancedToolsList.ActualWidth;
+        var expectedWidth = Math.Min(1000, PageScroll.ViewportWidth) - PageBody.Padding.Left - PageBody.Padding.Right;
+        check(Math.Abs(width - expectedWidth) <= 2 && Math.Abs(Left(AdvancedSearchInput) - start) <= 2 &&
+            Math.Abs(Left(AdvancedToolsList) - start) <= 2 && Math.Abs(AdvancedSearchInput.ActualWidth - Math.Min(480, width)) <= 2 &&
             Math.Abs(Left(PendingChangesButton) + PendingChangesButton.ActualWidth - start - AdvancedToolsList.ActualWidth) <= 2,
-            $"The 1840 × 900 window keeps the title, search, tool cards and header actions in the same capped column ({Root.ActualWidth:0} × {Root.ActualHeight:0} DIP client area)");
-        CheckAdvancedToolGrid(3, check);
+            $"The wide-window request keeps the title, search, tool cards and header actions in the same capped column ({Root.ActualWidth:0} × {Root.ActualHeight:0} DIP client area)");
+        CheckAdvancedToolGrid(check);
         await ExecuteWorkspaceShortcutAsync(VirtualKey.F, VirtualKeyModifiers.Control);
         check(ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), AdvancedSearchInput), "Ctrl F focuses the advanced tool search");
         AdvancedSearchInput.Text = "回滚"; Root.UpdateLayout();
         var recovery = Tools().SingleOrDefault();
         var resultCard = (Border)AdvancedToolsList.Children[0];
         check(recovery?.Content.ToString() == "备份与恢复" && Math.Abs(Left(resultCard) - start) <= 2 &&
-            Math.Abs(resultCard.ActualWidth - (AdvancedToolsList.ActualWidth - 24) / 3) <= 2,
+            Math.Abs(resultCard.ActualWidth - ExpectedAdvancedToolColumnWidth()) <= 2,
             "An alias query leaves only an accessible recovery result at the normal column width on the left");
 
         Root.RequestedTheme = ElementTheme.Dark;
         ResizeConsolidationWindow(720, 540);
         await Task.Delay(100); Root.UpdateLayout();
         check(AdvancedSearchInput.Text == "回滚" && ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), AdvancedSearchInput) &&
-            ReferenceEquals(Tools().SingleOrDefault(), recovery) && Math.Abs(resultCard.ActualWidth - (AdvancedToolsList.ActualWidth - 12) / 2) <= 2,
-            "Resizing retains the live query, keyboard focus and the existing result as it reflows to two columns");
+            ReferenceEquals(Tools().SingleOrDefault(), recovery) && Math.Abs(resultCard.ActualWidth - ExpectedAdvancedToolColumnWidth()) <= 2,
+            "Resizing retains the live query, keyboard focus and the existing result at the compact column width");
         check(ReferenceEquals(FocusManager.FindFirstFocusableElement(AdvancedToolsList), recovery) &&
             recovery!.Focus(FocusState.Keyboard) && AutomationProperties.GetName(recovery) == "备份与恢复",
             "A tool result is keyboard focusable and its accessible name contains only the destination");
@@ -254,14 +272,14 @@ public sealed partial class MainWindow
         CatalogSearchInput.Text = "";
         NavigateTo(AdvancedNav, revealStart: true);
         await CaptureAsync(output, "advanced-tools-compact-dark.png");
-        CheckAdvancedToolGrid(2, check);
+        CheckAdvancedToolGrid(check);
 
         try
         {
             Root.Width = 460;
             Root.HorizontalAlignment = HorizontalAlignment.Left;
             await CaptureAsync(output, "advanced-tools-single-column-dark.png");
-            CheckAdvancedToolGrid(1, check);
+            CheckAdvancedToolGrid(check);
             check(Top(PageTitle) >= 46 && Top(WorkspaceDirectoryButton) >= Top(PageTitle) + PageTitle.ActualHeight - 1 &&
                 Left(WorkspaceDirectoryButton) + WorkspaceDirectoryButton.ActualWidth <= Left(PendingChangesButton) &&
                 Left(PendingChangesButton) + PendingChangesButton.ActualWidth <= Root.ActualWidth,

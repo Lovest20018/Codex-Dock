@@ -23,7 +23,7 @@
     <AssemblyName>CodexDock.WinUI</AssemblyName>
     <AssemblyName Condition="'$(InstalledBuild)' == 'true' Or '$(LocalInstallBuild)' == 'true'">CodexDock</AssemblyName>
     <DefineConstants Condition="'$(UiPreviewBuild)' == 'true' And '$(InstalledBuild)' != 'true' And '$(LocalInstallBuild)' != 'true'">$(DefineConstants);CODEX_DOCK_UI_PREVIEW</DefineConstants>
-    <Version>0.19.7</Version>
+    <Version>0.19.8</Version>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
