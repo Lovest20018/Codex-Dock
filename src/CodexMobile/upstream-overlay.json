@@ -155,7 +155,7 @@
       ]
     },
     "bridge/app/service.py": {
-      "sha256": "81ced4da8cff2cd637429d03698234db08cc0fbfeff4d217fa4d0e2d0ab72bf8",
+      "sha256": "b8fbef6207cfda3a1de9fcc9f36482578bd73837f6815caae36a085389f35edb",
       "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md. Scoped v2.2.1 stream/control and task-audit compatibility, follower recovery/backoff, model empty/failure protection and host construction error isolation. Keep Dock account/auth/host and no-replay contracts. See docs/mobile-upstream-backport-2026-11-15.md.",
       "backport": {
         "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",

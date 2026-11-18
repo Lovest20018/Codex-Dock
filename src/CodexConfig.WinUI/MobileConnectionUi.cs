@@ -50,7 +50,7 @@ public sealed partial class MainWindow
         // A status read started before the command can still describe the old worker.
         await mobileReadTask;
         if (closing || home != viewModel.Home) return;
-        mobileView = null; mobileViewRevision++; RefreshView();
+        mobileEntryFailed = false; mobileView = null; mobileViewRevision++; RefreshView();
         await RefreshMobileAsync();
     }
     private async Task ReadMobileAsync(bool reloadDraft)
@@ -120,7 +120,7 @@ public sealed partial class MainWindow
         MobileNextStepText.Text = needsSetup ? "第一步：填写手机访问设置，选择“保存并准备配对”。" :
             !running ? "启动手机服务后即可准备配对码。" :
             mobileEntryFailed ? "这个地址还连不到电脑上的手机服务。请检查电脑服务与转发设置，再重新检测。" :
-            mobileView?.EntryChecked == true ? "HTTPS 入口已检测通过。" : "生成配对码时会检查 HTTPS 入口是否指向这台电脑。";
+            mobileView?.EntryChecked == true ? "HTTPS 入口已检测通过。" : "生成配对码时会检测 HTTPS 入口是否指向这台电脑。";
         MobileSetupLinkButton.Content = "服务设置与启停";
         MobileRuntimeText.Text = mobileView is null ? "尚未读取手机设置。" : mobileView.Running is true ? mobileView.EntryChecked ? "网关运行中 · HTTPS 入口已检测通过" : "网关运行中 · 尚未检测 HTTPS 入口" :
             mobileView.Running is null ? "后台状态未确认，请在服务设置刷新。" : mobileView.Settings.Configured ? "手机服务已停止，可在服务设置启动。" : "尚未保存手机连接。";

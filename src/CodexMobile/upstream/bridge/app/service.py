@@ -162,9 +162,10 @@ class LiveSession:
                 self.timeline_source_limit = self.timeline_limit
             return dict(self.timeline_source)
 
-    def set_history(self, state):
+    def set_history(self, state, normalized=None):
         self.history_state = state
-        self.saved_view = normalize_state(state, False, image_cache=self.tool_image_cache, item_limit=self.timeline_limit)
+        self.saved_view = normalized if normalized is not None else normalize_state(
+            state, False, image_cache=self.tool_image_cache, item_limit=self.timeline_limit)
         # Complete native patch evidence is retained by the saved reader even
         # when its messages are outside the current presentation window.
         self.saved_file_changes = {
@@ -1777,6 +1778,7 @@ class Bridge:
                     return
                 session.history_time_attempts += 1
                 refresh_times = True
+                epoch = session.connection_epoch
             elif (session.connecting or session.saved_view is None or
                   time.monotonic() < session.history_retry_at):
                 return
@@ -1786,10 +1788,21 @@ class Bridge:
         def refresh():
             try:
                 fallback = self._saved_history(session)
+                if refresh_times:
+                    wanted = {(turn_id, item_id, kind) for turn_id, _, item_id, kind in time_key}
+                    # Avoid a second body projection until a matching native clock exists.
+                    if fallback.get('id') != session.id or not any(
+                            isinstance(item.get('id'), str) and isinstance(item.get('type'), str) and
+                            (turn.get('turnId'), item['id'], item['type']) in wanted and
+                            not item.get('_syntheticId') and item.get('timestamp') is not None
+                            for turn in ordered_turns(fallback) for item in items_array(turn.get('items'))):
+                        return
                 normalized = normalize_state(fallback, False, image_cache=session.tool_image_cache, item_limit=session.timeline_limit)
                 with session.condition:
+                    if refresh_times and (not session.connected or session.connection_epoch != epoch):
+                        return
                     if receipts or (refresh_times or not session.connected) and session.saved_view != normalized:
-                        session.set_history(fallback)
+                        session.set_history(fallback, normalized)
                 self._reconcile_submissions(session)
             except (OSError, ValueError, KeyError, RemoteUnavailable, StoreUnavailable):
                 pass
