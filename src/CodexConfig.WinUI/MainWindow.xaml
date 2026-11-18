@@ -502,14 +502,16 @@
                         <Border x:Name="MobileSettingsCard" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                             <StackPanel Spacing="14">
                                 <TextBlock Text="连接入口" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                <TextBlock Text="将已有 HTTPS 域名转发到这台电脑的监听端口，再使用安卓 App 扫码或账号密码登录。" TextWrapping="Wrap" Opacity="0.7" />
-                                <TextBox x:Name="MobileUrlInput" Header="HTTPS 域名" PlaceholderText="https://codex.example.com" TextChanging="MobileTextChanged" MaxLength="2048" />
-                                <TextBox x:Name="MobilePortInput" Header="本机监听端口" TextChanging="MobileTextChanged" MaxLength="5" />
+                                <TextBlock Text="填写手机能访问的 HTTPS 地址。手机需要信任该地址的证书，地址也需要转发到这台电脑。" TextWrapping="Wrap" Opacity="0.7" />
+                                <TextBox x:Name="MobileUrlInput" Header="HTTPS 地址" PlaceholderText="https://codex.example.com" TextChanging="MobileTextChanged" MaxLength="2048" />
+                                <Button Content="我还没有这个地址" Click="MobileEntryHelpClicked" HorizontalAlignment="Left" />
                                 <TextBox x:Name="MobileUsernameInput" Header="手机登录账号" TextChanging="MobileTextChanged" MaxLength="200" />
                                 <PasswordBox x:Name="MobilePasswordInput" Header="手机访问密码" PasswordRevealMode="Peek" PasswordChanging="MobilePasswordChanging" MaxLength="256" />
                                 <TextBlock x:Name="MobilePasswordHint" TextWrapping="Wrap" Opacity="0.7" />
                                 <TextBlock x:Name="MobileDraftHint" TextWrapping="Wrap" Opacity="0.7" />
-
+                                <Expander x:Name="MobileAdvancedEntry" Header="高级 · 本机监听端口" HorizontalAlignment="Stretch">
+                                    <TextBox x:Name="MobilePortInput" Header="本机监听端口" TextChanging="MobileTextChanged" MaxLength="5" />
+                                </Expander>
                             </StackPanel>
                         </Border>
                         <Border x:Name="MobileServiceCard" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
@@ -533,14 +535,15 @@
                         </Border>
                         <Border x:Name="MobileStatusCard" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                             <StackPanel Spacing="12">
-                                <TextBlock Text="连接检测与 Codex 接入" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                <TextBlock x:Name="MobileNextStepText" TextWrapping="Wrap" />
+                                <TextBlock Text="手机连接状态" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <TextBlock x:Name="MobileNextStepText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
                                 <TextBlock x:Name="MobileRuntimeText" Text="尚未读取" TextWrapping="Wrap" />
                                 <TextBlock x:Name="MobileEndpointText" TextWrapping="Wrap" Opacity="0.7" />
                                 <local:ActionWrapPanel>
                                     <Button x:Name="RefreshMobileButton" Content="刷新状态" Click="RefreshMobileClicked" />
                                     <Button x:Name="CheckMobileEntryButton" Content="检测 HTTPS 入口" Click="CheckMobileEntryClicked" />
-                                    <Button x:Name="OpenMobileManagerButton" Content="管理 Codex 接入" Click="OpenMobileManagerClicked" />
+                                    <Button x:Name="OpenMobileManagerButton" Content="选择允许手机访问的 Codex" Click="OpenMobileManagerClicked" />
+                                    <Button x:Name="MobileEntryHelpButton" Content="转发设置说明" Click="MobileEntryHelpClicked" Visibility="Collapsed" />
                                 </local:ActionWrapPanel>
                                 <Button x:Name="MobileSetupLinkButton" Content="服务设置与启停" Click="OpenMobileSettingsClicked" HorizontalAlignment="Left" />
                             </StackPanel>
@@ -548,11 +551,12 @@
                         <Border x:Name="MobilePairCard" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                             <StackPanel Spacing="12">
                                 <TextBlock Text="安卓扫码登录" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                <TextBlock Text="先检测 HTTPS 入口，再生成配对码。二维码在本机生成，5 分钟有效，只能使用一次；刷新会撤销旧码。" TextWrapping="Wrap" Opacity="0.7" />
+                                <TextBlock Text="在 Lovest Code 的“电脑”页点“扫码连接电脑”。配对码有效 5 分钟，每次只能用一次。" TextWrapping="Wrap" Opacity="0.7" />
                                 <Image x:Name="MobilePairImage" Width="240" Height="240" HorizontalAlignment="Left" Visibility="Collapsed" />
-                                <TextBlock x:Name="MobilePairHint" Text="先保存并启动，再检测 HTTPS 入口。" TextWrapping="Wrap" Opacity="0.7" />
+                                <TextBlock x:Name="MobilePairHint" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                                <TextBlock x:Name="MobileCodexReadinessText" TextWrapping="Wrap" Opacity="0.75" AutomationProperties.LiveSetting="Polite" />
                                 <local:ActionWrapPanel>
-                                    <Button x:Name="CreateMobilePairButton" Content="生成 / 刷新配对码" Click="CreateMobilePairClicked" />
+                                    <Button x:Name="CreateMobilePairButton" Content="生成配对码" Click="CreateMobilePairClicked" Style="{StaticResource AccentButtonStyle}" />
                                     <Button x:Name="RevokeMobilePairButton" Content="撤销配对码" Click="RevokeMobilePairClicked" />
                                 </local:ActionWrapPanel>
                             </StackPanel>
@@ -609,9 +613,9 @@
             </ScrollViewer>
                 <Border x:Name="MobileFooter" Grid.Row="3" Padding="24,14" BorderThickness="0,1,0,0" Visibility="Collapsed"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                    <StackPanel Spacing="8"><TextBlock Text="仅保存手机访问设置，并启动手机服务。" TextWrapping="Wrap" />
+                    <StackPanel Spacing="8"><TextBlock x:Name="MobileFooterMessage" Text="保存手机访问设置并启动服务。" TextWrapping="Wrap" />
                                 <local:ActionWrapPanel>
-                                    <Button x:Name="SaveMobileButton" Content="查看设置并保存启动" Click="SaveMobileClicked" />
+                                    <Button x:Name="SaveMobileButton" Content="保存并准备配对" Click="SaveMobileClicked" Style="{StaticResource AccentButtonStyle}" />
                                     <Button x:Name="DiscardMobileButton" Content="撤销修改" Click="DiscardMobileClicked" />
                                     <Button x:Name="ContinueMobilePairButton" Content="下一步：连接与配对" Click="OpenPairingPageClicked" Visibility="Collapsed" />
                                 </local:ActionWrapPanel>

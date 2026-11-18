@@ -42,6 +42,7 @@ from bridge.features.sessions.create import ArchiveRejected, CreationError
 from bridge.features.accounts.account import AccountError
 from bridge.features.terminals.manager import TerminalSessionMissing
 from bridge.api.html_preview import SHELL_PATH, SHELL_FILE, SHELL_CSP
+from bridge.api.visualize import SHELL_PATH as VISUALIZE_SHELL_PATH, SHELL_CSP as VISUALIZE_CSP, shell_bytes as visualization_shell_bytes
 from bridge.api.mermaid_render import SHELL_PATH as MERMAID_SHELL_PATH, shell_csp as mermaid_shell_csp, shell_bytes as mermaid_shell_bytes, is_public_renderer_script
 
 LOG = logging.getLogger(__name__)
@@ -182,23 +183,23 @@ class Handler(BaseHTTPRequestHandler):
         # Request bodies, cookies, query strings and conversation IDs are private.
         pass
 
-    def headers_common(self, cache_control="no-store", preview_shell=False, style_nonce=None, mermaid_shell=False):
+    def headers_common(self, cache_control="no-store", preview_shell=False, style_nonce=None, mermaid_shell=False, visualize_shell=False):
         if getattr(self, '_transport_trace', None):
             self.send_header('X-Bridge-Request-Id', self._transport_trace['id'])
         self.send_header("Cache-Control", cache_control)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("X-Frame-Options", "SAMEORIGIN" if preview_shell or mermaid_shell else "DENY")
+        self.send_header("X-Frame-Options", "SAMEORIGIN" if preview_shell or mermaid_shell or visualize_shell else "DENY")
         # KaTeX uses style attributes; only our terminal gets nonced dynamic styles.
         host = self.headers.get('Host', '')
         origin = ('https://' if host in self.server.secure_hosts else 'http://') + host
-        frame_source = origin + SHELL_PATH + ' ' + origin + MERMAID_SHELL_PATH if host in self.server.hosts else "'none'"
+        frame_source = ' '.join(origin + path for path in (SHELL_PATH, MERMAID_SHELL_PATH, VISUALIZE_SHELL_PATH)) if host in self.server.hosts else "'none'"
         style_source = "'self'" + (" 'nonce-" + style_nonce + "'" if style_nonce else "")
-        self.send_header("Content-Security-Policy", SHELL_CSP if preview_shell else mermaid_shell_csp(origin if host in self.server.hosts else "'none'") if mermaid_shell else
+        self.send_header("Content-Security-Policy", VISUALIZE_CSP if visualize_shell else SHELL_CSP if preview_shell else mermaid_shell_csp(origin if host in self.server.hosts else "'none'") if mermaid_shell else
                          "default-src 'self'; script-src 'self'; style-src " + style_source + "; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src " + frame_source + "; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 
-    def output(self, status, data, content_type="application/json; charset=utf-8", cookie=None, content_disposition=None, preview_shell=False, style_nonce=None, mermaid_shell=False):
+    def output(self, status, data, content_type="application/json; charset=utf-8", cookie=None, content_disposition=None, preview_shell=False, style_nonce=None, mermaid_shell=False, visualize_shell=False):
         # Keep the browser cookie in step with the renewed server-side deadline,
         # including long-lived pages that do not revisit /api/auth.
         if cookie is None and 200 <= status < 300 and urlsplit(self.path).path.startswith('/api/'):
@@ -216,7 +217,7 @@ class Handler(BaseHTTPRequestHandler):
                 body, compressed = candidate, True
         self._transport_status = status
         self.send_response(status)
-        self.headers_common(preview_shell=preview_shell, style_nonce=style_nonce, mermaid_shell=mermaid_shell)
+        self.headers_common(preview_shell=preview_shell, style_nonce=style_nonce, mermaid_shell=mermaid_shell, visualize_shell=visualize_shell)
         self.send_header("Content-Type", content_type)
         self.send_header('Vary', 'Accept-Encoding')
         if compressed:
@@ -500,6 +501,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self.output(405, {'error': '请求方式无效'})
                 return self.output(200, (self.server.web_dir / SHELL_FILE).read_bytes(),
                                    'text/html; charset=utf-8', preview_shell=True)
+            if path == VISUALIZE_SHELL_PATH:
+                if write or query:
+                    return self.output(405, {'error': '请求方式无效'})
+                if self.server.auth.config.get('mode') == 'none':
+                    raise PermissionError('交互图表需要启用网关密码保护')
+                return self.output(200, visualization_shell_bytes(self.server.web_dir),
+                                   'text/html; charset=utf-8', visualize_shell=True)
             if path == MERMAID_SHELL_PATH:
                 if write or query:
                     return self.output(405, {'error': '请求方式无效'})
@@ -992,6 +1000,15 @@ class Handler(BaseHTTPRequestHandler):
                         self.server.desktop_sessions.require_enabled(host if host.startswith('wsl:') else 'codex')
                     rows.extend(self.server.bridge.for_host(host).activity(identifiers))
                 return self.output(200, {'sessions': rows})
+            creation_status = re.fullmatch(r'/api/sessions/creation-status/([0-9a-f-]{36})', path)
+            if not write and creation_status:
+                if set(query) - {'entry'} or len(query.get('entry', ['desktop'])) != 1:
+                    raise ValueError('创建请求入口无效')
+                entry = query.get('entry', ['desktop'])[0]
+                if self.server.desktop_sessions:
+                    self.server.desktop_sessions.require_enabled(entry if entry.startswith('wsl:') else 'codex')
+                target = self.server.bridge if entry == 'desktop' else self.server.bridge.entries.get(entry)
+                return self.output(200, target.creation_status(creation_status[1]))
             if write and path == '/api/sessions':
                 body = self.read_json()
                 entry = query.get('entry', ['desktop'])[0]
@@ -999,8 +1016,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.server.desktop_sessions.require_enabled(entry if entry.startswith('wsl:') else 'codex')
                 if entry != 'desktop':
                     return self.output(200, self.server.bridge.entries.get(entry).create_chat(
-                        body.get('project'), body.get('title'), body.get('id')))
-                fields = (body.get('project'), body.get('title'), body.get('id'))
+                        body.get('project'), body.get('title', ''), body.get('id')))
+                fields = (body.get('project'), body.get('title', ''), body.get('id'))
                 result = (self.server.bridge.create_chat(*fields, kind=body['kind']) if 'kind' in body
                           else self.server.bridge.create_chat(*fields))
                 return self.output(200, result)
@@ -1103,6 +1120,16 @@ class Handler(BaseHTTPRequestHandler):
             side = query.get('side', [None])[0]
             if side is not None and self.server.auth.config.get('mode') == 'none':
                 raise PermissionError('侧边聊天需要启用网关密码保护')
+            attached_match = re.fullmatch(r'/api/sessions/([0-9a-f-]{36})/attached', path)
+            if attached_match:
+                if write or set(query) - {'host', 'offset'} or any(len(values) != 1 for values in query.values()):
+                    return self.output(405, {'error': '请求方式无效'})
+                if self.server.auth.config.get('mode') == 'none':
+                    raise PermissionError('附属聊天需要启用网关密码保护')
+                offset = int(query.get('offset', ['0'])[0])
+                if not 0 <= offset <= 10_000:
+                    raise ValueError('聊天列表分页无效')
+                return self.output(200, bridge.store.attached(attached_match[1], offset=offset))
             side_match = re.fullmatch(r"/api/sessions/([0-9a-f-]{36})/side-chat", path)
             if side_match:
                 if self.server.auth.config.get('mode') == 'none':
@@ -1182,6 +1209,13 @@ class Handler(BaseHTTPRequestHandler):
                         return self.download_response(metadata, stream)
                 result = bridge.workspace(thread_id, operation, {'path': relative})
                 return self.output(200, result)
+            visualization_match = re.fullmatch(r"/api/sessions/([0-9a-f-]{36})/visualizations/([a-f0-9]{64})", path)
+            if visualization_match:
+                if write or set(query) - {'host'} or len(query.get('host', ['local'])) != 1:
+                    return self.output(405, {'error': '请求方式无效'})
+                if self.server.auth.config.get('mode') == 'none':
+                    raise PermissionError('交互图表需要启用网关密码保护')
+                return self.output(200, bridge.visualization(*visualization_match.groups()))
             file_match = re.fullmatch(r"/api/sessions/([0-9a-f-]{36})/files/([a-f0-9]{64})", path)
             if not write and file_match:
                 return self.download(bridge, *file_match.groups(), info=query.get('info') == ['1'])

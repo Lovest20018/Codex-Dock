@@ -29,9 +29,11 @@ from bridge.clients.codex.app_server import AppServerError, AppServerUnavailable
 from bridge.clients.codex.cli_session import CliSessions
 from bridge.clients.desktop_app import DesktopApp
 from bridge.clients.codex.transport import ipc_endpoint
-from bridge.features.sessions.model import apply_patches, attachment_prompt, computer_use_approval, items_array, normalize_state, normalize_request, ordered_turns, pending_requests, async_requests, request_id, user_display_text
+from bridge.features.sessions.model import apply_patches, attachment_prompt, computer_use_approval, items_array, merge_saved_message_times, normalize_item, normalize_state, normalize_request, ordered_turns, pending_requests, async_requests, request_id, user_display_text
 from bridge.features.sessions.store import SessionStore, StoreUnavailable, persisted_submission_ids
-from bridge.features.workspace.files import artifact_paths, referenced_model_images
+from bridge.features.workspace.files import artifact_paths, referenced_model_images, session_visualization_path, visualization_paths
+from bridge.features.workspace.visualize import descriptors as visualization_descriptors, read_source as read_visualization
+from bridge.features.workspace.visualize_payload import read_request as visualization_read_request
 from bridge.features.workspace.workspace import operate as workspace_operation
 from bridge.clients.codex.catalog import Catalog, CatalogError, CatalogIdentityChanged, ModelStore, MODEL_REFRESH_SECONDS
 from bridge.platforms.codex_daemon_env import DaemonEnvironmentUnavailable
@@ -39,7 +41,7 @@ from bridge.clients.codex.remote import AppHosts, RemoteStore, RemoteCatalog, Re
 from bridge.features.sessions.create import (
     archive_thread, rename_thread, independent_directory, create_empty, fork_copy, open_in_desktop, open_project_in_desktop,
     CreationError, CreationUnavailable, ForkUnavailable, project_directory,
-    project_directory_listing, project_trust, apply_desktop_config,
+    project_directory_listing, project_trust, apply_desktop_config, read_deferred_item,
 )
 from bridge.features.sessions.archive import ArchiveCommands
 from bridge.features.sessions.organization_commands import OrganizationCommands
@@ -100,11 +102,14 @@ class LiveSession:
         self.history_refreshing = False
         self.history_receipt_key = None
         self.history_receipt_attempts = 0
+        self.history_time_key = None
+        self.history_time_attempts = 0
         self.error = None
         self.rebuild_recommended = False
         self.desktop_restart_recommended = False
         self.desktop_stream_error = None
         self.desktop_stream_version = None
+        self.attached_parent = None
         self.viewers = 0
         self.watched = False
         self.notification_probe_until = 0
@@ -190,6 +195,8 @@ class LiveSession:
                 if saved_usage:
                     result['contextUsage'] = {**saved_usage, 'cached': True}
             if self.saved_view:
+                if self.connected and result.get('id') == self.id:
+                    merge_saved_message_times(result, self.saved_view)
                 saved_labels = {turn['id']: turn for turn in self.saved_view['turns'] if turn.get('status') != 'inProgress'}
                 for turn in result['turns']:
                     saved = saved_labels.get(turn['id'])
@@ -794,13 +801,23 @@ class Bridge:
         self._save_creations()
         return dict(project, nativeProject=True, name=native.get('name') or project.get('name'))
 
+    def creation_status(self, request_id):
+        uuid.UUID(request_id)
+        with self.create_lock:
+            entry = self.creations.get(request_id)
+            if entry is None or not entry.get('id') and entry.get('phase') in ('registering-project', 'project-ready'):
+                return {'status': 'notStarted'}
+            if not entry.get('id') or entry.get('ready') is False:
+                return {'status': 'unknown'}
+            return {'status': 'created', 'id': entry['id'], 'host': entry['host'], 'message': '聊天已创建'}
+
     @operation(project='project_key')
     def create_chat(self, project_key, title, request_id, kind='desktop'):
         if not isinstance(request_id, str):
             raise ValueError('创建请求标识无效')
         uuid.UUID(request_id)
-        if not isinstance(title, str) or not title.strip() or len(title) > 120:
-            raise ValueError('请输入 1–120 字的聊天名称')
+        if not isinstance(title, str) or len(title.strip()) > 120 or any(unicodedata.category(c) in ('Cc', 'Zl', 'Zp') for c in title):
+            raise ValueError('聊天名称可留空，最多 120 字，不能包含换行或控制字符')
         if kind not in ('desktop', 'cli'):
             raise ValueError('未知聊天类型')
         available = [project for project in self.projects(host=self.project_host(project_key))
@@ -818,7 +835,8 @@ class Bridge:
                         entry.get('kind', 'desktop') != kind or
                         entry.get('cwd', project['cwd']) != project['cwd']):
                     raise ValueError('同一创建请求不能用于不同内容')
-                if not entry.get('id') and entry.get('phase') not in ('registering-project', 'project-ready'):
+                if (entry.get('ready') is False and entry.get('id') or
+                        not entry.get('id') and entry.get('phase') not in ('registering-project', 'project-ready')):
                     raise CreationError('上次创建结果尚不确定，请先刷新聊天列表并检查电脑 App，避免重复创建')
             else:
                 if project.get('hostIdentity') and self.hosts.hosts().get(project['host'], {}).get('alias') != project['hostIdentity']:
@@ -832,7 +850,7 @@ class Bridge:
                     self.ipc.connect()
                 entry = {'project': project_key, 'title': title, 'kind': kind,
                          'cwd': project['cwd'], 'host': project['host'],
-                         'directoryIdentity': project.get('directoryIdentity'), 'at': time.time()}
+                         'directoryIdentity': project.get('directoryIdentity'), 'at': time.time(), 'ready': False}
                 self.creations[request_id] = entry
                 self._save_creations()
             if not entry.get('id'):
@@ -861,7 +879,7 @@ class Bridge:
                                 cli_bridge.cli_sessions.alias != self.hosts.hosts().get(project['host'], {}).get('alias')):
                             raise ValueError('原 SSH 主机配置已变化，请重启网关后重新选择项目')
                         state = cli_bridge.cli_sessions.create(
-                            project['cwd'], title, on_start=mark_started, on_created=mark_created)
+                            project['cwd'], title or '新聊天', on_start=mark_started, on_created=mark_created)
                         thread_id = state['id']
                     except AppServerUnavailable:
                         if not entry.get('started'):
@@ -902,6 +920,7 @@ class Bridge:
                     thread_id = ssh_read(host['alias'], source, timeout=90)['id']
                 uuid.UUID(thread_id)
                 entry['id'] = thread_id
+                entry['ready'] = True
                 self._save_creations()
                 if kind == 'cli':
                     bridge = cli_bridge
@@ -1710,6 +1729,7 @@ class Bridge:
             session.origin = metadata.get("origin", "desktop")
             session.saved_cwd = metadata.get('cwd')
             session.saved_provider = metadata.get('model_provider')
+            session.attached_parent = metadata.get('attached_thread_parent_id')
             session.origin_verified = True
             session.access = self._access(session.origin, session)
 
@@ -1727,6 +1747,7 @@ class Bridge:
                 return
         if isinstance(self.store, RemoteStore):
             return
+        refresh_times = False
         with session.condition:
             if session.history_refreshing or self.closed.is_set():
                 return
@@ -1742,17 +1763,32 @@ class Bridge:
                 elif session.history_receipt_attempts >= 4 or time.monotonic() < session.history_retry_at:
                     return
                 session.history_receipt_attempts += 1
-            elif (session.connected or session.connecting or session.saved_view is None or
+            elif session.connected:
+                time_key = tuple((turn['id'], turn['status'], message['id'], message['kind'])
+                                 for turn in session.timeline_view()['turns'] if turn.get('actionable', True)
+                                 for message in turn['messages'] if message['role'] in ('user', 'assistant')
+                                 and not message.get('_syntheticId') and isinstance(message.get('id'), str)
+                                 and (message.get('timestamp') is None or message.get('_timestampSource') == 'native-turn-start'))
+                if not time_key:
+                    return
+                if time_key != session.history_time_key:
+                    session.history_time_key, session.history_time_attempts = time_key, 0
+                elif session.history_time_attempts >= 4 or time.monotonic() < session.history_retry_at:
+                    return
+                session.history_time_attempts += 1
+                refresh_times = True
+            elif (session.connecting or session.saved_view is None or
                   time.monotonic() < session.history_retry_at):
                 return
             session.history_refreshing = True
-            session.history_retry_at = time.monotonic() + (2 ** session.history_receipt_attempts if receipts else 2)
+            attempts = session.history_receipt_attempts if receipts else session.history_time_attempts if refresh_times else 1
+            session.history_retry_at = time.monotonic() + 2 ** attempts
         def refresh():
             try:
                 fallback = self._saved_history(session)
                 normalized = normalize_state(fallback, False, image_cache=session.tool_image_cache, item_limit=session.timeline_limit)
                 with session.condition:
-                    if receipts or not session.connected and session.saved_view != normalized:
+                    if receipts or (refresh_times or not session.connected) and session.saved_view != normalized:
                         session.set_history(fallback)
                 self._reconcile_submissions(session)
             except (OSError, ValueError, KeyError, RemoteUnavailable, StoreUnavailable):
@@ -2095,6 +2131,9 @@ class Bridge:
                     reason = 'thread_id_mismatch'
                     raise ValueError("Session mismatch")
                 validate_stream_state(message.get('version'), state)
+                attached = state.get('attachedToThreadId')
+                if session.attached_parent and attached and attached != session.attached_parent:
+                    raise StreamCompatibilityError('Desktop attached chat belongs to another parent')
                 if session.origin == 'cli' and (state.get('hostId', self.host) != self.host or
                         not session.saved_cwd or not session.saved_provider or
                         state.get('cwd') != session.saved_cwd or
@@ -2544,6 +2583,36 @@ class Bridge:
             raise KeyError("文件不属于此聊天的工作目录")
         return files[artifact_id]
 
+    def visualization(self, thread_id, identifier):
+        session = self.session(thread_id, attach=False)
+        with session.condition:
+            connected = session.connected
+            source = normalize_state(session.state, True) if connected else None
+            cwd = source.get('cwd') if source else None
+            path = session_visualization_path(source, identifier) if source else None
+            first_turn = source['turns'][0]['id'] if source and source['turns'] else None
+            sequence = session.sequence
+        if path is None and (not connected or first_turn and not source['historyComplete']):
+            # Read the persisted prefix independently of the current UI page.
+            # Never use archived copies of turns replaced by the live owner.
+            saved = normalize_state(self.store.history(thread_id), False)
+            if not connected:
+                cwd = saved.get('cwd')
+            path = session_visualization_path(saved, identifier, before=first_turn)
+            with session.condition:
+                if session.sequence != sequence:
+                    raise ValueError('聊天已更新，请重新加载交互图表')
+        if path is None:
+            raise PermissionError('可视化文件未被此聊天引用')
+        if self.host == 'local':
+            return read_visualization(path, cwd, self.store.home)
+        if not isinstance(self.store, RemoteStore):
+            raise RemoteUnavailable('此主机暂时无法读取可视化文件')
+        result = ssh_read(self.store.alias, visualization_read_request(path, cwd), timeout=60)
+        if 'error' in result:
+            raise ValueError(result['error'])
+        return result['value']
+
     def _annotate_upload_attachments(self, session, rows):
         """Add preview ids only for images recorded in this chat's upload ledger."""
         paths = {a['path'] for row in rows for a in row.get('attachments', [])
@@ -2653,6 +2722,21 @@ class Bridge:
             view["goal"] = None
         return view
 
+    def _deferred_output(self, thread_id, turn_id, item_id, kind):
+        cwd = self.store.get(thread_id)['cwd']
+        if self.host == 'local':
+            item = read_deferred_item(self.catalog_reader.executable, self.store.home, cwd, thread_id, turn_id, item_id, kind)
+        elif isinstance(self.store, RemoteStore):
+            source = source_text('features/sessions/create.py')
+            source += '\nimport shutil\nhome=Path(os.environ.get("CODEX_HOME", str(Path.home()/".codex")))\n'
+            source += 'runtime=shutil.which("codex") or str(Path.home()/".local/bin/codex")\n'
+            source += 'print(json.dumps(read_deferred_item(runtime, home, **' + payload(dict(
+                cwd=cwd, thread_id=thread_id, turn_id=turn_id, item_id=item_id, kind=kind)) + ')))\n'
+            item = ssh_read(self.store.alias, source, timeout=70)
+        else:
+            raise RemoteUnavailable('暂时无法读取此聊天保存的输出')
+        return normalize_item(item, image_cache=TOOL_IMAGE_CACHE).get('output') or ''
+
     def timeline_read(self, thread_id, mode='page', **options):
         session = self.session(thread_id, background=True)
         goal_available = self._refresh_session_goal(session)
@@ -2684,7 +2768,8 @@ class Bridge:
             self._merge_submission_attachments(session, projection.rows)
             if mode == 'detail':
                 result = projection.detail(**options)
-                texts = [projection.details[result['key']]]
+                row = projection.rows[projection.positions[result['key']]]
+                texts = [projection.details[result['key']]] if row['role'] == 'assistant' else []
             else:
                 result = projection.changes(**options) if mode == 'changes' else projection.page(**options)
                 result['meta'] = dict(result['meta'], host=self.host,
@@ -2702,6 +2787,9 @@ class Bridge:
                            for turn in authoritative_view['turns'] for row in turn['messages']
                            for attachment in row.get('attachments', [])
                            if attachment.get('type') == 'localImage' and attachment.get('path')]
+        if mode == 'detail':
+            result = projection.deferred_detail(**options, condition=session.condition,
+                                                read_output=lambda *target: self._deferred_output(thread_id, *target))
         # Resolve links in the delivered page, plus runtime ImageView evidence
         # retained separately from the paged message text.
         if mode != 'detail':
@@ -2712,6 +2800,7 @@ class Bridge:
         ]}
         artifacts = artifact_paths(file_state, self.store.home) if self.host == 'local' else {}
         result['files'] = [{'id': k, 'name': v['name'], 'reference': v['reference'], 'references': v['references'], 'image': v['image']} for k, v in artifacts.items()]
+        result['files'].extend(visualization_descriptors(visualization_paths(texts)))
         if mode != 'detail':
             self._submission_meta(session, result['meta'])
             result['meta']['forkedFrom'] = self._fork_origin(thread_id)

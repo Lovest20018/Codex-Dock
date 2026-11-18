@@ -19,7 +19,7 @@ from bridge.clients.codex.configuration import magpie_managed
 from bridge.clients.codex.catalog import Catalog, normalize_native_skills
 from bridge.features.sessions import linux_permissions
 from bridge.features.accounts.draft_identity import draft_identity
-from bridge.features.sessions.model import normalize_state, normalize_request, computer_use_approval
+from bridge.features.sessions.model import normalize_item, normalize_state, normalize_request, computer_use_approval
 from bridge.features.sessions.timeline import Timeline
 from bridge.features.sessions.store import StoreUnavailable
 from bridge.features.sessions.archive import ArchiveCommands
@@ -31,6 +31,9 @@ from bridge.features.sessions.projects import Projects
 from bridge.features.endpoints.wsl_features import WslFeatures
 from bridge.features.endpoints.wsl_models import WslModelCatalog
 from bridge.features.workspace.uploads import Uploads
+from bridge.features.workspace.files import session_visualization_path, visualization_paths
+from bridge.features.workspace.visualize import descriptors as visualization_descriptors
+from bridge.features.workspace.visualize_payload import read_request as visualization_read_request
 from bridge.platforms.windows import wsl
 from bridge.resources import source_text
 
@@ -528,9 +531,50 @@ class WslEntry(WslFeatures):
             if snapshot['sequence'] >= session.timeline.sequence:
                 session.timeline.update(snapshot)
             if mode == 'detail':
-                return session.timeline.detail(**options)
-            result = session.timeline.changes(**options) if mode == 'changes' else session.timeline.page(**options)
-            return {**result, 'files': []}
+                result = session.timeline.detail(**options)
+                row = session.timeline.rows[session.timeline.positions[result['key']]]
+                texts = [session.timeline.details[row['key']]] if row['role'] == 'assistant' else []
+            else:
+                result = session.timeline.changes(**options) if mode == 'changes' else session.timeline.page(**options)
+                texts = [row['text'] for row in result['rows'] if row['role'] == 'assistant']
+        if mode == 'detail':
+            result = session.timeline.deferred_detail(**options, condition=session.condition,
+                                                      read_output=lambda *target: self._deferred_output(identifier, *target))
+        return {**result, 'files': visualization_descriptors(visualization_paths(texts))}
+
+    def _deferred_output(self, identifier, turn, item, kind):
+        self._require_open()
+        cwd = self.store.get(identifier)['cwd']
+        source = source_text('features/sessions/create.py')
+        source += '\nimport shutil\nruntime=shutil.which("codex") or str(Path.home()/".local/bin/codex")\n'
+        source += 'print(json.dumps(read_deferred_item(runtime, **' + payload(dict(
+            codex_home=self.row['home'], cwd=cwd, thread_id=identifier, turn_id=turn, item_id=item, kind=kind)) + ')))\n'
+        result = self.read(self.row['distribution'], source, timeout=70)
+        return normalize_item(result).get('output') or ''
+
+    def visualization(self, identifier, artifact):
+        self._require_open()
+        session = self.session(identifier, attach=False)
+        view = session.view()
+        path = session_visualization_path(view, artifact) if view['connected'] else None
+        cwd = view.get('cwd')
+        if path is None:
+            first_turn = view['turns'][0]['id'] if view['turns'] else None
+            if view['connected'] and (view['historyComplete'] or not first_turn):
+                raise PermissionError('可视化文件未被此聊天引用')
+            saved = normalize_state(self.store.history(identifier), False)
+            path = session_visualization_path(saved, artifact, before=first_turn if view['connected'] else None)
+            if not view['connected']:
+                cwd = saved.get('cwd')
+            if session.sequence != view['sequence']:
+                raise ValueError('聊天已更新，请重新加载交互图表')
+        if path is None:
+            raise PermissionError('可视化文件未被此聊天引用')
+        self._require_open()
+        result = self.read(self.row['distribution'], visualization_read_request(path, cwd, self.row['home']), timeout=60)
+        if 'error' in result:
+            raise ValueError(result['error'])
+        return result['value']
 
     def full_history(self, identifier):
         session = self.session(identifier, attach=False)
@@ -736,13 +780,24 @@ class WslEntry(WslFeatures):
         if result.get('error'): raise ValueError(result['error'])
         return result
 
+    def creation_status(self, request_id):
+        self._require_open()
+        uuid.UUID(request_id)
+        with self.create_lock:
+            receipt = self.creations.get(request_id)
+            if receipt is None:
+                return {'status': 'notStarted'}
+            if not receipt.get('id') or receipt.get('ready') is False:
+                return {'status': 'unknown'}
+            return {'status': 'created', 'id': receipt['id'], 'host': self.host, 'message': '聊天已创建'}
+
     @_entry_write
     def create_chat(self, project_key, title, request_id):
         if not isinstance(request_id, str):
             raise ValueError('创建请求标识无效')
         uuid.UUID(request_id)
-        if not isinstance(title, str) or not 1 <= len(title.strip()) <= 120:
-            raise ValueError('请输入 1–120 字的聊天名称')
+        if not isinstance(title, str) or len(title.strip()) > 120 or any(c in '\r\n\x00' for c in title):
+            raise ValueError('聊天名称可留空，最多 120 字，不能包含换行或控制字符')
         if not isinstance(project_key, str) or not project_key.startswith(self.host + '|'):
             raise ValueError('请选择此 WSL 应用的已有项目或独立聊天')
         independent = project_key == self.host + '|independent'
@@ -752,7 +807,7 @@ class WslEntry(WslFeatures):
             if receipt:
                 if receipt['project'] != project_key or receipt['title'] != title:
                     raise ValueError('同一创建请求不能用于不同内容')
-                if not receipt.get('id'):
+                if not receipt.get('id') or receipt.get('ready') is False:
                     raise IPCError('创建结果待核对，请先刷新聊天列表；不会重复创建')
                 identifier = receipt['id']
             else:
@@ -769,7 +824,7 @@ class WslEntry(WslFeatures):
                     source += '\nprint(json.dumps(project_directory(**' + payload({'value': project['cwd'], 'expected': project.get('directoryIdentity')}) + ')))\n'
                 cwd = self.read(self.row['distribution'], source)['cwd']
                 proof = self._check_account_route(runtime, {'cwd': cwd}, new=True)
-                receipt = self.creations[request_id] = {'project': project_key, 'title': title, 'cwd': cwd}
+                receipt = self.creations[request_id] = {'project': project_key, 'title': title, 'cwd': cwd, 'ready': False}
                 self.data_dir.mkdir(parents=True, exist_ok=True)
                 private_json(self.creations_path, self.creations)
                 try:
@@ -784,9 +839,11 @@ class WslEntry(WslFeatures):
                         self._managed_routes[identifier] = (*proof[:-1], created.get('model'))
                     receipt['id'] = identifier
                     private_json(self.creations_path, self.creations)
-                    runtime.request('thread/name/set', {'threadId': identifier, 'name': title})
+                    runtime.request('thread/name/set', {'threadId': identifier, 'name': title or '新聊天'})
                     # Force durable empty-thread history before exposing it in lists.
                     runtime.request('thread/read', {'threadId': identifier, 'includeTurns': True})
+                    receipt['ready'] = True
+                    private_json(self.creations_path, self.creations)
                 except Exception:
                     raise IPCError('创建结果待核对，请先刷新聊天列表；不会重复创建') from None
             self.activate(identifier)

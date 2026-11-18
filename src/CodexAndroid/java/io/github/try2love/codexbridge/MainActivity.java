@@ -19,6 +19,8 @@ public final class MainActivity extends Activity implements SharedPreferences.On
  private android.content.SharedPreferences prefs;private final ExecutorService worker=Executors.newSingleThreadExecutor();
  private final ExecutorService probes=Executors.newFixedThreadPool(3);
  private Future<?> connectionTask;private Runnable connectionDeadline;
+ private boolean connectionReady,connectionFailed;
+ private int credentialAttempt;
  private final Handler homeHandler=new Handler(Looper.getMainLooper());
  private final Map<String,TextView> homeStates=new LinkedHashMap<>();
  private final Map<String,LinearLayout> homeNotifications=new LinkedHashMap<>();
@@ -90,6 +92,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
   if("computers".equals(page))home();else if("me".equals(page))showMe();else showChat();
  }
  void showMe(){
+  leaveConnectionPage();
   selectedPage="me";hideNative();stopComputerChecks();if(webViewport!=null)webViewport.setVisibility(View.GONE);nativeHost.setVisibility(View.VISIBLE);status.setVisibility(View.GONE);
   embeddedSettings=new SettingsPage(this,0,false);nativeHost.addView(embeddedSettings.embeddedView(),new FrameLayout.LayoutParams(-1,-1));embeddedSettings.startEmbedded();header(false);renderTabs();updateBars(pageColor(),surfaceColor());
  }
@@ -105,8 +108,8 @@ public final class MainActivity extends Activity implements SharedPreferences.On
   add(button(L("移除这台电脑"),()->{dialog.dismiss();confirmRemove(address);}),content,8);
  }
  private String pendingComputerAction,pendingComputerOrigin;
- void openComputerAction(String address,String action){pendingComputerAction=action;pendingComputerOrigin=address;if(address.equals(origin)&&web!=null){showChat();if(gatewayAuthenticated)runComputerAction();}else connect(resumeUrl(address));}
- void runComputerAction(){if(pendingComputerAction==null||!origin.equals(pendingComputerOrigin))return;String action=pendingComputerAction;pendingComputerAction=null;if("accounts".equals(action))webAccounts();else webAction("#open-session-diagnostics");}
+ void openComputerAction(String address,String action){pendingComputerAction=action;pendingComputerOrigin=address;if(address.equals(origin)&&web!=null&&!connectionFailed){showChat();if(gatewayAuthenticated)runComputerAction();}else connect(resumeUrl(address));}
+ void runComputerAction(){if(pendingComputerAction==null||!gatewayAuthenticated||!"chat".equals(selectedPage)||!origin.equals(pendingComputerOrigin))return;String action=pendingComputerAction;pendingComputerAction=null;if("accounts".equals(action))webAccounts();else webAction("#open-session-diagnostics");}
  String resumeUrl(String address){try{String value=prefs.getString("last-chat:"+address,"");if(!value.isEmpty()){JSONObject route=new JSONObject(value);return GatewayURL.chat(address,route.getString("threadId"),route.getString("host"));}}catch(Exception ignored){}return address+"/";}
  void webAction(String selector){if(web!=null&&GatewayURL.sameOrigin(web.getUrl(),origin))web.evaluateJavascript("document.querySelector("+JSONObject.quote(selector)+")?.click()",null);}
  void rememberConnection(){
@@ -121,30 +124,33 @@ public final class MainActivity extends Activity implements SharedPreferences.On
   }catch(Exception ignored){}});
  }
  void loadWithRecovery(String address,String url,WebView current,int ticket){
-  if(ticket!=generation||web!=current||!address.equals(origin)||!saved().contains(address))return;
+  if(ticket!=generation||web!=current||!"chat".equals(selectedPage)||!address.equals(origin)||!saved().contains(address))return;
   final String before=EventClient.sessionCookie(CookieManager.getInstance().getCookie(address+"/"),address);
-  if(connectionTask!=null)connectionTask.cancel(true);
+  cancelCredentialRecovery();
+  final int attempt=credentialAttempt;
   final DeviceBinding.Credential saved=DeviceBinding.load(this,address);
   if(saved==null||saved.cookie().equals(before)){current.loadUrl(url);return;}
   connectionTask=worker.submit(()->{
-   if(ticket!=generation||Thread.currentThread().isInterrupted())return;
-   boolean recover=false;
+   if(Thread.currentThread().isInterrupted())return;
+   Boolean valid=null;
    if(saved!=null&&!saved.cookie().equals(before)){
     Boolean existing=before.isEmpty()?false:DeviceBinding.verify(address,new DeviceBinding.Credential(before.substring(0,before.indexOf('=')),before.substring(before.indexOf('=')+1)));
     if(Boolean.FALSE.equals(existing)){
-     Boolean valid=DeviceBinding.verify(address,saved);
-     if(Boolean.TRUE.equals(valid))recover=true;
-     else if(Boolean.FALSE.equals(valid)){DeviceBinding.Credential latest=DeviceBinding.load(this,address);if(latest!=null&&latest.cookie().equals(saved.cookie()))DeviceBinding.clear(this,address);}
+     valid=DeviceBinding.verify(address,saved);
     }
    }
-   final boolean restore=recover;runOnUiThread(()->{
-    if(ticket!=generation||web!=current||!address.equals(origin)||!saved().contains(address))return;
+   final Boolean verified=valid;runOnUiThread(()->{
+    if(ticket!=generation||attempt!=credentialAttempt||web!=current||!address.equals(origin)||!saved().contains(address))return;
+    connectionTask=null;
     DeviceBinding.Credential latest=DeviceBinding.load(this,address);
-    if(!restore||latest==null||!latest.cookie().equals(saved.cookie())||!before.equals(EventClient.sessionCookie(CookieManager.getInstance().getCookie(address+"/"),address))){current.loadUrl(url);return;}
+    boolean sameBinding=latest!=null&&latest.cookie().equals(saved.cookie());
+    if(Boolean.FALSE.equals(verified)&&sameBinding)DeviceBinding.clear(this,address);
+    if(!Boolean.TRUE.equals(verified)||!sameBinding||!before.equals(EventClient.sessionCookie(CookieManager.getInstance().getCookie(address+"/"),address))){current.loadUrl(url);return;}
     EventClient.setName(address,saved.name);
     CookieManager.getInstance().setCookie(address+"/",saved.cookie()+"; Path="+GatewayURL.cookiePath(address)+"; HttpOnly; SameSite=Strict; Max-Age=34560000"+(address.startsWith("https://")?"; Secure":""),ok->{
      DeviceBinding.Credential retained=DeviceBinding.load(this,address);
-     if(ticket!=generation||web!=current||!address.equals(origin)||!saved().contains(address)||retained==null||!retained.cookie().equals(saved.cookie())){if(ok&&CookieManager.getInstance().getCookie(address+"/")!=null&&CookieManager.getInstance().getCookie(address+"/").contains(saved.cookie()))CookieManager.getInstance().setCookie(address+"/",saved.name+"=; Path="+GatewayURL.cookiePath(address)+"; Max-Age=0");return;}
+     if(!saved().contains(address)||retained==null||!retained.cookie().equals(saved.cookie())){if(ok&&saved.cookie().equals(EventClient.sessionCookie(CookieManager.getInstance().getCookie(address+"/"),address)))CookieManager.getInstance().setCookie(address+"/",saved.name+"=; Path="+GatewayURL.cookiePath(address)+"; Max-Age=0");return;}
+     if(ticket!=generation||attempt!=credentialAttempt||web!=current||!address.equals(origin))return;
      if(ok){prefs.edit().putString("cookieName:"+address,saved.name).apply();CookieManager.getInstance().flush();MonitorService.bindingsChanged();}
      current.loadUrl(url);
     });
@@ -152,7 +158,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
   });
  }
  void recoverConnection(String requested){
-  if(routeAttempted||!resumed||web==null)return;routeAttempted=true;
+  if(routeAttempted||!resumed||web==null||!"chat".equals(selectedPage))return;routeAttempted=true;
   final String address=origin,encoded=prefs.getString("connection:"+address,null),cookie=EventClient.sessionCookie(CookieManager.getInstance().getCookie(address+"/"),address);final int ticket=generation;
   if(encoded==null||cookie.isEmpty())return;
   final ConnectionDiscovery resolver=new ConnectionDiscovery();routeDiscovery=resolver;
@@ -160,7 +166,15 @@ public final class MainActivity extends Activity implements SharedPreferences.On
    if(ticket!=generation||!resumed||routeDiscovery!=resolver||next.equals(address)||!saved().contains(address)||!cookie.equals(EventClient.sessionCookie(CookieManager.getInstance().getCookie(address+"/"),address)))return;
    final String[] snapshot={null};
    Runnable relocate=()->{String existing=EventClient.sessionCookie(CookieManager.getInstance().getCookie(next+"/"),next);if(!existing.isEmpty()&&!existing.equals(cookie))return;if(ticket!=generation||!resumed||routeDiscovery!=resolver||!saved().contains(address)||!cookie.equals(EventClient.sessionCookie(CookieManager.getInstance().getCookie(address+"/"),address)))return;
-    CookieManager.getInstance().setCookie(next+"/",cookie+"; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=34560000",ok->{if(!ok||ticket!=generation||!resumed||routeDiscovery!=resolver||!saved().contains(address)||!cookie.equals(EventClient.sessionCookie(CookieManager.getInstance().getCookie(address+"/"),address)))return;
+    CookieManager.getInstance().setCookie(next+"/",cookie+"; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=34560000",ok->{
+     if(!ok)return;
+     if(ticket!=generation||!resumed||routeDiscovery!=resolver||!saved().contains(address)||!cookie.equals(EventClient.sessionCookie(CookieManager.getInstance().getCookie(address+"/"),address))){
+      String name=cookie.substring(0,cookie.indexOf('='));
+      if(existing.isEmpty()&&!saved().contains(next)&&cookie.equals(BindingSelection.cookie(CookieManager.getInstance().getCookie(next+"/"),name))){
+       CookieManager.getInstance().setCookie(next+"/",name+"=; Path=/; Secure; Max-Age=0");
+      }
+      return;
+     }
      if(!saved().contains(next))NotificationSources.setEnabled(prefs,next,NotificationSources.enabled(prefs,address));
      Set<String> values=saved();values.remove(address);values.add(next);android.content.SharedPreferences.Editor edit=prefs.edit().putStringSet("origins",values).putString("connection:"+next,encoded).remove("connection:"+address).remove("notificationsMuted:"+address).remove("notificationSourceRevision:"+address);
      for(String prefix:new String[]{"name:","computer-name:","notificationCheckpoint:","last-opened:","cookieName:","last-chat:"}){Object value=prefs.getAll().get(prefix+address);if(value instanceof String)edit.putString(prefix+next,(String)value);else if(value instanceof Long)edit.putLong(prefix+next,(Long)value);edit.remove(prefix+address);}edit.apply();
@@ -206,14 +220,28 @@ public final class MainActivity extends Activity implements SharedPreferences.On
   if(state!=null&&state.getBoolean("settingsOpen",false)){int offset=state.getInt("settingsScroll",0);root.post(()->{settingsPage=new SettingsPage(this,offset,false);settingsPage.show();});}
  }
  void cancelConnectionDeadline(){if(connectionDeadline!=null){homeHandler.removeCallbacks(connectionDeadline);connectionDeadline=null;}}
- void watchConnection(String url,WebView current,int ticket){
-  cancelConnectionDeadline();connectionDeadline=()->{
-   if(ticket!=generation||web!=current)return;
-   connectionDeadline=null;status.setVisibility(View.VISIBLE);status.setText(L("连接失败 · 点此重试"));status.setOnClickListener(v->beforeLeave(()->web.reload()));recoverConnection(url);
-  };homeHandler.postDelayed(connectionDeadline,12000);
+ void cancelCredentialRecovery(){credentialAttempt++;if(connectionTask!=null){connectionTask.cancel(true);connectionTask=null;}}
+ void cancelRouteRecovery(){if(routeDiscovery!=null){routeDiscovery.cancel();routeDiscovery=null;}routeAttempted=false;}
+ void leaveConnectionPage(){
+  switchRequest++;navigationRequest++;
+  pendingComputerAction=null;
+  if(web!=null&&!connectionReady)clear();
+  else {cancelConnectionDeadline();cancelCredentialRecovery();cancelRouteRecovery();}
  }
- void clear(){dismissGatewayMenu();cancelConnectionDeadline();if(connectionTask!=null){connectionTask.cancel(true);connectionTask=null;}pendingStorage=null;if(routeDiscovery!=null){routeDiscovery.cancel();routeDiscovery=null;}if(files!=null){files.onReceiveValue(null);files=null;fileView=null;}stopComputerChecks();homeStates.clear();homeNotifications.clear();resetExitGesture();generation++;if(web!=null){web.stopLoading();web.destroy();web=null;}updateBars(pageColor(),pageColor());if(body!=null&&webViewport!=null)body.removeView(webViewport);webViewport=null;shellReady=false;chatDetail=false;webModal=false;gatewayAuthenticated=false;}
+ void connectionError(String url,WebView current,int ticket){
+  if(ticket!=generation||web!=current||!"chat".equals(selectedPage))return;
+  cancelConnectionDeadline();connectionFailed=true;
+  status.setVisibility(View.VISIBLE);status.setText(L("连接失败 · 点此重试"));
+  status.setOnClickListener(v->{if(web==current&&ticket==generation)beforeLeave(()->connectNow(url));});
+  recoverConnection(url);
+ }
+ void watchConnection(String url,WebView current,int ticket){
+  cancelConnectionDeadline();connectionDeadline=()->connectionError(url,current,ticket);
+  homeHandler.postDelayed(connectionDeadline,12000);
+ }
+ void clear(){dismissGatewayMenu();cancelConnectionDeadline();cancelCredentialRecovery();cancelRouteRecovery();pendingStorage=null;if(files!=null){files.onReceiveValue(null);files=null;fileView=null;}stopComputerChecks();homeStates.clear();homeNotifications.clear();resetExitGesture();generation++;if(web!=null){web.stopLoading();web.destroy();web=null;}updateBars(pageColor(),pageColor());if(body!=null&&webViewport!=null)body.removeView(webViewport);webViewport=null;shellReady=false;chatDetail=false;webModal=false;gatewayAuthenticated=false;connectionReady=false;connectionFailed=false;status.setOnClickListener(null);}
  void home(){
+  leaveConnectionPage();
   selectedPage="computers";hideNative();stopComputerChecks();homeStates.clear();homeNotifications.clear();if(webViewport!=null)webViewport.setVisibility(View.GONE);nativeHost.setVisibility(View.VISIBLE);status.setVisibility(View.GONE);header(false);
   ScrollView scroll=new ScrollView(ui.context);LinearLayout content=column();content.setPadding(dp(16),dp(12),dp(16),dp(24));scroll.addView(content);nativeHost.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
   if(saved().isEmpty()){
@@ -263,17 +291,17 @@ public final class MainActivity extends Activity implements SharedPreferences.On
   homeHandler.postDelayed(homeRefresh,30000);
  }
  void manualAddress(){resetExitGesture();EditText field=new EditText(ui.context);field.setSingleLine();field.setInputType(17);field.setText("https://");field.setSelection(field.length());field.setPadding(dp(24),dp(16),dp(24),dp(16));new AlertDialog.Builder(ui.context).setTitle(L("连接电脑")).setMessage(L("输入 Windows Dock 手机连接页中的网关地址（HTTPS 或局域网 HTTP）")).setView(field).setPositiveButton(L("继续"),(d,w)->choose(field.getText().toString())).setNegativeButton(L("取消"),null).show();}
- boolean htmlPreviewShell(String target){return target!=null&&target.equals(origin+"/html-preview-shell");}
+ boolean previewShell(String target){return target!=null&&(target.equals(origin+"/html-preview-shell")||target.equals(origin+"/visualize-shell"));}
  void choose(String value){resetExitGesture();try{String target=GatewayURL.connection(value);String base=GatewayURL.origin(value);new AlertDialog.Builder(ui.context).setTitle(L("连接到这台电脑？")).setMessage(base+L("\n请确认这是你自己的网关。")).setPositiveButton(L("连接"),(d,w)->connect(target)).setNegativeButton(L("取消"),null).show();}catch(Exception e){message(L("请输入 Codex Dock 的完整网关地址，或从 Windows Dock 手机连接页扫码。"));}}
 
  void connect(String url){
-  try{if(web!=null&&GatewayURL.targetBase(url).equals(origin)){
+  try{if(web!=null&&!connectionFailed&&GatewayURL.targetBase(url).equals(origin)){
    showChat();if(GatewayURL.isChatPage(url,origin)&&Uri.parse(url).getFragment()!=null){if(reuseChat(url,origin,++navigationRequest))return;}else return;
   }}catch(Exception e){message(L("聊天链接无效"));return;}
   beforeLeave(()->connectNow(url));
  }
  void beforeLeave(Runnable action){
-  if(web==null||!GatewayURL.sameOrigin(web.getUrl(),origin)){action.run();return;}
+  if(web==null||!connectionReady||connectionFailed&&!shellReady||!GatewayURL.sameOrigin(web.getUrl(),origin)){action.run();return;}
   final WebView current=web;final int ticket=generation,request=++switchRequest;
   current.evaluateJavascript("(()=>{if(window.LovestShell)return window.LovestShell.prepareLeave();if(typeof saveDraft==='function')saveDraft();return {version:0,draftUnsafe:!!document.getElementById('message')?.value.trim(),attachmentCount:document.querySelector('.attachment-list:not([hidden])')?.children.length||0};})()",value->{
    if(web!=current||ticket!=generation||request!=switchRequest)return;
@@ -289,19 +317,18 @@ public final class MainActivity extends Activity implements SharedPreferences.On
   // Keep the WebView glyph size aligned with the terminal's 6px lower bound.
   s.setTextZoom(Math.round(getResources().getConfiguration().fontScale*100));s.setMinimumFontSize(6);s.setMinimumLogicalFontSize(6);
   web.setWebViewClient(new WebViewClient(){
-   public void onPageStarted(WebView view,String target,android.graphics.Bitmap favicon){if(view==web){dismissGatewayMenu();shellReady=false;chatDetail=false;webModal=false;gatewayAuthenticated=false;if("chat".equals(selectedPage)){header(false);renderTabs();}}}
-   public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){String target=request.getUrl().toString();if(!request.isForMainFrame())return !htmlPreviewShell(target);if(htmlPreviewShell(target))return true;if(target.equals("codexbridge://home")&&request.hasGesture()&&GatewayURL.sameOrigin(view.getUrl(),origin)){home();return true;}if(ArtifactDownload.accepts(target,origin)&&request.hasGesture()){downloadArtifact(target);return true;}if(GatewayURL.sameOrigin(target,origin))return false;if(request.hasGesture()&&("https".equals(request.getUrl().getScheme())||"http".equals(request.getUrl().getScheme())))new AlertDialog.Builder(ui.context).setMessage(L("在浏览器打开外部链接？\n")+request.getUrl().getHost()).setPositiveButton(L("打开"),(d,w)->startActivity(new Intent(Intent.ACTION_VIEW,request.getUrl()))).setNegativeButton(L("取消"),null).show();return true;}
-   public void onPageCommitVisible(WebView view,String target){if(view==web&&GatewayURL.sameOrigin(target,origin)){cancelConnectionDeadline();syncWebTheme();status.setVisibility(View.GONE);}}
-   public void onPageFinished(WebView view,String target){if(view==web&&GatewayURL.sameOrigin(target,origin)){cancelConnectionDeadline();CookieManager.getInstance().flush();view.evaluateJavascript("window.BridgeMobileCapabilities = Object.freeze({ diagnosticsExport: true });",null);view.evaluateJavascript(appearance,null);syncWebTheme();status.setVisibility(View.GONE);rememberConnection();
+   public void onPageStarted(WebView view,String target,android.graphics.Bitmap favicon){if(view==web){dismissGatewayMenu();shellReady=false;chatDetail=false;webModal=false;gatewayAuthenticated=false;connectionFailed=false;if("chat".equals(selectedPage)){header(false);renderTabs();}}}
+   public boolean shouldOverrideUrlLoading(WebView view,WebResourceRequest request){String target=request.getUrl().toString();if(view!=web)return true;if(!request.isForMainFrame())return !previewShell(target);if(previewShell(target))return true;if(target.equals("codexbridge://home")&&request.hasGesture()&&GatewayURL.sameOrigin(view.getUrl(),origin)){home();return true;}if(ArtifactDownload.accepts(target,origin)&&request.hasGesture()){downloadArtifact(target);return true;}if(GatewayURL.sameOrigin(target,origin))return false;if(request.hasGesture()&&("https".equals(request.getUrl().getScheme())||"http".equals(request.getUrl().getScheme())))new AlertDialog.Builder(ui.context).setMessage(L("在浏览器打开外部链接？\n")+request.getUrl().getHost()).setPositiveButton(L("打开"),(d,w)->startActivity(new Intent(Intent.ACTION_VIEW,request.getUrl()))).setNegativeButton(L("取消"),null).show();return true;}
+   public void onPageFinished(WebView view,String target){if(view==web&&!connectionFailed&&GatewayURL.isChatPage(target,origin)){connectionReady=true;cancelConnectionDeadline();cancelRouteRecovery();CookieManager.getInstance().flush();view.evaluateJavascript("window.BridgeMobileCapabilities = Object.freeze({ diagnosticsExport: true });",null);view.evaluateJavascript(appearance,null);syncWebTheme();status.setVisibility(View.GONE);rememberConnection();
     if(pendingStorage!=null){String snapshot=pendingStorage;pendingStorage=null;view.evaluateJavascript("(()=>{const data="+snapshot+";if(data&&typeof data==='object'){for(const [k,v] of Object.entries(data))if(typeof v==='string')localStorage.setItem(k,v);location.reload();}})()",null);}}}
-   public void onReceivedError(WebView view,WebResourceRequest req,WebResourceError e){if(view==web&&req.isForMainFrame()){cancelConnectionDeadline();status.setVisibility(View.VISIBLE);status.setText(L("连接失败 · 点此重试"));status.setOnClickListener(v->beforeLeave(()->web.reload()));recoverConnection(url);}}
-   public void onReceivedHttpError(WebView view,WebResourceRequest req,WebResourceResponse response){if(view==web&&req.isForMainFrame()&&GatewayURL.sameOrigin(req.getUrl().toString(),origin)&&ConnectionDiscovery.retryableStatus(response.getStatusCode()))recoverConnection(url);}
+   public void onReceivedError(WebView view,WebResourceRequest req,WebResourceError e){if(view==web&&req.isForMainFrame())connectionError(url,view,generation);}
+   public void onReceivedHttpError(WebView view,WebResourceRequest req,WebResourceResponse response){if(view==web&&req.isForMainFrame()&&GatewayURL.sameOrigin(req.getUrl().toString(),origin)&&ConnectionDiscovery.retryableStatus(response.getStatusCode()))connectionError(url,view,generation);}
   });
   web.setWebChromeClient(new WebChromeClient(){
-   @Override public boolean onJsAlert(WebView view,String url,String message,JsResult result){if(view==web&&htmlPreviewShell(url)){result.cancel();return true;}return super.onJsAlert(view,url,message,result);}
-   @Override public boolean onJsConfirm(WebView view,String url,String message,JsResult result){if(view==web&&htmlPreviewShell(url)){result.cancel();return true;}return super.onJsConfirm(view,url,message,result);}
+   @Override public boolean onJsAlert(WebView view,String url,String message,JsResult result){if(view!=web||previewShell(url)){result.cancel();return true;}return super.onJsAlert(view,url,message,result);}
+   @Override public boolean onJsConfirm(WebView view,String url,String message,JsResult result){if(view!=web||previewShell(url)){result.cancel();return true;}return super.onJsConfirm(view,url,message,result);}
    @Override public boolean onJsPrompt(WebView view,String url,String prompt,String value,JsPromptResult result){
-    if(htmlPreviewShell(url)){result.cancel();return true;}
+    if(view!=web||previewShell(url)){result.cancel();return true;}
     if(prompt.equals("lovest-shell:"+clipboardToken)){
      if(view!=web||!GatewayURL.isChatPage(url,origin)||!GatewayURL.sameOrigin(view.getUrl(),origin)||value==null||value.length()>4096){result.cancel();return true;}
      try{
@@ -315,7 +342,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
         prefs.edit().putString("last-chat:"+origin,new JSONObject().put("threadId",thread).put("host",host).toString()).apply();
        }
        if("chat".equals(selectedPage)){header(chatDetail);renderTabs();menu.setVisibility(chatDetail&&!webModal?View.VISIBLE:View.GONE);}
-       result.confirm("saved");if(data.optBoolean("authenticated")&&pendingComputerAction!=null)view.post(()->runComputerAction());return true;
+       result.confirm("saved");if(gatewayAuthenticated&&pendingComputerAction!=null)view.post(()->{if(view==web)runComputerAction();});return true;
       }
       if(view.hasWindowFocus()&&"chat".equals(selectedPage)&&"inbox".equals(action)){result.confirm("opened");view.post(()->inbox());return true;}
      }catch(Exception ignored){}
@@ -337,7 +364,7 @@ public final class MainActivity extends Activity implements SharedPreferences.On
      }else result.cancel();return true;
     }
     if(prompt.equals("codexbridge-auth-lost:"+clipboardToken)){
-     if(view==web&&view.hasWindowFocus()&&GatewayURL.sameOrigin(url,origin)&&GatewayURL.sameOrigin(view.getUrl(),origin)&&!authLossAttempted){authLossAttempted=true;loadWithRecovery(origin,origin+"/",view,generation);result.confirm("recovering");}else result.cancel();return true;
+     if(view==web&&"chat".equals(selectedPage)&&view.hasWindowFocus()&&GatewayURL.sameOrigin(url,origin)&&GatewayURL.sameOrigin(view.getUrl(),origin)&&!authLossAttempted){authLossAttempted=true;loadWithRecovery(origin,origin+"/",view,generation);result.confirm("recovering");}else result.cancel();return true;
     }
     if(prompt.equals("codexbridge-logout:"+clipboardToken)){
      if(view==web&&view.hasWindowFocus()&&GatewayURL.sameOrigin(url,origin)&&GatewayURL.sameOrigin(view.getUrl(),origin)){
@@ -587,8 +614,9 @@ public final class MainActivity extends Activity implements SharedPreferences.On
  void handleBack(){
   if(gatewayPopup!=null){dismissGatewayMenu();return;}
   if(!"chat".equals(selectedPage)){showChat();return;}
+  if(web!=null&&(!connectionReady||connectionFailed||connectionTask!=null||routeDiscovery!=null)){home();return;}
   if(web==null||!GatewayURL.sameOrigin(web.getUrl(),origin)){moveTaskToBack(true);return;}
-  final int ticket=generation;web.evaluateJavascript("(()=>{const dialog=[...document.querySelectorAll('dialog[open]')].at(-1);if(dialog){if(dialog.dispatchEvent(new Event('cancel',{cancelable:true})))dialog.close();return true;}return window.BridgeNavigation?.back()||false;})()",result->{if(ticket==generation&&!"true".equals(result))moveTaskToBack(true);});
+  final int ticket=generation,request=++navigationRequest;web.evaluateJavascript("(()=>{const dialog=[...document.querySelectorAll('dialog[open]')].at(-1);if(dialog){if(dialog.dispatchEvent(new Event('cancel',{cancelable:true})))dialog.close();return true;}return window.BridgeNavigation?.back()||false;})()",result->{if(ticket==generation&&request==navigationRequest&&"chat".equals(selectedPage)&&!"true".equals(result))moveTaskToBack(true);});
  }
  @Override public void onDestroy(){prefs.unregisterOnSharedPreferenceChangeListener(this);if(embeddedSettings!=null)embeddedSettings.stopEmbedded();if(settingsPage!=null)settingsPage.dismiss();if(updateDialog!=null)updateDialog.dismiss();if(downloadTask!=null&&(updateSession==null||downloadTask.state!=ArtifactDownload.State.COMPLETE))downloadTask.cancel();downloads.shutdownNow();updateChecks.shutdownNow();clear();probes.shutdownNow();worker.shutdownNow();if(monitor!=null)getApplicationContext().unbindService(monitor);super.onDestroy();}
 }

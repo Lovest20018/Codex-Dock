@@ -2,7 +2,7 @@
   "commit": "0721aa7dafa6177751ba7e568e0ad0efee05655b",
   "files": {
     "bridge/api/httpd.py": {
-      "sha256": "0f0a9e15aca552ea94670c05dd29e84f158e3ecd516dc63f1ac1e8f8217b7015",
+      "sha256": "cf8cc2b50649f749a099b1975a0e60b0bb22bce73ab446c261ce8a1b36220497",
       "reason": "Optional desktop session manager factory; upstream default remains unchanged. Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md. Preserve Dock manager factory and download behavior; return model identity-change errors and bind explicit model saves to the reviewed catalog. See docs/mobile-upstream-backport-2026-11-15.md.",
       "backport": {
         "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
@@ -13,6 +13,11 @@
           "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
           "sourceSha256": "067d6a9c244052e4360fc8204ecffcc5786ada995d473bb8cdd1885b1af6ffd1",
           "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        },
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "067d6a9c244052e4360fc8204ecffcc5786ada995d473bb8cdd1885b1af6ffd1",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
         }
       ]
     },
@@ -29,13 +34,18 @@
       "reason": "Explicit legacy Dock import and content-only revisions; clear confirmed provisional promotions without deleting later drafts."
     },
     "web/shell/app.js": {
-      "sha256": "bb8dd24e29a9f7ec4ac85a5a115190098107f344db11bcdac0531e4e58cdaa11",
+      "sha256": "92fed7fff567714de7d5b58b423e51b2865ec6160568e0e93a2dc2a76d2147f5",
       "reason": "Legacy Dock draft cleanup plus optional presentation hooks for scoped delivery, list and queue; uncertain identical submissions open existing message management, IME composition cannot submit. Keep Dock composer hooks; retain model drafts across discovery success/failure, reject old-account results and preserve native default effort. See docs/mobile-upstream-backport-2026-11-15.md.",
       "backports": [
         {
           "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
           "sourceSha256": "58f4ec3a471c5bb840a4bb8400d2c04a0f884abeb5e2fcdb86f94313b3377a02",
           "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        },
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "58f4ec3a471c5bb840a4bb8400d2c04a0f884abeb5e2fcdb86f94313b3377a02",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
         }
       ]
     },
@@ -56,7 +66,7 @@
       }
     },
     "bridge/features/sessions/model.py": {
-      "sha256": "fd8a25c5318d63713471d2ff399c9b149916397f7f6145aa772059d7446dfa48",
+      "sha256": "649aff0f5ce5f281e416c03fd0d5bd57efe34fa3179fb345e55004f4ec6891cd",
       "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md. Apply patches without mutating the last validated state, so a rejected new stream cannot corrupt readable history. See docs/mobile-upstream-backport-2026-11-15.md.",
       "backport": {
         "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
@@ -67,24 +77,43 @@
           "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
           "sourceSha256": "97293688f0b46e24df413adfbd82b3473fb99e56ab7fdc8512a045391b1de924",
           "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        },
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "97293688f0b46e24df413adfbd82b3473fb99e56ab7fdc8512a045391b1de924",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
         }
       ]
     },
     "web/features/chat/activity.js": {
-      "sha256": "51e03ac9f85bfa54bb02a13caaf1f51975938edd7f92584f48f6fcb16fb30d73",
+      "sha256": "c73a5404213e418ed1fe76c542b9704cbb01d7d8c40a882821f375fa2f787090",
       "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
       "backport": {
         "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
         "sourceSha256": "f8f9da9f6b518c1bb1f4f9053808983f46be54cf95dcf4049c1771d52e6a08c6"
-      }
+      },
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "870f78e6a3b7b1d1e7cad53d16a1e79cbe9172b6e7c2652900243a5853d16b52",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
     },
     "web/features/chat/timeline.js": {
-      "sha256": "88014ba0f46db0cec5eda72175ff0f2271b6ef1d08f28a68cb119aef4be5be01",
+      "sha256": "2ead63d665ba3f8ea0288366e808f83edd7485f5d6453a2e7d035d761d5cd34d",
       "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
       "backport": {
         "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
         "sourceSha256": "871f1cc42a839e87ad6c347c3633ec08d2fdd5184d21cba771b47b137390c2ef"
-      }
+      },
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "b4ff173ae71de7ac71b04d828e050bf6bb647dbb7426243a50cfa547cdbdbbc0",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
     },
     "web/shared/image-viewer.js": {
       "sha256": "e93551c4fd3ee4529a8833ed8ae140da05652e31a3db2bed49fc255130d824ea",
@@ -111,15 +140,22 @@
       }
     },
     "bridge/clients/codex/cli_session.py": {
-      "sha256": "3b247e2ffd7edde47a26add9d5804950eea757e8636f209cd21d5421e45bd1d9",
+      "sha256": "5292b1daa49d412bc7b37c39f791b02c8f269b60417e4955804d05d567f953d1",
       "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
       "backport": {
         "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
         "sourceSha256": "35eff5d1eb86356f70c457d13dbe5b312c864b5dcd1ca04a7c75e3cdcc984372"
-      }
+      },
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "99bdfdc0cb3947435721bc6b0fc8cf333a51201841e38288c8714b4056e666af",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
     },
     "bridge/app/service.py": {
-      "sha256": "6577aba9cbda543fe49f444cd78ffa60c2bdf93642992ffbd4e629c89ec82141",
+      "sha256": "81ced4da8cff2cd637429d03698234db08cc0fbfeff4d217fa4d0e2d0ab72bf8",
       "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md. Scoped v2.2.1 stream/control and task-audit compatibility, follower recovery/backoff, model empty/failure protection and host construction error isolation. Keep Dock account/auth/host and no-replay contracts. See docs/mobile-upstream-backport-2026-11-15.md.",
       "backport": {
         "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
@@ -130,6 +166,11 @@
           "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
           "sourceSha256": "b88a92af5af36b4d807043aa480c7c815fab4221b25eb56a0c42be714e644e29",
           "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        },
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "b88a92af5af36b4d807043aa480c7c815fab4221b25eb56a0c42be714e644e29",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
         }
       ]
     },
@@ -166,12 +207,19 @@
       }
     },
     "web/features/chat/session-menu.js": {
-      "sha256": "b2b2297340eb960c146c1cfefe8f725583bbf4e7a49d3797c6f6ad553947ca48",
+      "sha256": "b52f1a959e36de6d3a3d1a0f5ddda527b1a075dfdeff7cff8d22981119617a76",
       "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md.",
       "backport": {
         "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
         "sourceSha256": "2d7511d6ee1d107c26d6d6a5ec6111d4d9610f1d26cc2fbaf7dd90d62be85992"
-      }
+      },
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "0823c5ffa84980f5d188f2c3e51cd9b4f6b0f732f0524f8b2ccfc3dd5ddb0379",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
     },
     "web/shared/presentation-controls.css": {
       "sha256": "6aef8ed51d98b1ded0f99929ed747d2f79129ecdf614199770707c073a1b59e1",
@@ -190,7 +238,7 @@
       }
     },
     "web/shared/i18n.js": {
-      "sha256": "6bdada884d2ad20d9acbb8e10fbae727b4d47e21b12a7b34439efb446338a312",
+      "sha256": "0470a65e83ab6f42a3da6a1723c89c76304386495df2c50db531e200aa951d0c",
       "reason": "Scoped v2.2.0 mobile usability backport; see docs/mobile-upstream-backport-2026-11-09.md. Translate the scoped model recovery/default-effort and protocol compatibility messages without changing chat or model text. See docs/mobile-upstream-backport-2026-11-15.md.",
       "backport": {
         "commit": "76acf47b91ab3ae41f57fc7a8664da1c9224d206",
@@ -201,6 +249,11 @@
           "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
           "sourceSha256": "63eda5d7abaf4d88bb705bd968db7a8b631687f59e40d84fcb327a3682e506c9",
           "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        },
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "63eda5d7abaf4d88bb705bd968db7a8b631687f59e40d84fcb327a3682e506c9",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
         }
       ]
     },
@@ -213,13 +266,18 @@
       }
     },
     "bridge/clients/codex/ipc.py": {
-      "sha256": "0d155acd1e7eafde5f1788ff020c0713a78762917a4b3a25cd0f5eb06354c973",
+      "sha256": "70a59975ee9ddeb8580627ff0b4c3a82984f73ed34ac0f8e3d55f18b1b1196d3",
       "reason": "Validated v11/v13 and additive future desktop streams, generation-safe initialization, bounded read deadlines and endpoint replacement; keep existing outbound operations. See docs/mobile-upstream-backport-2026-11-15.md.",
       "backports": [
         {
           "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
           "sourceSha256": "0c7fbe2d07f5dd212a36ab897817c8c92d517778d724e1fbff36b024f7c076b9",
           "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
+        },
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "0c7fbe2d07f5dd212a36ab897817c8c92d517778d724e1fbff36b024f7c076b9",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
         }
       ]
     },
@@ -277,9 +335,253 @@
           "scope": "Selected Windows gateway compatibility/resilience subset; prior Dock patches retained."
         }
       ]
+    },
+    "bridge/clients/codex/remote.py": {
+      "sha256": "1fc2a05e36b47ff0f769f05424ebb33b61386da4421c681388ad7faf094fbd84",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "095c673c670785c4a4b51a15ec3661ce769f51d287a9ad6857481be97c54db21",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "bridge/features/endpoints/wsl.py": {
+      "sha256": "719d90f10a89427aac4058c0b5b1fc94f51db54f23317f73d8a3377375cfb59b",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "d5b3c45f42221ce15ab49668895159415fdee742b3144acae23c3ee1dc7e523e",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "bridge/features/sessions/create.py": {
+      "sha256": "1e0c4857eb9c44b5dbd09f793b99f349ecf0f0ed31c320a78cf68824adfa28f0",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "a1426f774df2126c43abfe1e34df2f36a1e0d6ed80d74338732993632d175abd",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "bridge/features/sessions/store.py": {
+      "sha256": "4614614821827ab657ef4e2fc1d7d98fc8aef2d838b370274288c40fd154ae96",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "5a7b16d1b50e6fa1e6d9f6433deef57a0d075ac73a1962244c41de3dbe662c45",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "bridge/features/sessions/timeline.py": {
+      "sha256": "be11aa965834200057570581e395f8243111f0ccdce9df444f5f1659ffca7170",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "73ab3e1e786b0a1226856e4ee73801cfcfd1ead4727cd9ac19e8b90cc894f896",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "bridge/features/workspace/files.py": {
+      "sha256": "ea142471f9b25a6f5fefb0d7d75c0dd40b3fc5470dc3ff448906217d5af94854",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "147ae645be69e431aca28966e11bd2a205103d76232995fe5852391f2e564e50",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "scripts/gateway-resources.json": {
+      "sha256": "3ab4e00627566d0bdebfed0aeea4859d31d696e5e5dfd3aafacffc6fe068fc34",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "a1e2c537aa2431132855c98cd84688f053df8fed65dc84664081d607a3fb280c",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "web/assets.json": {
+      "sha256": "0d4f08f0300cf132465b81be870996ccb543ae8996119866ff54d064a9496cf7",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "b1a7d4b624b0e882fb54d139b497ac863685bc86df7a5d929e76251b32c7be2c",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "web/index.html": {
+      "sha256": "3f4adda80efe2fba057fcfd27668384d4cef1693a4f6d544044659ec6755f4ab",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "23a36ad9a684b1dd889da81f6705e8c77e7bc52da681b3c32aac15659bbf8746",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "web/shared/markdown.js": {
+      "sha256": "b1e2e500ba9ccc4c04c172191c8729345a2fec049eed43a9b06931095b940222",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "2f83f396cdc9460c5c562fc8182e1b8911280f462cd2f14aa8ac7bc9b1880343",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "web/shell/content.css": {
+      "sha256": "f3fffa588221e4d5826793a4c2548f3826455b2326e52b8c93cc6bff2a8f343c",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "6ad5f2bdb2a1d1a5cd51861da2de988ad0e6b4d9ec5987d839c4397bbfe1fdd3",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "tests/test_resource_layout.py": {
+      "sha256": "629415a3f5bc860d6ff45cfe0a914f26b0f18a908fe0b83f0a626c84d6c23c21",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "83c3a1fba916df06e8c7fa8095b9f298bdc721f2e06db94dffc1e8eb447da773",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
     }
   },
   "omitted": {
     "deploy/nas/.env.example": "Unused public NAS deployment template excluded by the Dock private-config path policy."
+  },
+  "added": {
+    "bridge/api/visualize.py": {
+      "sha256": "2b0f923aa75df681051f5cb45213366f67a400d4ccc812880c97adfa1f42a374",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "b30ffff732df118ada1625599815057ae7f9cf8028df9b15b9dae29f41812e32",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "bridge/features/workspace/visualize.py": {
+      "sha256": "d2df727f7f97b6355b62a9c50a46873287c279013f9b8a2826e469f611ac4bcd",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "d2df727f7f97b6355b62a9c50a46873287c279013f9b8a2826e469f611ac4bcd",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "bridge/features/workspace/visualize_payload.py": {
+      "sha256": "d09858599a4ff17c2f8a400121a8ead3635094919c5da2da93ae0240b4ffd32f",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "3a570e2bedaaaa0d45c8c1d773c363b953a34e1dcb7d764e4ca5f1782b889c7f",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "web/features/chat/composer-commands.css": {
+      "sha256": "63fbe40bd91d7c0aeee679ea7dc4f6c34f5f34f37d0c543d2a3801b47e23f803",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "63fbe40bd91d7c0aeee679ea7dc4f6c34f5f34f37d0c543d2a3801b47e23f803",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "web/features/chat/composer-commands.js": {
+      "sha256": "14d82a0334e4e1a1c9ba810603623a72a52337af8af2ed9c982576d213cd713e",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "a52007a924e32fc35267590c48ea8f2ef8150caa1fb667a4ce1dc299dd9a53df",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "web/shared/visualize-runtime.css": {
+      "sha256": "132620b16d5d9af64db9f3077705695d08c7d3344e3940f75268d05f406b5f35",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "132620b16d5d9af64db9f3077705695d08c7d3344e3940f75268d05f406b5f35",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "web/shared/visualize-runtime.js": {
+      "sha256": "7f4cb35485be70ac494361801bdef2da1f0ebd2e014779281e74b1b08afa8d6a",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "7f4cb35485be70ac494361801bdef2da1f0ebd2e014779281e74b1b08afa8d6a",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "web/shared/visualize-shell.html": {
+      "sha256": "953118bcfceddcc1f5fe6ccb00e51ebbdae8646cb14613e91dd1e8ad9bc6c4ed",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "5e7fedb9f6061f399809b7e5903115e4e43cfbeae933f56ed1ea93967afae5e2",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "web/shared/visualize.css": {
+      "sha256": "8a3bc6b903264d81be403752440fba06a6b521e0aa6fdd0b0c501ad538487f41",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "8a3bc6b903264d81be403752440fba06a6b521e0aa6fdd0b0c501ad538487f41",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    },
+    "web/shared/visualize.js": {
+      "sha256": "804863d2ccc2f43b04a22f02036b71456be91f3f31b11fc39b86dd8baaaa4d7e",
+      "reason": "Selective mobile chat backport and native protocol adaptation. See docs/release-0.19.6.md.",
+      "backports": [
+        {
+          "commit": "1004e5aeb6ee38a75ab18b4bad1720a38553aada",
+          "sourceSha256": "52b552fa9904eea738da8f2c2e558f0638c517fc663b25503560f93f7ee8ea5a",
+          "scope": "Selective backport of visualization, chat input, time and native session metadata. Dock authorization and connection behavior retained."
+        }
+      ]
+    }
   }
 }

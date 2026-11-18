@@ -118,6 +118,9 @@ class SessionMenu {
       for(const [label,value,copy] of c.details||[]){if(value===undefined||value===null||value==='')continue;const line=this.node('div'),dd=this.node('dd','',String(value));line.append(this.node('dt','',this.t(label)),dd);
         if(copy){const button=this.node('button','sm-icon message-copy');button.type='button';button.setAttribute('aria-label',this.t('复制')+' '+this.t(label));button.append(this.icon('copy'));button.onclick=()=>this.copy(String(value),button);line.append(button);}details.append(line);}
       box.append(details);if(c.source)this.row('来源会话：'+c.source.title,'link',()=>{this.close();c.source.open();});
+    }else if(view==='attached'){
+      box.append(this.node('h3','sm-heading',this.t('附属聊天')));
+      this.loadAttached(c,box);
     }else if(view==='project'||view==='section'){
       box.append(this.node('h3','sm-heading',this.t(view==='project'?'项目':'分区')));
       this.loadOrganization(view,c,box);
@@ -135,9 +138,37 @@ class SessionMenu {
       this.separator();if(c.manage)this.row('发送管理','list',()=>{this.close();c.manage();});
       if(c.notifications)this.row('聊天通知设置','info',button=>this.execute(()=>{this.close();return c.notifications();},button));
       this.row('会话详情','info',()=>this.render('details'),{end:true});
+      if(c.attached)this.row('附属聊天','list',()=>this.render('attached'),{end:true});
       if(c.archive){this.separator();this.row(c.archived?'恢复会话':'停止任务并归档…','archive',button=>c.archived?this.execute(c.archive,button):this.render('archive'),{danger:!c.archived});}
     }
     this.position();
+  }
+  loadAttached(context,box){
+    const status=this.node('p','sm-explanation');status.setAttribute('role','status');box.append(status);
+    const current=()=>this.box===box&&this.view==='attached'&&status.isConnected&&context.isCurrent();
+    const seen=new Set();
+    const open=id=>this.execute(()=>{this.close({immediate:true});return context.openAttached(id);});
+    const read=async offset=>{
+      status.textContent=this.t('正在读取…');
+      try{
+        const value=await context.attached(offset);if(!current())return;
+        status.textContent=!value.supported?this.t('当前接入未提供附属聊天目录'):
+          (!value.parent&&!value.children.length&&!offset?this.t('没有附属聊天'):'');
+        if(!offset&&value.parent)this.row('返回主聊天','back',()=>open(value.parent));
+        for(const child of value.children)if(!seen.has(child.id)){
+          seen.add(child.id);
+          const title=(child.title||this.t('未命名聊天'))+(child.archived?' · '+this.t('已归档'):'');
+          this.row(title,'link',()=>open(child.id));
+        }
+        if(value.hasMore&&value.children.length)this.row('加载更多','list',button=>{button.remove();read(offset+value.children.length);});
+      }catch(error){
+        if(current()){
+          status.textContent=this.t(error.message);
+          this.row('重试','list',button=>{button.remove();read(offset);});
+        }
+      }
+    };
+    read(0);
   }
   async loadOrganization(view,context,box){
     const pending=this.node('p','sm-explanation',this.t('正在读取原生侧边栏…'));box.append(pending);

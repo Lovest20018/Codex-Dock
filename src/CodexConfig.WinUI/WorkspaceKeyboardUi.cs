@@ -43,8 +43,15 @@ public sealed partial class MainWindow
         { if (SaveProfileButton.IsEnabled) await SaveProfileAsync(false); return; }
         if (ReferenceEquals(currentPage, TemplatesNav) && editingTemplate is not null)
         { if (SaveTemplateButton.IsEnabled) { SaveTemplateEdit(); RefreshView(); } return; }
-        if (ReferenceEquals(currentPage, MobileSettingsNav))
-        { if (mobileDraft.HasDraft && SaveMobileButton.IsEnabled) await SaveMobileAsync(); return; }
+        if (currentPage == MobileSettingsNav || currentPage == MobileNav)
+        {
+            if (mobileDraft.HasDraft && SaveMobileButton.IsEnabled)
+            {
+                if (currentPage == MobileNav) await PrepareMobilePairAsync();
+                else await SaveMobileAsync();
+            }
+            return;
+        }
         if (ApplicationFooter.Visibility == Visibility.Visible && ConnectionDraftActions.Visibility == Visibility.Visible)
         {
             if (currentPage == ConnectionNav && connectionReview is not null && SetupSaveOnlyButton.IsEnabled) await ConfirmConnectionReviewAsync(apply: false);

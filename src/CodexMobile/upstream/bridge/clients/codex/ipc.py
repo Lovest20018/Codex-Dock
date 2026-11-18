@@ -34,6 +34,12 @@ def validate_stream_state(version, state):
         if not condition:
             raise StreamCompatibilityError('Desktop stream control state changed')
 
+    def native_id(value):
+        try:
+            return isinstance(value, str) and str(uuid.UUID(value)) == value
+        except ValueError:
+            return False
+
     def entities(value):
         require(isinstance(value, dict))
         records, islands = value.get('entitiesByKey'), value.get('islands')
@@ -53,6 +59,8 @@ def validate_stream_state(version, state):
     require(isinstance(state.get('id'), str) and bool(state['id']))
     require(isinstance(state.get('modelProvider'), str) and bool(state['modelProvider']))
     require(isinstance(state.get('cwd'), str) and bool(state['cwd']))
+    attached = state.get('attachedToThreadId')
+    require(attached is None or native_id(attached) and attached != state['id'])
     runtime = state.get('threadRuntimeStatus')
     require(isinstance(runtime, dict) and runtime.get('type') in ('idle', 'active', 'running', 'waiting', 'busy'))
     requests = state.get('requests')
@@ -76,6 +84,12 @@ def validate_stream_state(version, state):
         require(isinstance(items, list))
         for item in items:
             require(isinstance(item, dict) and isinstance(item.get('type'), str))
+            deferred = item.get('deferredOutputTurnId')
+            if deferred is not None:
+                require(native_id(deferred) and deferred == turn.get('turnId') and
+                        item.get('type') in ('commandExecution', 'mcpToolCall') and
+                        item.get('status') == 'completed' and isinstance(item.get('id'), str) and
+                        0 < len(item['id']) <= 512)
 
 
 class IPCError(Exception):

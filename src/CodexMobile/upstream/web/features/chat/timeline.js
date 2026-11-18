@@ -26,8 +26,8 @@ function timelineFilePath(path,cwd){
 // History and live changes share stable keys, but never share a request queue.
 class ChatTimeline {
   static clearCache(){recentTimelinePages.clear();}
-  constructor({url, request, renderMeta, renderText, status, onAction, onFile, onReady, canEdit = () => true, elements = {}, active = () => true, cacheKey = ''}) {
-    Object.assign(this,{url,request,renderMeta,renderText,status,onAction,onFile,onReady,active,cacheKey});
+  constructor({url, request, renderMeta, renderText, status, onAction, onFile, onReady, canEdit = () => true, elements = {}, active = () => true, cacheKey = '', visualizationIdentity = () => ''}) {
+    Object.assign(this,{url,request,renderMeta,renderText,status,onAction,onFile,onReady,active,cacheKey,visualizationIdentity});
     this.canEdit=()=>!this.cached&&canEdit();
     this.viewport=elements.viewport||document.getElementById('timeline');
     this.container=elements.container||document.getElementById('messages');
@@ -145,11 +145,13 @@ class ChatTimeline {
       }
       reset=true;
     }
+    const wasCached=this.cached,priorVisualizationIdentity=this.visualizationIdentity();
     this.cached=cached;
     const anchor=this.capture(),bottom=this.following;
     if(reset){this.generation++;window.BridgeMermaidCards?.clearScope(this.mermaidScope);this.mermaidScope=window.BridgeMermaidCards?.createScope();this.rows.clear();this.nodes.clear();this.details.clear();this.files.clear();this.container.replaceChildren();this.epoch=page.epoch;this.retryCount=0;}
     for(const file of page.files||[])this.files.set(file.id,file);
     if((!history&&page.sequence>=this.sequence)||reset){this.sequence=page.sequence;this.meta=page.meta;if(!cached)this.renderMeta({...page.meta,files:[...this.files.values()]});}
+    const visualizationChanged=priorVisualizationIdentity!==this.visualizationIdentity();
     if(!history)this.pendingRequests=!cached&&!!page.meta.requests?.length;
     let changed=false;
     for(const row of page.rows){
@@ -157,7 +159,16 @@ class ChatTimeline {
       if(previous&&previous.sequence>page.sequence)continue;
       this.rows.set(row.key,{row,sequence:page.sequence});
       const stamp=JSON.stringify(row),old=this.nodes.get(row.key);
-      if(old?.stamp===stamp)continue;
+      const rebindVisualization=(wasCached&&!cached||visualizationChanged)&&old?.node.querySelector('.visualize-card');
+      if(old?.stamp===stamp&&!rebindVisualization)continue;
+      if(old&&previous&&previous.row.timestamp!==row.timestamp){
+        const {timestamp:priorTime,...before}=previous.row,{timestamp,...after}=row;
+        const actions=old.node.querySelector('.message-actions');
+        if(actions&&JSON.stringify(before)===JSON.stringify(after)){
+          actions.querySelector('.message-time')?.remove();renderChatMessageTime(actions,timestamp);
+          old.stamp=stamp;continue;
+        }
+      }
       const node=this.renderRow(row);node.dataset.key=row.key;
       node.hidden=!this.rowVisible(row);changed=changed||!node.hidden;
       this.nodes.set(row.key,{node,stamp});
@@ -213,6 +224,12 @@ class ChatTimeline {
     }
     const body=document.createElement(activity?'pre':'div');body.className=activity?'activity-body':'message-body';
     body.__mermaidScope=this.mermaidScope;body.__mermaidIdentity=row.key;
+    body.__visualizeAssistant=row.role==='assistant';
+    body.__visualizeContext={key:()=>{
+      const scope=this.visualizationIdentity();return !this.cached&&scope?JSON.stringify([scope,row.key]):'';
+    },
+      url:id=>this.url('visualizations/'+id),signal:this.abort.signal,
+      canCompose:()=>!this.cached&&!this.abort.signal.aborted&&this.active()};
     const more=document.createElement('button');more.className='plain detail-more';more.type='button';
     const cached=this.details.get(row.key);
     if(cached&&cached.version!==row.version)this.details.delete(row.key);
@@ -242,9 +259,10 @@ class ChatTimeline {
       const actions=document.createElement('div');actions.className='message-actions';
       const copy=document.createElement('button');copy.type='button';copy.className='plain message-copy';copy.textContent=timelineText('复制');copy.onclick=()=>window.BridgeClipboard?.copy(()=>this.fullText(row),copy);actions.append(copy);node.append(actions);
       const quote=document.createElement('button');quote.type='button';quote.className='plain message-quote';quote.textContent=timelineText('引用');quote.onclick=()=>node.dispatchEvent(new CustomEvent('bridge-compose-quote',{bubbles:true,detail:{getText:()=>this.fullText(row),source:row.key}}));actions.append(quote);
+      renderChatMessageTime(actions,row.timestamp);
     }
     renderChatAttachments(node,row.attachments,{showToolImages:this.showToolImages,fileUrl:item=>{
-      const file=[...this.files.values()].find(file=>file.reference===item.path||file.references?.includes(item.path));
+      const file=[...this.files.values()].find(file=>!file.visualization&&(file.reference===item.path||file.references?.includes(item.path)));
       return file?this.url('files/'+file.id):null;
     },url:item=>{
       if(!item.uploadId&&!item.desktopId)return null;
@@ -289,6 +307,8 @@ class ChatTimeline {
     for(const [key,entry] of this.nodes){
       const row=this.rows.get(key)?.row;if(!row)continue;
       const node=entry.node,heading=(row.role==='activity'||row.role==='fileChanges')?(node.tagName==='DETAILS'?node.firstElementChild:node.querySelector('details.activity > summary')):node.firstElementChild;
+      const actions=node.querySelector('.message-actions');
+      if(actions&&row.timestamp){actions.querySelector('.message-time')?.remove();renderChatMessageTime(actions,row.timestamp);}
       if(row.fileSummary){const label=node.querySelector('.edited-files-label');if(label)label.textContent=fileChangeLabel(row);const basis=node.querySelector('.edited-files-basis');if(basis)basis.textContent=timelineText('累计修改');}
       else if(heading)heading.textContent=(row.role==='activity'||row.role==='fileChanges')?(row.title||row.kind)+(row.status==='inProgress'?timelineText(' · 进行中'):''):row.role==='user'?timelineText('你'):row.role==='error'?timelineText('执行错误'):['CODEX',row.model&&[row.model,row.effort].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
       const more=node.querySelector('.detail-more');

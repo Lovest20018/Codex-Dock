@@ -50,28 +50,33 @@ public sealed partial class MainWindow
             var gap = ConnectionFields.TransformToVisual(PageScroll).TransformPoint(new()).Y;
             Check(gap >= 0 && gap < 35, "Closed global warnings and login guidance do not reserve empty rows above the connection fields");
             await CaptureAsync(output, "task-flow-connection-light.png");
-            var mobile = (SmokeMobileRuntime)mobileRuntime; mobile.Checked = false;
+            var mobile = (SmokeMobileRuntime)mobileRuntime; mobile.Checked = false; mobile.PairImage = Convert.FromBase64String(FixturePairPng);
             NavigateTo(MobileNav); await Settle(); var calls = mobile.Trace.Count;
-            Check(MobileNextStepText.Text.Contains("第一步") && !CreateMobilePairButton.IsEnabled && ContinueMobilePairButton.Visibility == Visibility.Collapsed,
-                "Unconfigured pairing explains its setup prerequisite without enabling a pair or starting a service");
-            OpenMobileSettingsClicked(MobileSetupLinkButton, new()); await Settle();
+            Check(MobileSettingsCard.Visibility == Visibility.Visible && MobileFooter.Visibility == Visibility.Visible &&
+                MobileNextStepText.Text.Contains("第一步") && !CreateMobilePairButton.IsEnabled && MobileAdvancedEntry.IsExpanded == false,
+                "First-time pairing has its setup fields and save action on the same page with the port collapsed");
             MobileUrlInput.Text = "https://flow-phone.invalid"; MobileUsernameInput.Text = "flow-user"; MobilePasswordInput.Password = "fake-flow-phone-password";
             smokeDialog = _ => Task.FromResult(ContentDialogResult.None);
-            Check(!await SaveMobileAsync() && mobileDraft.HasDraft && mobile.Trace.Count == calls && ContinueMobilePairButton.Visibility == Visibility.Collapsed,
+            await PrepareMobilePairAsync();
+            Check(mobileDraft.HasDraft && mobile.Trace.Count == calls && mobilePair is null,
                 "Cancelling phone setup keeps its draft and does not offer pairing against an unsaved entry");
             smokeDialog = _ => Task.FromResult(ContentDialogResult.Primary);
-            Check(await SaveMobileAsync() && ContinueMobilePairButton.Visibility == Visibility.Visible && !mobileDraft.HasDraft,
-                "Successful phone save and confirmed startup offer the next pairing step in the same footer");
-            var afterSave = mobile.Trace.Count; OpenPairingPageClicked(ContinueMobilePairButton, new()); await Settle();
-            Check(currentPage == MobileNav && MobileNextStepText.Text.Contains("检测 HTTPS") && CheckMobileEntryButton.IsEnabled &&
-                mobile.Trace.Skip(afterSave).All(action => action == "devices") && original.SameContents(store.Load(home)),
-                "Continuing to pairing only navigates and reads status without automatic HTTPS detection or configuration writes");
-            await RunMobileControlAsync(async (saved, eligible) => AcceptMobileResult(await mobileConnection.CheckEntryAsync(saved, eligible, lifetime.Token)));
-            Check(MobileNextStepText.Text.Contains("检测通过") && CreateMobilePairButton.IsEnabled, "Explicit entry detection advances the guidance to pairing without generating a code automatically");
-            Root.RequestedTheme = ElementTheme.Dark; AppWindow.Resize(new(720, 540)); NavigateTo(MobileSettingsNav); await Settle();
-            var nextPosition = ContinueMobilePairButton.TransformToVisual(Root).TransformPoint(new());
-            Check(nextPosition.Y >= 0 && nextPosition.Y + ContinueMobilePairButton.ActualHeight <= Root.ActualHeight,
-                "The save to pairing continuation remains reachable in the compact phone footer");
+            mobile.EntryFailure = true;
+            await PrepareMobilePairAsync();
+            Check(currentPage == MobileNav && mobilePair is null && !mobileDraft.HasDraft && mobile.Trace.Skip(calls).Where(action => action != "devices").SequenceEqual(new[] { "save", "start", "pair" }) &&
+                CheckMobileEntryButton.Content.ToString() == "重新检测" && MobileEntryHelpButton.Visibility == Visibility.Visible,
+                "Preparing a pair saves and starts once, keeps the same page on entry failure, and offers detection and forwarding help");
+            var afterFailure = mobile.Trace.Count;
+            mobile.EntryFailure = false;
+            await GenerateMobilePairAsync();
+            Check(mobilePair is not null && MobilePairImage.Visibility == Visibility.Visible && MobileNextStepText.Text.Contains("检测通过") &&
+                mobile.Trace.Skip(afterFailure).Where(action => action != "devices").SequenceEqual(new[] { "pair" }) && original.SameContents(store.Load(home)),
+                "Pair retry reuses the saved running service and renders a QR without modifying Codex routing");
+            mobile.PairState = "used"; mobile.CodexReadiness = "configure"; gatewayTicks = 3;
+            await MobilePairTickAsync();
+            Check(mobilePair is null && MobilePairHint.Text.Contains("手机已配对") && MobileCodexReadinessText.Text.Contains("尚无") && OpenMobileManagerButton.IsEnabled,
+                "Successful scanning is distinct from enabling a Codex source that the phone can access");
+            Root.RequestedTheme = ElementTheme.Dark; AppWindow.Resize(new(720, 540)); await Settle();
             await CaptureAsync(output, "task-flow-phone-compact-dark.png");
             NavigateTo(WorkspaceNav); AppWindow.Resize(new(1120, 820)); Root.RequestedTheme = ElementTheme.Light;
             lastApplication = new(DesktopApplyOutcome.ExitBlocked, original, null, false, false, new("退出受阻", "模拟实例仍未退出", true)); RefreshView(); await Settle();

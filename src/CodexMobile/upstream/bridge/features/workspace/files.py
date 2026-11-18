@@ -8,6 +8,7 @@ from urllib.parse import unquote, urlsplit
 from urllib.request import url2pathname
 
 from bridge.features.sessions.model import ordered_turns, items_array, desktop_file_attachments
+from bridge.features.workspace.visualize import identifier as visualization_id, reference_candidates
 
 MARKDOWN_PATH = re.compile(r'!?\[[^\]\n]*\]\((?:<([^>]+)>|([^\n)]+))\)')
 IMAGE_MARKDOWN_PATH = re.compile(r'!\[[^\]\n]*\]\((?:<([^>]+)>|([^\n)]+))\)')
@@ -23,6 +24,21 @@ def code_comment_references(text):
 def file_citation_references(text):
     """Extract complete file citations; grant resolution still enforces its roots."""
     yield from _directive_references(text, _code_comment_candidates(text, citation=True))
+
+
+def visualization_paths(texts):
+    """Collect visualization evidence from assistant output outside Markdown code."""
+    return {path for text in texts if isinstance(text, str)
+            for path in _directive_references(text, reference_candidates(text))}
+
+def session_visualization_path(view, identifier, *, before=None):
+    turns = view['turns']
+    if before is not None:
+        boundary = next((i for i, turn in enumerate(turns) if turn['id'] == before), 0)
+        turns = turns[:boundary]
+    paths = visualization_paths(row.get('text', '') for turn in turns for row in turn['messages']
+                                if row.get('role') == 'assistant')
+    return next((path for path in paths if visualization_id(path) == identifier), None)
 
 
 def _directive_references(text, matches):

@@ -24,6 +24,11 @@ enumerates every intentional modification and omitted file. Run
 `scripts/verify-mobile-upstream.py` before building; unexpected edits fail the build.
 Upstream tests, architecture notes, native helpers and licenses accompany the source.
 
+Dock 0.19.6 adds the v2.2.1 inline visualization runtime, the composer command
+picker, and native message timestamps. Modified baseline files and new upstream
+assets carry separate reviewed digests. Windows, Web and Android coverage is
+described in the [0.19.6 acceptance notes](../../docs/review-0.19.6.md).
+
 Dock owns only startup/configuration, fixed HTTPS ingress, local WPF control,
 Codex-only filtering, a loopback enrollment host, and migration. The shared-source
 login fix from 0.13.3 is retained: new authentication is restricted after failures;

@@ -12,6 +12,7 @@ from bridge.clients.codex.remote import RemoteCatalog, RemoteCliModels
 from bridge.clients.claude.remote import worker_source as claude_worker_source
 from bridge.features.auth import tls
 from bridge.features.accounts.wsl_account_payload import worker_source
+from bridge.features.workspace.visualize_payload import worker_source as visualization_worker_source
 from bridge.resources import project_root, source_text
 
 
@@ -45,12 +46,13 @@ SSH_SOURCES = {
     'bridge/clients/codex/catalog.py': ['Catalog'],
     'bridge/clients/codex/remote_models.py': ['remote_model_worker'],
     'bridge/clients/codex/configuration.py': ['magpie_managed'],
-    'bridge/features/sessions/create.py': ['create_empty', 'fork_copy', 'rename_thread'],
+    'bridge/features/sessions/create.py': ['create_empty', 'fork_copy', 'rename_thread', 'read_deferred_item'],
     'bridge/features/sessions/organization.py': ['organization'],
     'bridge/features/accounts/models.py': ['model_ids'],
     'bridge/features/accounts/draft_identity.py': ['draft_identity', 'codex_account_identity'],
     'bridge/features/auth/tls.py': ['client_context'],
     'bridge/features/workspace/workspace.py': ['Workspace', 'operate'],
+    'bridge/features/workspace/visualize.py': ['read_source'],
     'bridge/features/terminals/manager.py': ['CommandJob', 'serve_remote'],
     'bridge/features/terminals/completion.py': ['complete_path'],
     'bridge/platforms/posix/terminal.py': ['TerminalSession', 'remote_main'],
@@ -72,9 +74,10 @@ NATIVE_SOURCES = {'bridge/platforms/macos/claude-helper.swift',
                   'bridge/platforms/windows/codex-quit-helper.cs'}
 
 ISOLATED_DEFINITIONS = r'''
-import importlib.util, json, pathlib, shutil, sys
+import importlib.util, json, os, pathlib, shutil, sys
 from unittest.mock import patch
 assert importlib.util.find_spec('bridge') is None, 'Local bridge package leaked into isolated interpreter'
+os.environ.pop('CODEX_HOME', None)
 def guard(event, args):
     if event in ('subprocess.Popen', 'os.system', 'os.exec', 'os.posix_spawn', 'socket.connect', 'socket.bind'):
         raise AssertionError('Payload attempted an operation: ' + event)
@@ -176,13 +179,16 @@ class ResourceLayoutTests(unittest.TestCase):
         cases.append({'name': 'wsl-accounts-with-models-and-tls',
                       'source': worker_source()+'\nassert codex_updater(Path("/unused"),"/fixture/codex",[b"codex",b"app-server",b"--managed-daemon"],{},Path.cwd()) is None\n',
                       'symbols': ['AccountStore', 'execute', 'fetch_models', 'model_catalog', 'codex_updater']})
+        cases.append({'name': 'visualization-with-workspace', 'source': visualization_worker_source(),
+                      'symbols': ['Workspace', 'read_source']})
+        combined.add('bridge/features/workspace/visualize.py')
         for relative, symbols in SSH_SOURCES.items():
             if relative not in combined:
                 cases.append({'name': relative, 'source': claude_worker_source() if relative == 'bridge/clients/claude/remote_worker.py' else source_text(relative.removeprefix('bridge/')),
                               'symbols': symbols})
         (ROOT/'.tmp').mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT/'.tmp') as folder:
-            result = subprocess.run([sys.executable, '-I', '-S', '-B', '-c', ISOLATED_DEFINITIONS],
+            result = subprocess.run([sys.executable, '-X', 'utf8', '-I', '-S', '-B', '-c', ISOLATED_DEFINITIONS],
                                     input=json.dumps(cases), cwd=folder, text=True,
                                     capture_output=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stdout+result.stderr)

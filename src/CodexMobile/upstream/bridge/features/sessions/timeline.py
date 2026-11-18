@@ -11,6 +11,7 @@ from collections import OrderedDict
 PAGE_BYTES = 192 * 1024
 TEXT_PREVIEW = 8000
 DETAIL_CHARS = 16000
+DEFERRED_TEXT_LIMIT = 1024 * 1024
 
 
 def encoded(value):
@@ -24,6 +25,8 @@ class Timeline:
         self.rows = []
         self.order_origin = 0
         self.details = {}
+        self.deferred = {}
+        self.deferred_bodies = OrderedDict()
         self.positions = {}
         self.versions = OrderedDict()
         self.meta = {}
@@ -72,25 +75,33 @@ class Timeline:
         # the next source read to every intervening historical item.
         self.source_anchor = next((entry[0] for entry in entries[start:]
                                    if entry[2] is not None and entry[2].get('kind') != 'fileChanges' and not entry[2].get('_historyCarry')), None)
-        rows, details = [], {}
+        rows, details, deferred = [], {}, {}
         for identity, turn, message, first_user in entries[start:]:
             if message is not None:
                 base = hashlib.sha256(encoded(identity[:3])).hexdigest()[:24]
                 ordinal = identity[3]
                 key = base + '-' + str(ordinal)
                 text = message.get('text') or ''
-                if message.get('output'):
+                deferred_turn = message.get('deferredOutputTurnId')
+                if deferred_turn and deferred_turn == turn['id'] and isinstance(message.get('id'), str):
+                    deferred[key] = (deferred_turn, message['id'], message['kind'])
+                elif message.get('output'):
                     text += '\n\n' + message['output']
                 activity = message['role'] in ('activity', 'fileChanges')
                 attachments = [{k: str(a[k])[:4096 if k == 'path' else 300] for k in ('type', 'name', 'path', 'desktopId') if k in a}
                                for a in (message.get('attachments') or [])[:20]]
-                version = hashlib.sha256(encoded([text, turn.get('model'), turn.get('effort'), attachments, message.get('fileSummary')])).hexdigest()[:24]
+                version = hashlib.sha256(encoded([text, turn.get('model'), turn.get('effort'), attachments, message.get('fileSummary'), deferred.get(key)])).hexdigest()[:24]
                 row = {k: message[k] for k in ('role', 'kind', 'status', 'title', 'phase', 'requestId') if k in message}
                 row.update(key=key, turnId=turn['id'], order=len(rows), version=version,
                            text=text[:180 if activity else TEXT_PREVIEW],
-                           truncated=(activity and bool(text)) or len(text) > TEXT_PREVIEW, turnStatus=turn.get('status'),
+                           truncated=key in deferred or (activity and bool(text)) or len(text) > TEXT_PREVIEW, turnStatus=turn.get('status'),
                            editable=turn.get('actionable', True) and first_user and message.get('kind') == 'userMessage',
                            forkable=turn.get('actionable', True) and message['role'] == 'assistant' and message.get('phase') != 'commentary' and turn.get('status') == 'completed')
+                timestamp = message.get('timestamp')
+                if timestamp is None and first_user:
+                    timestamp = turn.get('startedAt')
+                if timestamp is not None and message['role'] in ('user', 'assistant'):
+                    row['timestamp'] = timestamp
                 if message.get('fileSummary'):
                     row['fileSummary'] = message['fileSummary']
                     row['text'] = ''
@@ -114,13 +125,14 @@ class Timeline:
         if old_keys != new_keys[first:first + len(old_keys)]:
             self.epoch = uuid.uuid4().hex
             self.versions.clear()
+            self.deferred_bodies.clear()
             self.order_origin = 0
         elif old_keys:
             self.order_origin -= first
         for index, row in enumerate(rows):
             row['order'] = self.order_origin + index
         self.sequence = view['sequence']
-        self.rows, self.details = rows, details
+        self.rows, self.details, self.deferred = rows, details, deferred
         self.positions = {row['key']: i for i, row in enumerate(rows)}
         self.meta = {k: v for k, v in view.items() if k != 'turns'}
         self.meta['latestUserTurnId'] = next((t['id'] for t in reversed(view['turns'])
@@ -169,13 +181,37 @@ class Timeline:
             return {**self.page(), 'reset': True}
         return {'epoch': self.epoch, 'sequence': self.sequence, 'rows': rows, 'meta': self.meta}
 
-    def detail(self, cursor, offset=0, version=None):
+    def detail(self, cursor, offset=0, version=None, *, body=None):
         position = self.position(cursor)
         if position is None:
             raise ValueError('这条内容已更新，请重新打开聊天')
         row = self.rows[position]
-        text = self.details[row['key']]
+        text = self.details[row['key']] if body is None else body
         offset = max(0, min(offset, len(text))) if version == row['version'] else 0
         end = min(len(text), offset + DETAIL_CHARS)
         return {'key': row['key'], 'version': row['version'], 'text': text[offset:end],
                 'offset': offset, 'next': end if end < len(text) else None}
+
+    def deferred_detail(self, cursor, offset=0, version=None, *, condition, read_output):
+        with condition:
+            result = self.detail(cursor, offset, version)
+            target = self.deferred.get(result['key'])
+            if target is None:
+                return result
+            key = (cursor, result['version'])
+            if key in self.deferred_bodies:
+                self.deferred_bodies.move_to_end(key)
+                return self.detail(cursor, offset, version, body=self.deferred_bodies[key])
+            lead = self.details[result['key']][:DEFERRED_TEXT_LIMIT]
+        output = read_output(*target)
+        if len(output) > DEFERRED_TEXT_LIMIT:
+            output = output[:DEFERRED_TEXT_LIMIT] + '\n[…]'
+        body = lead + '\n\n' + output if lead and output else lead or output
+        with condition:
+            current = self.detail(cursor)
+            if current['version'] != result['version'] or self.deferred.get(current['key']) != target:
+                raise ValueError('这条内容已更新，请重新打开聊天')
+            self.deferred_bodies[key] = body
+            while len(self.deferred_bodies) > 4:
+                self.deferred_bodies.popitem(last=False)
+            return self.detail(cursor, offset, version, body=body)

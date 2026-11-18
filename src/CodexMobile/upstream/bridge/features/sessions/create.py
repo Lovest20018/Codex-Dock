@@ -28,7 +28,7 @@ class ForkUnavailable(CreationUnavailable):
     """The capability check failed before any thread could be created."""
 
 
-def _runtime_operation(executable, codex_home, cwd, operation, *, failure_message=None):
+def _runtime_operation(executable, codex_home, cwd, operation, *, failure_message=None, response_limit=-1):
     if not executable:
         raise CreationUnavailable('找不到 Codex 运行时，请在电脑启动器的运行配置中指定路径')
     if not Path(cwd).is_dir():
@@ -45,7 +45,14 @@ def _runtime_operation(executable, codex_home, cwd, operation, *, failure_messag
 
     def read():
         try:
-            for line in process.stdout:
+            while line := process.stdout.readline(response_limit + 1 if response_limit > 0 else -1):
+                if response_limit > 0 and len(line) > response_limit:
+                    messages.put(None)
+                    # Drain the oversized line in fixed reads so normal EOF can
+                    # still release the isolated app-server.
+                    while line and not line.endswith('\n'):
+                        line = process.stdout.readline(65536)
+                    continue
                 try:
                     messages.put(json.loads(line))
                 except ValueError:
@@ -105,6 +112,36 @@ def _runtime_operation(executable, codex_home, cwd, operation, *, failure_messag
     if process.returncode:
         raise CreationError(failure_message or '创建运行时退出异常，请先检查桌面聊天列表')
     return result
+
+
+def read_deferred_item(executable, codex_home, cwd, thread_id, turn_id, item_id, kind):
+    uuid.UUID(thread_id)
+    uuid.UUID(turn_id)
+    if kind not in ('commandExecution', 'mcpToolCall') or not isinstance(item_id, str) or not 0 < len(item_id) <= 512:
+        raise ValueError('延迟输出标识无效')
+    message = '暂时无法读取此聊天保存的输出'
+
+    def read(request):
+        thread = request('thread/read', {'threadId': thread_id, 'includeTurns': False})['thread']
+        if thread.get('id') != thread_id or not isinstance(thread.get('cwd'), str) or (
+                Path(thread['cwd']).resolve() != Path(cwd).resolve()):
+            raise CreationError(message)
+        data = request('thread/items/read', {'threadId': thread_id, 'turnId': turn_id, 'itemIds': [item_id]}).get('data')
+        if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], dict):
+            raise CreationError(message)
+        record = data[0]
+        item = record.get('item')
+        if (record.get('turnId') != turn_id or record.get('outputDeferred') is not None and record['outputDeferred'] is not False
+                or not isinstance(item, dict) or item.get('id') != item_id or item.get('type') != kind
+                or item.get('status') != 'completed'):
+            raise CreationError(message)
+        if kind == 'commandExecution' and isinstance(item.get('aggregatedOutput'), str):
+            return item
+        if kind == 'mcpToolCall' and isinstance(item.get('result'), dict) and item.get('error') is None:
+            return item
+        raise CreationError(message)
+
+    return _runtime_operation(executable, codex_home, str(codex_home), read, failure_message=message, response_limit=8 * 1024 * 1024)
 
 
 def independent_directory(data_dir, request_id):
@@ -296,12 +333,26 @@ def create_empty(executable, codex_home, cwd, title, project=None):
         uuid.UUID(thread_id)
         if project_id is not None and result['thread'].get('projectId') != project_id:
             raise CreationError('聊天已创建但原生项目归属未确认，请检查电脑 App，不要重复创建')
-        request('thread/name/set', {'threadId': thread_id, 'name': title})
-        saved = request('thread/read', {'threadId': thread_id, 'includeTurns': True})
-        if project_id is not None and saved['thread'].get('projectId') != project_id:
+        if title:
+            request('thread/name/set', {'threadId': thread_id, 'name': title})
+            verify_saved(request, thread_id, project_id)
+        return thread_id, project_id
+
+    def verify_saved(request, thread_id, project_id):
+        saved = request('thread/read', {'threadId': thread_id, 'includeTurns': True})['thread']
+        if saved.get('id') != thread_id or project_id is not None and saved.get('projectId') != project_id:
             raise CreationError('聊天已创建但项目归属未持久化确认，请检查电脑 App，不要重复创建')
-        return thread_id
-    return _runtime_operation(executable, codex_home, cwd, create)
+
+    thread_id, project_id = _runtime_operation(executable, codex_home, cwd, create)
+    if not title:
+        # An unnamed empty thread only exposes turns once the isolated creator
+        # flushes its rollout on normal exit. Verify before opening in Desktop.
+        try:
+            _runtime_operation(executable, codex_home, cwd,
+                               lambda request: verify_saved(request, thread_id, project_id))
+        except CreationUnavailable as exc:
+            raise CreationError('聊天已经创建但未能确认记录，请先检查电脑 App') from exc
+    return thread_id
 
 
 def fork_copy(executable, codex_home, cwd, source_id, turn_id, title, settings):

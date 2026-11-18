@@ -18,7 +18,7 @@ public sealed partial class MainWindow
     private static readonly DockPage ProfilesNav = new("profiles", "data", "resources", "方案与 Profile", "Profile 单独保存，不切换主配置与现有聊天。");
     private static readonly DockPage EnhancementsNav = new("enhancements", "runtime", "enhancements", "Codex 与增强", "管理增强偏好，并核对实例后应用。");
     private static readonly DockPage GatewaysNav = new("gateways", "runtime", "gateways", "模型网关", "管理已保存连接使用的模型网关与运行统计。");
-    private static readonly DockPage MobileNav = new("mobile", "phone", "mobile", "连接与配对", "检测已保存入口，在本机生成安卓配对码。");
+    private static readonly DockPage MobileNav = new("mobile", "phone", "mobile", "连接与配对", "从电脑准备配对码，再用 Lovest Code 扫码。");
     private static readonly DockPage MobileDevicesNav = new("mobile-devices", "phone", "mobile-devices", "授权设备", "查看登录设备，按需撤销授权或解除登录限制。");
     private static readonly DockPage MobileSettingsNav = new("mobile-settings", "phone", "mobile-settings", "服务设置", "设置手机访问入口，保存并启动；管理服务启停。");
     private static readonly DockPage FilePreviewNav = new("preview", "diagnosis", "preview", "已保存文件", "磁盘上保存了什么？读取当前目录的脱敏快照。");
@@ -46,7 +46,6 @@ public sealed partial class MainWindow
     {
         if (synchronizingNavigation || viewModel is null || (args.SelectedItem as NavigationViewItem)?.Tag is not string section) return;
         var destination = section == "tools" ? AdvancedNav : sectionHistory.GetValueOrDefault(section) ?? Pages.First(page => page.Section == section);
-        if (section == "phone" && !sectionHistory.ContainsKey(section) && mobileDraft.Settings?.Configured != true) destination = MobileSettingsNav;
         NavigateTo(destination);
     }
 

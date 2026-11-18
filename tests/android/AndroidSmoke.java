@@ -185,6 +185,24 @@ target.getSharedPreferences("bridge",0).edit().clear().putBoolean("alerts",true)
   composerSend(target);
   ui(()->((WebView)field("web")).loadDataWithBaseURL(base+"/","<html><body>Offline fixture</body></html>","text/html","UTF-8",null));Thread.sleep(500);
   final boolean[] left={false};ui(()->call("beforeLeave",new Class<?>[]{Runnable.class},(Runnable)()->left[0]=true));until(()->left[0],"An unavailable page without a draft can switch computers");check(left[0],"Offline fallback does not trap the user on an unavailable page");
+  ui(()->{
+   call("connectNow",new Class<?>[]{String.class},"https://127.0.0.1:1/");
+   Runnable delayed=(Runnable)field("connectionDeadline");
+   check(delayed!=null&&field("web")!=null,"Android starts a bounded connection attempt");
+   call("handleBack");
+   check("computers".equals(field("selectedPage"))&&field("web")==null&&field("connectionDeadline")==null,"Back cancels the pending attempt and opens the computer list");
+   delayed.run();
+   check("computers".equals(field("selectedPage"))&&field("web")==null,"A late deadline cannot reopen the cancelled computer");
+   call("connect",new Class<?>[]{String.class},base+"/");
+  });
+  until(()->Boolean.TRUE.equals(js("!!window.LovestShell&&!document.getElementById('app')?.hidden")),"Reconnect to the previously authorized computer after an offline attempt");
+  final boolean[] preview={false};
+  ui(()->{
+   preview[0]=Boolean.TRUE.equals(call("previewShell",new Class<?>[]{String.class},base+"/visualize-shell"))&&
+    !Boolean.TRUE.equals(call("previewShell",new Class<?>[]{String.class},base+"/visualize-shell?other=1"))&&
+    !Boolean.TRUE.equals(call("previewShell",new Class<?>[]{String.class},"https://outside.invalid/visualize-shell"));
+  });
+  check(preview[0],"Android allows only the exact paired origin visualization shell");
   result.putString("report",new JSONObject().put("status","PASS").put("checks",checks).toString());finish(Activity.RESULT_OK,result);
  }catch(Throwable failure){try{shot("failure");}catch(Exception ignored){}result.putString("report","FAIL "+failure);result.putString("stack",android.util.Log.getStackTraceString(failure));finish(Activity.RESULT_CANCELED,result);}}
  private void composerSend(Context target)throws Exception{

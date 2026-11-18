@@ -63,7 +63,7 @@ public sealed partial class MainWindow
         PageScroll.ChangeView(null, double.MaxValue, null, true); await CaptureAsync(output, "mobile-pair-devices.png");
         await RevokeMobilePairAsync(); Check(mobilePair is null && MobilePairImage.Visibility == Visibility.Collapsed && runtime.PairState == "revoked", "Revoking the displayed pairing grant removes it from the Windows page");
         await GenerateMobilePairAsync(); runtime.PairState = "used"; gatewayTicks = 3; await MobilePairTickAsync();
-        Check(mobilePair is null && MobilePairHint.Text.Contains("配对成功") && MobileDevicesList.Children.Count == 2, "A consumed pair clears the image and refreshes the device and login-block list");
+        Check(mobilePair is null && MobilePairHint.Text.Contains("手机已配对") && MobileDevicesList.Children.Count == 2, "A consumed pair clears the image and refreshes the device and login-block list");
         NavigateTo(MobileDevicesNav);
         smokeDialog = _ => Task.FromResult(ContentDialogResult.None); var actions = runtime.Trace.Count;
         await ChangeMobileDeviceAsync("fixture-device", null); Check(runtime.Trace.Count == actions && runtime.Devices.Count == 1, "Cancelling device revocation leaves the login authorization unchanged");
@@ -132,13 +132,13 @@ public sealed partial class MainWindow
     {
         internal readonly Dictionary<string, MobileConnectionSettings> Settings = new(StringComparer.OrdinalIgnoreCase);
         internal readonly List<string> Trace = [];
-        internal bool Running, Checked, StartFailure;
+        internal bool Running, Checked, StartFailure, EntryFailure;
         internal TaskCompletionSource? Gate;
         internal TaskCompletionSource? StatusGate;
         internal bool StatusFailure;
         internal readonly List<MobileDevice> Devices = [];
         internal readonly List<string> Blocks = [];
-        internal string PairState = "active", ManagerAddress = "";
+        internal string PairState = "active", ManagerAddress = "", CodexReadiness = "unknown";
         internal byte[] PairImage = [];
         internal int PairGeneration;
         public Task<MobileConnectionSettings> LoadAsync(string home, CancellationToken cancellation)
@@ -168,13 +168,22 @@ public sealed partial class MainWindow
         public Task<JsonDocument> ControlAsync(string home, string action, object body, CancellationToken cancellation)
         {
             Trace.Add(action); var value = JsonSerializer.SerializeToElement(body);
-            if (action == "check") { Checked = true; return Task.FromResult(JsonDocument.Parse("{\"ok\":true}")); }
+            if (action == "check")
+            {
+                if (EntryFailure) throw new IOException("HTTPS 入口返回 502");
+                Checked = true; return Task.FromResult(JsonDocument.Parse("{\"ok\":true}"));
+            }
             if (action == "manager") return Task.FromResult(JsonSerializer.SerializeToDocument(new { url = ManagerAddress.Length > 0 ? ManagerAddress : "http://127.0.0.1:32194/manager/#fixture-ticket-only-abcdefghijklmnop" }));
             if (action == "pair")
             {
                 var command = value.GetProperty("action").GetString();
-                if (command == "create") { PairState = "active"; PairGeneration++; return Task.FromResult(JsonSerializer.SerializeToDocument(new { id = "fixture-pair-" + PairGeneration,
-                    image = Convert.ToBase64String(PairImage), expires = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeSeconds() })); }
+                if (command == "create")
+                {
+                    if (EntryFailure) throw new IOException("HTTPS 入口返回 502");
+                    Checked = true; PairState = "active"; PairGeneration++;
+                    return Task.FromResult(JsonSerializer.SerializeToDocument(new { id = "fixture-pair-" + PairGeneration,
+                        image = Convert.ToBase64String(PairImage), expires = DateTimeOffset.UtcNow.AddMinutes(5).ToUnixTimeSeconds() }));
+                }
                 if (command == "revoke") PairState = "revoked";
                 return Task.FromResult(JsonSerializer.SerializeToDocument(new { state = PairState }));
             }
@@ -184,7 +193,7 @@ public sealed partial class MainWindow
                 if (command == "revoke") Devices.RemoveAll(device => device.Id == value.GetProperty("id").GetString());
                 if (command == "unblock") Blocks.Remove(value.GetProperty("ip").GetString()!);
                 return Task.FromResult(JsonSerializer.SerializeToDocument(new { sessions = Devices.Select(device => new { id = device.Id, userAgent = device.Label == "安卓 App" ? "Fixture-Android" : "FixtureBrowser",
-                    ip = device.Ip, lastSeen = device.LastSeen.ToUnixTimeSeconds() }), autoBlocks = Blocks.Select(ip => new { ip }) }));
+                    ip = device.Ip, lastSeen = device.LastSeen.ToUnixTimeSeconds() }), autoBlocks = Blocks.Select(ip => new { ip }), codexReadiness = CodexReadiness }));
             }
             throw new InvalidOperationException("隔离手机运行时不支持此操作。");
         }

@@ -95,3 +95,4 @@
 .edited-files-card>summary:before{content:'›';font-size:18px;line-height:1;transition:transform .15s}.edited-files-card[open]>summary:before{transform:rotate(90deg)}
 .edited-files-basis{color:var(--muted,#748074);font-size:11px;white-space:nowrap}
 button.edited-files-path{padding:0;border:0;border-radius:0;background:none;color:var(--green,#267044);font:inherit;text-align:left;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.message-time{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;align-self:center;white-space:nowrap;order:1}

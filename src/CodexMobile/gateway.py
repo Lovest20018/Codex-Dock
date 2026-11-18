@@ -270,7 +270,10 @@ class ControlHandler(BaseHandler):
             if not ((body == {'action': 'list'}) or set(body) == {'action', 'id'} and body['action'] in ('revoke', 'block')
                     or set(body) == {'action', 'ip'} and body['action'] == 'unblock'):
                 raise ValueError('设备管理格式不正确')
-            return self.output(200, self.state.auth.manage(body))
+            result = self.state.auth.manage(body)
+            if body['action'] == 'list' and getattr(self.state, 'workbench', None) is not None:
+                result['codexReadiness'] = self.state.workbench.public.desktop_sessions.codex_readiness()
+            return self.output(200, result)
         if write and self.path == '/manager':
             if self.read_json():
                 raise ValueError('打开管理页面不接受额外字段')

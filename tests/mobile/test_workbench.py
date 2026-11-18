@@ -101,6 +101,49 @@ class WorkbenchTests(unittest.TestCase):
         self.assertIn('; Secure', headers['Set-Cookie'])
         self.assertIn('; HttpOnly', headers['Set-Cookie'])
 
+    def test_visualization_shell_and_source_have_separate_authorization(self):
+        from html import unescape
+        from bridge.features.workspace.visualize import identifier
+        from bridge.features.workspace.files import session_visualization_path
+        import uuid
+        first, second = str(uuid.uuid4()), str(uuid.uuid4())
+        chart = self.home / 'plot.html'
+        chart.write_text('<p>Chart fixture</p>', encoding='utf-8')
+        marker = '\ue200visualize\ue202' + json.dumps({'path': str(chart)}) + '\ue201'
+        source = '/api/sessions/' + first + '/visualizations/' + identifier(str(chart))
+        self.assertEqual(self.request('/visualize-shell')[0], 401)
+        self.assertEqual(self.request(source)[0], 401)
+        self.login()
+        status, body, headers = self.request('/visualize-shell')
+        self.assertEqual(status, 200)
+        self.assertIn(b'bridge-visualize-ready', body)
+        self.assertIn('sandbox allow-scripts', headers['Content-Security-Policy'])
+        self.assertIn("connect-src 'none'", unescape(body.decode('utf-8')))
+        self.assertNotIn('allow-same-origin', headers['Content-Security-Policy'])
+        self.assertNotIn('allow-top-navigation', headers['Content-Security-Policy'])
+        self.assertIn('/visualize-shell', self.request('/')[2]['Content-Security-Policy'])
+        self.assertEqual(self.request('/visualize-shell?arbitrary=1')[0], 405)
+        self.assertIsNone(session_visualization_path({'turns': [{'messages': [
+            {'role': 'user', 'text': marker}, {'role': 'assistant', 'text': '```text\n' + marker + '\n```'}]}]}, identifier(str(chart))))
+        view = {'id': first, 'cwd': str(self.home), 'turns': [{'turnId': 'one', 'items': [{'id': 'message', 'type': 'agentMessage', 'text': marker}]}]}
+        with patch.object(self.bridge.store, 'get', return_value={'origin': 'desktop', 'cwd': str(self.home)}), \
+                patch.object(self.bridge.store, 'history', side_effect=lambda thread, **_: view if thread == first else {**view, 'id': second, 'turns': []}):
+            code, data, _ = self.request(source)
+            self.assertEqual(200, code, data)
+            self.assertEqual('<p>Chart fixture</p>', data['text'])
+            self.assertEqual(403, self.request(source.replace(first, second))[0])
+
+    def test_unknown_creation_receipts_are_passive(self):
+        import uuid
+        request_id = str(uuid.uuid4())
+        path = '/api/sessions/creation-status/' + request_id
+        self.assertEqual(self.request(path)[0], 401)
+        self.login()
+        self.assertEqual(self.request(path)[1]['status'], 'notStarted')
+        self.bridge.creations[request_id] = {'host': 'local', 'ready': False}
+        with patch.object(self.bridge, 'create_chat', side_effect=AssertionError('unexpected create')):
+            self.assertEqual(self.request(path)[1]['status'], 'unknown')
+
     def test_full_auth_contract_and_original_upstream_assets(self):
         self.login()
         code, value, _ = self.request('/api/auth')

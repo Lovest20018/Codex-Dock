@@ -43,6 +43,15 @@ class CodexSessions(DesktopSessions):
         result = super().clients_status()
         return {**result, 'clients': [row for row in result['clients'] if self.codex(row['id'])]}
 
+    def codex_readiness(self):
+        result = self.clients_status()
+        if result.get('refreshError'):
+            return 'unknown'
+        entries = (entry for row in result['clients'] if row['id'] == 'codex' for entry in row.get('entries', []))
+        if any(entry.get('enabled') is True and entry.get('configured') is True for entry in entries):
+            return 'ready'
+        return 'checking' if result.get('pending') else 'configure'
+
     def toggle_client(self, value):
         if not self.codex(value.get('provider')):
             raise ValueError('此网关仅提供 Codex 接入')

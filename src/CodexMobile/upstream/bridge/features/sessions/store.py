@@ -14,6 +14,68 @@ from contextlib import closing, contextmanager, ExitStack
 from pathlib import Path
 
 
+ROLLOUT_TIME_BYTES = 2 * 1024 * 1024
+
+
+def rollout_message_times(raw, thread_id):
+    """Native message identities only; text and rollout positions are not keys."""
+    times, turn_id = {}, None
+    for line in raw.splitlines():
+        if not any(token in line for token in (b'"task_started"', b'"response_item"', b'"item_completed"')):
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(record, dict) or not isinstance(record.get('payload'), dict):
+            continue
+        payload = record['payload']
+        kind = payload.get('type')
+        if record.get('type') == 'event_msg' and kind == 'task_started':
+            turn_id = payload.get('turn_id') if payload.get('thread_id', thread_id) == thread_id else None
+            continue
+        if record.get('type') == 'response_item' and payload.get('thread_id', thread_id) == thread_id:
+            role = payload.get('role') if kind == 'message' else 'assistant' if kind in ('agent_message', 'agentMessage') else None
+            native_kind = {'user': 'userMessage', 'assistant': 'agentMessage'}.get(role) if isinstance(role, str) else None
+            key = (payload.get('turn_id') or turn_id, payload.get('id'), native_kind, role)
+            stamp, source = record.get('timestamp'), 'rollout-response-item'
+        elif record.get('type') == 'event_msg' and kind == 'item_completed' and payload.get('thread_id') == thread_id:
+            item = payload.get('item')
+            if not isinstance(item, dict) or not isinstance(item.get('type'), str):
+                continue
+            role = {'AgentMessage': 'assistant', 'UserMessage': 'user'}.get(item.get('type'))
+            native_kind = {'user': 'userMessage', 'assistant': 'agentMessage'}.get(role) if isinstance(role, str) else None
+            key = (payload.get('turn_id'), item.get('id'), native_kind, role)
+            stamp, source = payload.get('completed_at_ms'), 'rollout-item-completed'
+            if type(stamp) not in (int, float):
+                stamp = record.get('timestamp')
+        else:
+            continue
+        if not all(isinstance(value, str) and value for value in key) or stamp is None:
+            continue
+        times.setdefault(key, {}).setdefault(source, []).append(stamp)
+    result = {}
+    for key, sources in times.items():
+        if all(len(values) == 1 for values in sources.values()):
+            source = 'rollout-item-completed' if 'rollout-item-completed' in sources else 'rollout-response-item'
+            result[key] = (sources[source][0], source)
+    return result
+
+
+def apply_rollout_message_times(turns, times):
+    rows = {}
+    for turn in turns:
+        for item in items_array(turn.get('items')):
+            role = {'userMessage': 'user', 'agentMessage': 'assistant'}.get(item.get('type'))
+            if role and not item.get('_syntheticId'):
+                key = (turn.get('turnId'), item.get('id'), item['type'], role)
+                rows.setdefault(key, []).append(item)
+    for key, items in rows.items():
+        if (len(items) == 1 and key in times and
+                (items[0].get('timestamp') is None or items[0].get('_timestampSource') == 'rollout-response-item')):
+            items[0]['timestamp'], items[0]['_timestampSource'] = times[key]
+
+
 def items_array(items):
     if isinstance(items, list):
         return items
@@ -239,7 +301,7 @@ class SessionStore:
         labels, matches = self._cli_inputs(query)
         with self._connect() as conn:
             columns = {r[1] for r in conn.execute("PRAGMA table_info(threads)")}
-            fields = [name for name in ("id", "name", "title", "cwd", "updated_at", "updated_at_ms", "recency_at", "recency_at_ms", "model_provider", "model", "originator", "source", "archived", "is_pinned", "project_id") if name in columns]
+            fields = [name for name in ("id", "name", "title", "cwd", "updated_at", "updated_at_ms", "recency_at", "recency_at_ms", "model_provider", "model", "originator", "source", "archived", "is_pinned", "project_id", "attached_thread_parent_id") if name in columns]
             where = ["archived = ?"]
             params = [int(archived)]
             where.append(self._user_origin_filter(columns))
@@ -252,6 +314,12 @@ class SessionStore:
                 where.append("COALESCE(source, '') NOT LIKE '%\"subagent\"%'")
             if source != 'all':
                 where.append(self._source_filter(columns, source))
+            if 'attached_thread_parent_id' in columns and not query:
+                # List the child separately if the parent is outside this view.
+                parent_filters = ' AND '.join(where[1:])
+                where.append("(attached_thread_parent_id IS NULL OR NOT EXISTS (SELECT 1 FROM threads AS parent "
+                             "WHERE parent.id = threads.attached_thread_parent_id AND parent.id != threads.id "
+                             "AND parent.archived = threads.archived AND " + parent_filters + "))")
             if query:
                 search_fields = [name for name in ("name", "title", "cwd") if name in columns]
                 # History can contain many matching IDs; a read-only function
@@ -351,7 +419,7 @@ class SessionStore:
         """Desktop roots and their complete agent subtree, using metadata only."""
         with self._connect() as conn:
             columns = {r[1] for r in conn.execute('PRAGMA table_info(threads)')}
-            fields = [name for name in ('id', 'originator', 'source') if name in columns]
+            fields = [name for name in ('id', 'originator', 'source', 'attached_thread_parent_id') if name in columns]
             rows = [dict(row) for row in conn.execute('SELECT ' + ','.join(fields) + ' FROM threads')]
         if root_id is not None:
             if not any(row['id'] == root_id for row in rows):
@@ -365,9 +433,9 @@ class SessionStore:
             roots = {row['id'] for row in rows if self._matches(row)}
         children = {}
         for row in rows:
-            parent = self._agent_source(row).get('parent_thread_id')
-            if isinstance(parent, str):
-                children.setdefault(parent, []).append(row['id'])
+            for parent in (self._agent_source(row).get('parent_thread_id'), row.get('attached_thread_parent_id')):
+                if isinstance(parent, str):
+                    children.setdefault(parent, []).append(row['id'])
         pending = list(roots)
         while pending:
             for child in children.get(pending.pop(), []):
@@ -413,6 +481,34 @@ class SessionStore:
                 result['display_title'] = result.get('name') or labels.get(thread_id) or result.get('title')
             result['origin'] = origin
             return result
+
+    def attached(self, thread_id, limit=50, offset=0):
+        """Read native relationships in the selected host and Codex data directory."""
+        thread = self.get(thread_id)
+        if 'attached_thread_parent_id' not in thread:
+            return {'supported': False, 'parent': None, 'children': [], 'hasMore': False}
+        parent = thread['attached_thread_parent_id']
+        if parent and parent != thread_id:
+            try:
+                self.get(parent)
+            except KeyError:
+                parent = None
+        else:
+            parent = None
+        with self._connect() as conn:
+            columns = {row[1] for row in conn.execute('PRAGMA table_info(threads)')}
+            filters = [self._user_origin_filter(columns) if self.source == 'all' else self._owner_filter(columns)]
+            if 'thread_source' in columns:
+                filters.append("COALESCE(thread_source, '') != 'subagent'")
+            if 'source' in columns:
+                filters.append("COALESCE(source, '') NOT LIKE '%\"subagent\"%'")
+            fields = [name for name in ('id', 'title', 'name', 'archived') if name in columns]
+            rows = conn.execute('SELECT ' + ','.join(fields) + ' FROM threads WHERE attached_thread_parent_id = ? '
+                                'AND id != ? AND ' + ' AND '.join(filters) + ' ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?',
+                                (thread_id, thread_id, limit + 1, offset)).fetchall()
+        children = [{'id': row['id'], 'title': row.get('name') or row.get('title'), 'archived': bool(row.get('archived'))}
+                    for row in map(dict, rows[:limit])]
+        return {'supported': True, 'parent': parent, 'children': children, 'hasMore': len(rows) > limit}
 
     def _rollout_in_home(self, resolved):
         for base in (self.home / 'sessions', self.home / 'archived_sessions'):
@@ -574,6 +670,7 @@ class SessionStore:
                         # Legacy raw items need their call to keep row identities
                         # stable. Fall back to a complete-turn tail at this edge.
                         return None
+            apply_rollout_message_times(turns.values(), self._indexed_message_times(thread_id, rollout, rollout_stat))
             latest = rollout.stat()
             if (latest.st_ino, latest.st_size, latest.st_mtime_ns) != (rollout_stat.st_ino, rollout_stat.st_size, rollout_stat.st_mtime_ns):
                 return None
@@ -583,6 +680,25 @@ class SessionStore:
                     'requests': [], 'threadRuntimeStatus': {'type': 'notLoaded'}, 'historyReadSource': 'native-index'}
         except (OSError, sqlite3.Error, ValueError, TypeError, KeyError):
             return None
+
+    def _indexed_message_times(self, thread_id, rollout, stat):
+        key = ('message-times', thread_id, str(rollout), stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
+        with self.history_lock:
+            if key in self.history_cache:
+                self.history_cache.move_to_end(key)
+                return self.history_cache[key]
+        with rollout.open('rb') as stream:
+            offset = max(0, stat.st_size - ROLLOUT_TIME_BYTES)
+            stream.seek(offset)
+            raw = stream.read(ROLLOUT_TIME_BYTES)
+        if offset:
+            raw = raw.partition(b'\n')[2]  # The first record may start before the bounded tail.
+        times = rollout_message_times(raw, thread_id)
+        with self.history_lock:
+            self.history_cache[key] = times
+            while len(self.history_cache) > 8:
+                self.history_cache.popitem(last=False)
+        return times
 
     @staticmethod
     def _agent_source(meta):
@@ -658,7 +774,8 @@ class SessionStore:
                 continue
             payload = record.get("payload", {})
             if record.get("type") == "event_msg" and payload.get("type") == "task_started":
-                current = {"turnId": payload.get("turn_id"), "status": "inProgress", "items": []}
+                current = {"turnId": payload.get("turn_id"), "status": "inProgress", "items": [],
+                           "startedAt": record.get("timestamp")}
                 turns.append(current)
                 items = current["items"]
             elif record.get("type") == "event_msg" and payload.get("type") == "token_count":
@@ -697,14 +814,23 @@ class SessionStore:
                     items = current["items"]
                 if payload.get("type") == "message" and payload.get("role") in ("user", "assistant"):
                     role = payload["role"]
+                    native_id = payload.get('id')
+                    identity = {'id': native_id if isinstance(native_id, str) and native_id else str(len(items)),
+                                '_syntheticId': not isinstance(native_id, str) or not native_id,
+                                '_timestampSource': 'rollout-response-item'}
                     if role == "user":
-                        items.append({"id": str(len(items)), "type": "userMessage", "content": payload.get("content", [])})
+                        items.append({**identity, "type": "userMessage", "content": payload.get("content", []), "timestamp": record.get("timestamp")})
                     else:
-                        items.append({"id": str(len(items)), "type": "agentMessage", "text": "\n".join(x.get("text", "") for x in payload.get("content", []) if isinstance(x, dict)), "phase": payload.get("phase")})
+                        items.append({**identity, "type": "agentMessage", "text": "\n".join(x.get("text", "") for x in payload.get("content", []) if isinstance(x, dict)), "phase": payload.get("phase"), "timestamp": record.get("timestamp")})
                 elif payload.get("type") in ("agent_message", "agentMessage"):
-                    items.append({"id": payload.get("id", str(len(items))), "type": "agentMessage", "text": payload.get("text", "")})
+                    native_id = payload.get('id')
+                    items.append({"id": native_id if isinstance(native_id, str) and native_id else str(len(items)),
+                                  '_syntheticId': not isinstance(native_id, str) or not native_id,
+                                  '_timestampSource': 'rollout-response-item',
+                                  "type": "agentMessage", "text": payload.get("text", ""), "timestamp": record.get("timestamp")})
                 elif payload.get("type") in ("function_call", "custom_tool_call", "function_call_output", "custom_tool_call_output"):
                     items.append({"id": payload.get("call_id", str(len(items))), "type": "storedToolEvent", **payload})
+        apply_rollout_message_times(turns, rollout_message_times(raw, thread_id))
         # Rollout parsing already visited these records. Retain the native patch
         # projection once so a later bounded item window need not reopen bodies.
         for turn in turns:

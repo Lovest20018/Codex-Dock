@@ -32,7 +32,7 @@ Windows、Android 与 Web 现在使用同一套开口 D、接入箭头和浅绿�
 
 ## Windows 界面
 
-以下采用当前源码的 [Windows 0.19.5 界面](docs/release-0.19.5.md)。
+以下采用当前源码的 [Windows 0.19.6 界面](docs/release-0.19.6.md)。
 
 | 任务入口 | 用途 |
 | --- | --- |

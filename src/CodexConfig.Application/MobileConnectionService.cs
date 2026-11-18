@@ -28,7 +28,7 @@ public sealed class MobileSetupReview
 }
 public sealed record MobileDevice(string Id, string Label, string Ip, DateTimeOffset LastSeen);
 public sealed record MobileDeviceList(IReadOnlyList<MobileDevice> Devices, IReadOnlyList<string> BlockedIps);
-public sealed record MobileConnectionView(MobileConnectionSettings Settings, bool? Running, bool EntryChecked, MobileDeviceList Devices);
+public sealed record MobileConnectionView(MobileConnectionSettings Settings, bool? Running, bool EntryChecked, MobileDeviceList Devices, string CodexReadiness = "unknown");
 public sealed record MobilePairGrant(string Id, byte[] Image, DateTimeOffset Expires);
 public sealed record MobileActionResult<T>(bool Succeeded, string Message, T? Value = default, bool SettingsSaved = false);
 
@@ -113,7 +113,11 @@ public sealed class MobileConnectionService(IMobileConnectionRuntime runtime, Wo
         if (status is null) return new(settings, settings.Configured && (!GatewayPortState.IsReleased(settings.Port) || !GatewayPortState.IsReleased(settings.ControlPort)) ? null : false, false, new([], []));
         using var devices = await runtime.ControlAsync(home, "devices", new { action = "list" }, cancellation);
         await RequireCurrentAsync(settings, cancellation);
-        return new(settings, true, status.Checked, ParseDevices(devices.RootElement));
+        var root = devices.RootElement;
+        var readiness = root.TryGetProperty("codexReadiness", out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() : null;
+        return new(settings, true, status.Checked, ParseDevices(root),
+            readiness is "ready" or "configure" or "checking" ? readiness : "unknown");
     }
 
     public Task<MobileActionResult<string>> CheckEntryAsync(MobileConnectionSettings expected, Func<bool> eligible, CancellationToken cancellation = default)

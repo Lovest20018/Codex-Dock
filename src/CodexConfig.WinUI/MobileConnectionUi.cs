@@ -5,13 +5,14 @@ using CodexConfig.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Streams;
 
 namespace CodexConfig.WinUI;
 
 public sealed partial class MainWindow
 {
-    private bool mobileAction, mobileLoading, mobileRefreshing;
+    private bool mobileAction, mobileLoading, mobileRefreshing, mobileEntryFailed, mobilePaired;
     private Task mobileReadTask = Task.CompletedTask;
     private string? mobileHome;
     private string mobileMessage = "";
@@ -19,9 +20,9 @@ public sealed partial class MainWindow
     private MobileConnectionView? mobileView;
     private MobilePairGrant? mobilePair;
     private int mobileViewRevision, renderedMobileRevision = -1;
-    private string mobilePairMessage = "先保存并启动，再检测 HTTPS 入口。";
+    private string mobilePairMessage = "";
     private Action<Uri>? smokeOpenMobileManager;
-    private void OpenMobileClicked(object sender, RoutedEventArgs args) => NavigateTo(mobileDraft.Settings?.Configured == true ? MobileNav : MobileSettingsNav);
+    private void OpenMobileClicked(object sender, RoutedEventArgs args) => NavigateTo(MobileNav, revealStart: true);
     private void OpenPairingPageClicked(object sender, RoutedEventArgs args)
     { if (!ApplicationBusy && !dialogOpen && !closing) NavigateTo(MobileNav, revealStart: true); }
 
@@ -31,12 +32,13 @@ public sealed partial class MainWindow
         mobileHome = viewModel.Home; mobileLoading = true;
         try { mobileDraft.Load(null); }
         finally { mobileLoading = false; }
-        mobileView = null; mobileMessage = ""; mobileMessageError = false; ClearMobilePair(); mobileViewRevision++;
+        mobileView = null; mobileMessage = ""; mobileMessageError = mobileEntryFailed = mobilePaired = false;
+        ClearMobilePair(); mobileViewRevision++;
     }
     private void MobileDraftChanged(object? sender, PropertyChangedEventArgs args)
     {
         if (args.PropertyName != nameof(MobileSetupDraftViewModel.Revision) || mobileLoading || closing) return;
-        ClearMobilePair(); mobileMessage = ""; RefreshView();
+        mobileEntryFailed = mobilePaired = false; ClearMobilePair(); mobileMessage = ""; RefreshView();
     }
     private Task RefreshMobileAsync(bool reloadDraft = false)
     {
@@ -64,12 +66,13 @@ public sealed partial class MainWindow
             }
             else if (mobileDraft.Settings.Revision != current.Settings.Revision)
             {
+                mobileEntryFailed = mobilePaired = false;
                 ClearMobilePair();
                 if (mobileDraft.HasDraft) { mobileMessage = "手机设置已被其他窗口修改，当前草稿已保留。请重新读取并核对后保存。"; mobileMessageError = true; }
                 else { mobileLoading = true; try { mobileDraft.Load(current.Settings); } finally { mobileLoading = false; } }
             }
             mobileView = current; mobileViewRevision++;
-            if (current.Running != true) ClearMobilePair();
+            if (current.Running != true) { mobilePaired = false; ClearMobilePair(); }
         }
         catch (OperationCanceledException) { }
         catch (Exception error) { if (!closing && home == viewModel.Home) { mobileMessage = error.Message; mobileMessageError = true; } }
@@ -91,28 +94,48 @@ public sealed partial class MainWindow
         if (MobileUsernameInput.Text != mobileDraft.Username) MobileUsernameInput.Text = mobileDraft.Username;
         if (MobilePasswordInput.Password != mobileDraft.Password) MobilePasswordInput.Password = mobileDraft.Password;
         MobilePasswordHint.Text = mobileDraft.Settings?.Configured == true ? "密码已设置。留空沿用；更换密码会撤销旧设备授权。" : "设置 12 至 256 个字符的独立手机访问密码。";
-        MobileDraftHint.Text = mobileDraft.HasDraft ? "有未保存的手机设置。页面切换会保留；保存后单独生效，不写 Codex 模型配置。" : "手机设置单独保存，与连接配置草稿相互独立。";
-        MobileFooter.Visibility = currentPage == MobileSettingsNav ? Visibility.Visible : Visibility.Collapsed;
+        var pairingPage = currentPage == MobileNav;
+        var settingsPage = currentPage == MobileSettingsNav;
+        var configured = mobileDraft.Settings?.Configured == true;
+        var running = configured && mobileView?.Running == true && mobileDraft.Settings?.Revision == mobileView.Settings.Revision;
+        var needsSetup = !configured || mobileDraft.HasDraft;
+        MobileDraftHint.Text = mobileDraft.HasDraft ? "有未保存的手机设置。" : "";
+        MobileDraftHint.Visibility = mobileDraft.HasDraft ? Visibility.Visible : Visibility.Collapsed;
+        MobileSettingsCard.Visibility = settingsPage || pairingPage && needsSetup ? Visibility.Visible : Visibility.Collapsed;
+        MobilePairCard.Visibility = pairingPage && running && !needsSetup ? Visibility.Visible : Visibility.Collapsed;
+        MobileFooter.Visibility = settingsPage || pairingPage && (needsSetup || !running) ? Visibility.Visible : Visibility.Collapsed;
+        MobileFooterMessage.Text = !pairingPage ? "保存手机访问设置并启动服务。" : running ? "将使用新设置准备配对码。" : "启动手机服务，检查 HTTPS 地址后生成配对码。";
+        SaveMobileButton.Content = !pairingPage ? "查看设置并保存启动" : needsSetup ? "保存并准备配对" : "启动并准备配对";
         SaveMobileButton.IsEnabled = editable && (mobileDraft.HasDraft || mobileDraft.Settings?.Configured == true);
         DiscardMobileButton.IsEnabled = editable && mobileDraft.HasDraft;
         RefreshMobileButton.IsEnabled = !ManualApplicationBusy && !dialogOpen && !closing && !mobileRefreshing;
-        var usable = editable && !mobileDraft.HasDraft && mobileView?.Running == true && mobileDraft.Settings?.Revision == mobileView.Settings.Revision;
+        var usable = editable && !needsSetup && running;
         CheckMobileEntryButton.IsEnabled = OpenMobileManagerButton.IsEnabled = CreateMobilePairButton.IsEnabled = usable;
+        CheckMobileEntryButton.Content = mobileEntryFailed ? "重新检测" : "检测 HTTPS 入口";
+        MobileEntryHelpButton.Visibility = mobileEntryFailed ? Visibility.Visible : Visibility.Collapsed;
+        CreateMobilePairButton.Content = mobilePair is not null || mobilePaired || mobilePairMessage.Contains("过期", StringComparison.Ordinal) ? "重新生成配对码" : "生成配对码";
         RevokeMobilePairButton.IsEnabled = usable && mobilePair is not null;
-        ContinueMobilePairButton.Visibility = usable ? Visibility.Visible : Visibility.Collapsed;
+        ContinueMobilePairButton.Visibility = settingsPage && usable ? Visibility.Visible : Visibility.Collapsed;
         ContinueMobilePairButton.IsEnabled = usable;
-        MobileNextStepText.Text = mobileDraft.HasDraft ? "先确认服务设置中的修改，再检测或配对。" :
-            mobileDraft.Settings?.Configured != true ? "第一步：设置手机入口、账号和密码，并保存启动。" :
-            mobileView?.Running != true ? "先在服务设置中启动手机服务；状态未确认时刷新核对。" :
-            mobileView.EntryChecked ? "入口已检测通过，可以生成配对码；已登录设备在“授权设备”中管理。" :
-            "下一步：检测 HTTPS 入口，确认通过后生成配对码。";
-        MobileSetupLinkButton.Content = mobileDraft.HasDraft ? "查看未保存的服务设置" : mobileDraft.Settings?.Configured != true ? "设置手机服务" : "服务设置与启停";
+        MobileNextStepText.Text = needsSetup ? "第一步：填写手机访问设置，选择“保存并准备配对”。" :
+            !running ? "启动手机服务后即可准备配对码。" :
+            mobileEntryFailed ? "这个地址还连不到电脑上的手机服务。请检查电脑服务与转发设置，再重新检测。" :
+            mobileView?.EntryChecked == true ? "HTTPS 入口已检测通过。" : "生成配对码时会检查 HTTPS 入口是否指向这台电脑。";
+        MobileSetupLinkButton.Content = "服务设置与启停";
         MobileRuntimeText.Text = mobileView is null ? "尚未读取手机设置。" : mobileView.Running is true ? mobileView.EntryChecked ? "网关运行中 · HTTPS 入口已检测通过" : "网关运行中 · 尚未检测 HTTPS 入口" :
             mobileView.Running is null ? "后台状态未确认，请在服务设置刷新。" : mobileView.Settings.Configured ? "手机服务已停止，可在服务设置启动。" : "尚未保存手机连接。";
         MobileEndpointText.Text = mobileView?.Settings.Configured == true ? "已保存入口：" + mobileView.Settings.PublicUrl + "\n本机监听端口：" + mobileView.Settings.Port : "";
         MobileOperationBar.IsOpen = mobileMessage.Length > 0; MobileOperationBar.Message = mobileMessage;
         MobileOperationBar.Severity = mobileMessageError ? InfoBarSeverity.Error : InfoBarSeverity.Success;
         MobilePairHint.Text = mobilePairMessage;
+        MobilePairHint.Visibility = mobilePairMessage.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        MobileCodexReadinessText.Text = mobileView?.CodexReadiness switch
+        {
+            "ready" => "已有可供手机访问的 Codex。",
+            "configure" => "尚无可供手机访问的 Codex。请选择并启用一个接入。",
+            "checking" => "正在检查可供手机访问的 Codex…",
+            _ => "Codex 接入状态待确认，可刷新或打开接入管理。"
+        };
         if (renderedMobileRevision != mobileViewRevision) { RenderMobileDeviceRows(); renderedMobileRevision = mobileViewRevision; }
         foreach (var button in MobileDevicesList.Children.OfType<StackPanel>().SelectMany(panel => panel.Children).OfType<Button>()) button.IsEnabled = usable;
     }
@@ -127,7 +150,39 @@ public sealed partial class MainWindow
     { if (initialized && !updatingControls && !mobileLoading && !ManualApplicationBusy && !dialogOpen && !closing) mobileDraft.Password = sender.Password; }
     private async void RefreshMobileClicked(object sender, RoutedEventArgs args)
     { if (await ResolveMobileDraftAsync()) await RefreshMobileAsync(reloadDraft: true); }
-    private async void SaveMobileClicked(object sender, RoutedEventArgs args) => await SaveMobileAsync();
+    private async void SaveMobileClicked(object sender, RoutedEventArgs args)
+    {
+        if (currentPage == MobileNav) await PrepareMobilePairAsync();
+        else await SaveMobileAsync();
+    }
+
+    private async Task PrepareMobilePairAsync()
+    {
+        var home = viewModel.Home;
+        if (await SaveMobileAsync() && !closing && currentPage == MobileNav && home == viewModel.Home)
+            await GenerateMobilePairAsync();
+    }
+
+    private async void MobileEntryHelpClicked(object sender, RoutedEventArgs args)
+    {
+        if (dialogOpen || closing) return;
+        var port = int.TryParse(mobileDraft.Port, out var enteredPort) && enteredPort is > 0 and <= 65535 ? enteredPort : MobileGatewayManager.DefaultPort;
+        string instructions = $"请提供一个手机能访问、证书受手机信任的 HTTPS 地址。\n"
+            + $"将这个地址的反向代理转发到 http://这台 Windows 电脑的内网 IP:{port}。保留原始 Host（含端口）和 Origin。\n"
+            + "请核对代理到电脑的网络及防火墙通路。配置好后，把 HTTPS 地址填回 Codex Dock 手机连接页。";
+        var dialog = new ContentDialog { Title = "准备手机访问地址", Content = new TextBlock { Text = instructions, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true },
+            PrimaryButtonText = "复制准备说明", CloseButtonText = "返回", DefaultButton = ContentDialogButton.Close, XamlRoot = Root.XamlRoot };
+        if (await ShowDialogAsync(dialog) != ContentDialogResult.Primary) return;
+        try
+        {
+            var package = new DataPackage(); package.SetText(instructions);
+            Clipboard.SetContent(package);
+        }
+        catch (Exception)
+        {
+            mobileMessage = "未能复制准备说明，可以重新打开并选择文字。"; mobileMessageError = true; RefreshView();
+        }
+    }
     private void DiscardMobileClicked(object sender, RoutedEventArgs args)
     {
         if (ManualApplicationBusy || dialogOpen || closing) return;
@@ -151,7 +206,7 @@ public sealed partial class MainWindow
             {
                 var saved = result.Value ?? await mobileConnection.LoadSettingsAsync(home, lifetime.Token);
                 mobileLoading = true; try { mobileDraft.Load(saved); } finally { mobileLoading = false; }
-                ClearMobilePair();
+                mobileEntryFailed = mobilePaired = false; ClearMobilePair();
             }
             return result.Succeeded;
         }
@@ -181,7 +236,12 @@ public sealed partial class MainWindow
     private void AcceptMobileResult<T>(MobileActionResult<T> result)
     { mobileMessage = result.Message; mobileMessageError = !result.Succeeded; if (!result.Succeeded) throw new IOException(result.Message); }
     private async void CheckMobileEntryClicked(object sender, RoutedEventArgs args)
-        => await RunMobileControlAsync(async (saved, eligible) => AcceptMobileResult(await mobileConnection.CheckEntryAsync(saved, eligible, lifetime.Token)));
+        => await RunMobileControlAsync(async (saved, eligible) =>
+        {
+            var result = await mobileConnection.CheckEntryAsync(saved, eligible, lifetime.Token);
+            mobileEntryFailed = !result.Succeeded;
+            AcceptMobileResult(result);
+        });
     private async void OpenMobileManagerClicked(object sender, RoutedEventArgs args)
         => await RunMobileControlAsync(async (saved, eligible) =>
         {
@@ -194,12 +254,16 @@ public sealed partial class MainWindow
     private async void CreateMobilePairClicked(object sender, RoutedEventArgs args) => await GenerateMobilePairAsync();
     private async Task GenerateMobilePairAsync() => await RunMobileControlAsync(async (saved, eligible) =>
     {
-        var result = await mobileConnection.CreatePairAsync(saved, eligible, lifetime.Token); AcceptMobileResult(result);
+        mobilePairMessage = "正在检查 HTTPS 入口并准备配对码…"; RefreshView();
+        var result = await mobileConnection.CreatePairAsync(saved, eligible, lifetime.Token);
+        mobileEntryFailed = !result.Succeeded;
+        if (!result.Succeeded) mobilePairMessage = "未能生成配对码。检查入口后可以重试。";
+        AcceptMobileResult(result);
         var grant = result.Value ?? throw new IOException("未返回配对码。");
         using var memory = new InMemoryRandomAccessStream();
         using (var writer = new DataWriter(memory.GetOutputStreamAt(0))) { writer.WriteBytes(grant.Image); await writer.StoreAsync(); }
         memory.Seek(0); var bitmap = new BitmapImage(); await bitmap.SetSourceAsync(memory);
-        mobilePair = grant; MobilePairImage.Source = bitmap; MobilePairImage.Visibility = Visibility.Visible;
+        mobilePair = grant; mobilePaired = false; MobilePairImage.Source = bitmap; MobilePairImage.Visibility = Visibility.Visible;
         mobilePairMessage = "使用安卓 App 扫描。有效至 " + grant.Expires.ToLocalTime().ToString("HH:mm:ss") + "，仅可使用一次。";
     });
     private async void RevokeMobilePairClicked(object sender, RoutedEventArgs args) => await RevokeMobilePairAsync();
@@ -210,7 +274,7 @@ public sealed partial class MainWindow
         { AcceptMobileResult(await mobileConnection.RevokePairAsync(saved, pair.Id, eligible, lifetime.Token)); ClearMobilePair("配对码已撤销。"); });
     }
     private void ClearMobilePair(string? message = null)
-    { mobilePair = null; MobilePairImage.Source = null; MobilePairImage.Visibility = Visibility.Collapsed; mobilePairMessage = message ?? "先保存并启动，再检测 HTTPS 入口。"; }
+    { mobilePair = null; MobilePairImage.Source = null; MobilePairImage.Visibility = Visibility.Collapsed; mobilePairMessage = message ?? ""; }
     private async Task MobilePairTickAsync()
     {
         if (mobilePair is not { } pair || ManualApplicationBusy || dialogOpen || closing) return;
@@ -220,7 +284,11 @@ public sealed partial class MainWindow
         {
             var result = await mobileConnection.PairStateAsync(saved, pair.Id, eligible, lifetime.Token);
             if (mobilePair?.Id != pair.Id) return;
-            if (!result.Succeeded || result.Value != "active") ClearMobilePair(result.Value == "used" ? "配对成功，可在“授权设备”管理登录设备。" : "配对码已失效，请重新生成。");
+            if (result.Succeeded && result.Value != "active")
+            {
+                mobilePaired = result.Value == "used";
+                ClearMobilePair(mobilePaired ? "手机已配对。可在“授权设备”查看。" : "配对码已失效，请重新生成。");
+            }
         });
     }
     private void RenderMobileDeviceRows()

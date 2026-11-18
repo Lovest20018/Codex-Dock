@@ -23,12 +23,15 @@
     "shared/output-directives.css",
     "features/chat/composer-quotes.css",
     "features/chat/message-management.css",
-    "features/chat/session-menu.css"
+    "features/chat/session-menu.css",
+    "shared/visualize.css",
+    "features/chat/composer-commands.css"
   ],
   "/activity.js": "features/chat/activity.js",
   "/attachments.js": [
     "features/chat/composer-drafts.js",
     "features/chat/composer-quotes.js",
+    "features/chat/composer-commands.js",
     "features/chat/attachments.js",
     "features/chat/message-management.js",
     "features/chat/message-management-binding.js"
@@ -91,6 +94,7 @@
     "shared/mermaid-viewer.js",
     "shared/mermaid-cards.js",
     "shared/output-directives.js",
+    "shared/visualize.js",
     "shared/markdown.js"
   ],
   "/image-viewer.js": "shared/image-viewer.js",
