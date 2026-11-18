@@ -65,6 +65,7 @@ public sealed partial class MainWindow
         CredentialSourceText.Text = "当前凭据来源：" + connectionDraft.CredentialSource +
             (connectionDraft.ProviderName.Length > 0 ? "\n供应商：" + connectionDraft.ProviderName : "");
         LegacyKeyInfo.IsOpen = connectionDraft.NeedsApiKeyMigration;
+        LegacyKeyInfo.Visibility = LegacyKeyInfo.IsOpen ? Visibility.Visible : Visibility.Collapsed;
         LegacyKeyInfo.Message = connectionDraft.MigrateLegacyPat ? "迁移已加入草稿。确认保存时使用当前密钥写入 API Key 认证，并备份旧认证。" : "只读或修改普通设置会保留旧 PAT。确认迁移后才改用 API Key 认证。";
         MigrateKeyButton.IsEnabled = editable && !connectionDraft.MigrateLegacyPat;
         HttpConsentInput.Visibility = connectionDraft.HttpRequiredOrigin is null ? Visibility.Collapsed : Visibility.Visible;

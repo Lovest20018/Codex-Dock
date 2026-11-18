@@ -1,12 +1,23 @@
 using CodexConfig.Core;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
 using Windows.System;
 
 namespace CodexConfig.WinUI;
 
 public sealed partial class MainWindow
 {
+    private void ResizeConsolidationWindow(double width, double height)
+    {
+        var scale = Root.XamlRoot.RasterizationScale;
+        AppWindow.Resize(new((int)Math.Ceiling(width * scale), (int)Math.Ceiling(height * scale)));
+    }
+
     private async Task RunWorkspaceConsolidationSmokeAsync(string output, List<string> checks)
     {
         void Check(bool value, string message)
@@ -26,10 +37,28 @@ public sealed partial class MainWindow
         var desktop = (SmokeDesktopApplyRuntime)applicationRuntime; var restarts = desktop.Restarts;
         try
         {
+            Root.RequestedTheme = ElementTheme.Light;
+            ResizeConsolidationWindow(720, 540);
+            await CheckLongWorkspaceTextAsync(output, Check);
             Check(await SwitchHomeAsync(home) && viewModel.Home == home, "The navigation fixture loads its saved API connection");
-            NavigateTo(WorkspaceNav); var original = store.Load(home);
-            AppWindow.Resize(new(1120, 820)); await Settle();
+            NavigateTo(WorkspaceNav, revealStart: true); var original = store.Load(home);
+            ResizeConsolidationWindow(1120, 820); await Settle();
             Check(Navigation.MenuItems.Count == 3 && Navigation.FooterMenuItems.Count == 3, "The three daily tasks have separate entries above advanced tools, settings and help");
+            await CaptureAsync(output, "refined-home-light.png");
+            var title = PageTitle.TransformToVisual(Root).TransformPoint(new());
+            var directory = WorkspaceDirectoryButton.TransformToVisual(Root).TransformPoint(new());
+            var summary = WorkspaceConnectionCard.TransformToVisual(Root).TransformPoint(new());
+            Check(Math.Abs(title.Y + PageTitle.ActualHeight / 2 - directory.Y - WorkspaceDirectoryButton.ActualHeight / 2) <= 2 &&
+                directory.X > title.X + 300 && Math.Abs(summary.X - title.X) <= 2 && Math.Abs(directory.X + WorkspaceDirectoryButton.ActualWidth - summary.X - WorkspaceConnectionCard.ActualWidth) <= 2,
+                $"The 1120 × 820 window places the directory beside the title and aligns the title, actions and summary ({Root.ActualWidth:0} × {Root.ActualHeight:0} DIP client area)");
+            var summaryValues = new[] { ModelText, EndpointText, WorkspaceProfileName, WorkspaceDesktopStatus };
+            Check(summaryValues.Select(value => value.Text).Take(3).SequenceEqual(new[] { "saved-task-model", "https://tasks.invalid", "consolidation-home" }) &&
+                summaryValues.Select(Grid.GetRow).SequenceEqual(Enumerable.Range(0, 4)) &&
+                summaryValues.All(value => Grid.GetColumn(value) == 1 && InViewport(value)) && InViewport(WorkspaceEditConnectionButton),
+                "The Home summary presents the model, service, configuration name and runtime status in aligned rows");
+            NavigateTo(AdvancedNav, revealStart: true);
+            await CaptureAsync(output, "advanced-tools-standard.png");
+            CheckAdvancedToolGrid(3, Check);
             foreach (var route in Pages)
             {
                 NavigateTo(route); await Settle();
@@ -42,11 +71,19 @@ public sealed partial class MainWindow
             string Position(FrameworkElement element) => element.Name + " " + element.TransformToVisual(Root).TransformPoint(new()) + " " + element.ActualWidth + "x" + element.ActualHeight;
             Check(InViewport(ConnectionModeInput) && InViewport(BaseUrlInput) && InViewport(ApiKeyInput),
                 $"Connection type endpoint and key fit the initial viewport ({Position(PageScroll)}; {Position(ConnectionModeInput)}; {Position(BaseUrlInput)}; {Position(ApiKeyInput)}; root {Root.ActualWidth}x{Root.ActualHeight})");
+            Check(SetupApiCard.ActualWidth is >= 680 and <= 720 &&
+                Math.Abs(SetupApiCard.TransformToVisual(Root).TransformPoint(new()).X - PageTitle.TransformToVisual(Root).TransformPoint(new()).X) <= 2 &&
+                SectionTabs.Visibility == Visibility.Visible &&
+                SectionTabs.Children.OfType<ToggleButton>().Where(tab => tab.IsChecked == true).Single().Content.ToString() == "连接",
+                "The regular connection form keeps a left-aligned readable width and indicates the selected tab");
             Check(!VisualDescendants<FrameworkElement>(PageScroll).Contains(WorkspaceContextCard), "The complete directory and file commands are outside the main form in the directory flyout");
 
-            // Use the visible secondary navigation rather than changing model from a hidden connection control.
+            // Exercise the compact selector before editing the shared model draft.
+            ResizeConsolidationWindow(720, 540); await Settle();
+            Check(CompactSectionInput.Visibility == Visibility.Visible, "The compact selector replaces tabs at the minimum window width");
             CompactSectionInput.SelectedItem = ModelsNav; await Settle();
             Check(currentPage == ModelsNav && ModelsPanel.Visibility == Visibility.Visible && VisibleAncestors(BehaviorModelInput), "The advanced model editor remains reachable in the connection task");
+            ResizeConsolidationWindow(1120, 820); await Settle();
             BehaviorModelInput.Text = "task-selected-model"; await Settle(); var revision = connectionDraft.Revision;
             NavigateTo(ConnectionNav); await Settle();
             Check(ConnectionModelSummary.Text.Contains("task-selected-model") && ConnectionModelEditorHost.Children.Contains(BehaviorModelInput) && VisibleAncestors(DiscoverModelsButton) &&
@@ -84,6 +121,8 @@ public sealed partial class MainWindow
                 "Switching resource types and help preserves every draft and all saved files");
             Navigation.SelectedItem = ConfigurationSectionNav; Navigation.SelectedItem = AdvancedSectionNav;
             Check(currentPage == AdvancedNav && profileDraft.Revision == profileRevision && AdvancedToolsList.Children.Count > 0, "Advanced tools are discoverable independently of the three daily tasks");
+            await RunAdvancedToolsLayoutSmokeAsync(output, Check);
+            Check(profileDraft.Revision == profileRevision && original.SameContents(store.Load(home)), "Searching and opening advanced tools preserve the saved configuration and draft");
             Root.RequestedTheme = ElementTheme.Dark; AppWindow.Resize(new(720, 540)); NavigateTo(MobileSettingsNav); await Settle();
             Check(CompactSectionInput.Visibility == Visibility.Visible && SectionTabs.Visibility == Visibility.Collapsed && MobileFooter.ActualHeight > 0 &&
                 SaveMobileButton.TransformToVisual(Root).TransformPoint(new()).Y + SaveMobileButton.ActualHeight <= Root.ActualHeight + 1,
@@ -99,5 +138,151 @@ public sealed partial class MainWindow
             smokeDialog = _ => Task.FromResult(ContentDialogResult.Secondary); await SwitchHomeAsync(previous); smokeDialog = null;
             Root.RequestedTheme = ElementTheme.Light; AppWindow.Resize(originalSize); NavigateTo(WorkspaceNav);
         }
+    }
+
+    private async Task CheckLongWorkspaceTextAsync(string output, Action<bool, string> check)
+    {
+        var folder = "dock-workspace-" + string.Concat(Enumerable.Repeat("integration", 7));
+        var home = Path.Combine(output, folder);
+        var model = "provider/" + string.Concat(Enumerable.Repeat("multilingual", 13));
+        var endpoint = "https://" + new string('e', 52) + "." + new string('x', 46) + ".invalid";
+        Directory.CreateDirectory(home);
+        File.WriteAllText(Path.Combine(home, "config.toml"), $"model='{model}'\nopenai_base_url='{endpoint}/v1'\n");
+        File.WriteAllText(Path.Combine(home, "auth.json"), "{\"auth_mode\":\"apikey\",\"OPENAI_API_KEY\":\"fake-layout-key\"}");
+        check(await SwitchHomeAsync(home), "The long-text layout fixture loads through the normal directory switch");
+        NavigateTo(WorkspaceNav, revealStart: true);
+        var flyout = WorkspaceDirectoryButton.Flyout;
+        try
+        {
+            Root.Width = 460;
+            Root.HorizontalAlignment = HorizontalAlignment.Left;
+            await Task.Delay(100);
+            Root.UpdateLayout();
+            check(WorkspaceDirectoryLabel.IsTextTrimmed && WorkspaceDirectoryLabel.Text.EndsWith(folder, StringComparison.Ordinal) &&
+                ModelText.Text == model && EndpointText.Text == endpoint && WorkspaceProfileName.Text == folder &&
+                new[] { ModelText, EndpointText, WorkspaceProfileName }.All(value => value.ActualHeight > value.FontSize * 2),
+                "Long directory names are ellipsized in the header while full saved names, addresses and models wrap in the 460 DIP Home summary");
+            flyout.ShowAt(WorkspaceDirectoryButton);
+            await Task.Delay(100);
+            Root.UpdateLayout();
+            check(HomeText.Text == home && HomeText.IsTextSelectionEnabled && HomeText.ActualHeight > HomeText.FontSize * 2,
+                "The directory menu exposes the complete selectable path on multiple lines");
+        }
+        finally
+        {
+            flyout.Hide();
+            Root.Width = double.NaN;
+            Root.HorizontalAlignment = HorizontalAlignment.Stretch;
+        }
+    }
+
+    private void CheckAdvancedToolGrid(int columns, Action<bool, string> check)
+    {
+        var cards = AdvancedToolsList.Children.OfType<Border>().ToArray();
+        var sections = cards.Select(card => (StackPanel)card.Child).ToArray();
+        check(cards.Length == 3 && AdvancedToolsList.ColumnDefinitions.Count == columns &&
+            sections.Select(section => ((TextBlock)section.Children[0]).Text).SequenceEqual(new[] { "配置", "网关与增强", "诊断与恢复" }) &&
+            sections.Select(section => section.Children.OfType<Button>().Count()).SequenceEqual(new[] { 3, 3, 4 }) &&
+            cards.Select((card, index) => Grid.GetColumn(card) == index % columns && Grid.GetRow(card) == index / columns).All(placed => placed),
+            $"The ten tools occupy three groups in order across {columns} columns at {AdvancedToolsList.ActualWidth:0} DIP available width");
+        foreach (var card in cards)
+        {
+            var cardPosition = card.TransformToVisual(AdvancedToolsList).TransformPoint(new());
+            check(cardPosition.X >= -1 && cardPosition.X + card.ActualWidth <= AdvancedToolsList.ActualWidth + 1 &&
+                VisualDescendants<Button>(card).All(tool =>
+                {
+                    var point = tool.TransformToVisual(card).TransformPoint(new());
+                    return point.X >= 0 && point.X + tool.ActualWidth <= card.ActualWidth && tool.ActualWidth >= card.ActualWidth - 32 &&
+                        tool.ActualHeight >= 38 && point.Y + tool.ActualHeight <= card.ActualHeight;
+                }),
+                "Each navigation row spans its group and stays inside the tool grid");
+        }
+    }
+
+    private async Task RunAdvancedToolsLayoutSmokeAsync(string output, Action<bool, string> check)
+    {
+        double Left(FrameworkElement control) => control.TransformToVisual(Root).TransformPoint(new()).X;
+        double Top(FrameworkElement control) => control.TransformToVisual(Root).TransformPoint(new()).Y;
+        Button[] Tools() => VisualDescendants<Button>(AdvancedToolsList).ToArray();
+
+        Root.RequestedTheme = ElementTheme.Light;
+        ResizeConsolidationWindow(1840, 900);
+        await CaptureAsync(output, "advanced-tools-wide.png");
+        var start = Left(PageTitle);
+        check(PageScroll.ActualWidth > 1200 && Math.Abs(Left(AdvancedSearchInput) - start) <= 2 &&
+            Math.Abs(Left(AdvancedToolsList) - start) <= 2 && AdvancedSearchInput.ActualWidth is > 350 and <= 482 &&
+            Math.Abs(Left(PendingChangesButton) + PendingChangesButton.ActualWidth - start - AdvancedToolsList.ActualWidth) <= 2,
+            $"The 1840 × 900 window keeps the title, search, tool cards and header actions in the same capped column ({Root.ActualWidth:0} × {Root.ActualHeight:0} DIP client area)");
+        CheckAdvancedToolGrid(3, check);
+        await ExecuteWorkspaceShortcutAsync(VirtualKey.F, VirtualKeyModifiers.Control);
+        check(ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), AdvancedSearchInput), "Ctrl F focuses the advanced tool search");
+        AdvancedSearchInput.Text = "回滚"; Root.UpdateLayout();
+        var recovery = Tools().SingleOrDefault();
+        var resultCard = (Border)AdvancedToolsList.Children[0];
+        check(recovery?.Content.ToString() == "备份与恢复" && Math.Abs(Left(resultCard) - start) <= 2 &&
+            Math.Abs(resultCard.ActualWidth - (AdvancedToolsList.ActualWidth - 24) / 3) <= 2,
+            "An alias query leaves only an accessible recovery result at the normal column width on the left");
+
+        Root.RequestedTheme = ElementTheme.Dark;
+        ResizeConsolidationWindow(720, 540);
+        await Task.Delay(100); Root.UpdateLayout();
+        check(AdvancedSearchInput.Text == "回滚" && ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), AdvancedSearchInput) &&
+            ReferenceEquals(Tools().SingleOrDefault(), recovery) && Math.Abs(resultCard.ActualWidth - (AdvancedToolsList.ActualWidth - 12) / 2) <= 2,
+            "Resizing retains the live query, keyboard focus and the existing result as it reflows to two columns");
+        check(ReferenceEquals(FocusManager.FindFirstFocusableElement(AdvancedToolsList), recovery) &&
+            recovery!.Focus(FocusState.Keyboard) && AutomationProperties.GetName(recovery) == "备份与恢复",
+            "A tool result is keyboard focusable and its accessible name contains only the destination");
+        var peer = new ButtonAutomationPeer(recovery!);
+        ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
+        await Task.Delay(100);
+        check(currentPage == RecoveryNav, "A search result opens its native tool page directly");
+
+        NavigateTo(AdvancedNav, revealStart: true);
+        var previousError = shellError;
+        AdvancedSearchInput.Text = "approval_policy";
+        check(AdvancedNoResults.Visibility == Visibility.Visible && AdvancedFieldSearchButton.Visibility == Visibility.Visible,
+            "A raw configuration field has a visible path to search all settings");
+        SearchAdvancedFieldsClicked(AdvancedFieldSearchButton, new());
+        check(currentPage == CatalogNav && CatalogSearchInput.Text == "approval_policy" && catalogInputs.ContainsKey("approval_policy") && shellError == previousError,
+            "Field search opens the matching configuration editor immediately");
+        NavigateTo(AdvancedNav, revealStart: true);
+        AdvancedSearchInput.Text = "mcp_servers.<name>";
+        SearchAdvancedFieldsClicked(AdvancedFieldSearchButton, new());
+        check(catalogPage is { Entries.Count: > 0 } && catalogPage.Entries.All(entry => entry.Dynamic) && CatalogRows.Children.Count == catalogPage.Entries.Count && shellError == previousError,
+            "Schema placeholders can be searched without being treated as saved TOML paths");
+        AdvancedSearchInput.Text = "";
+        CatalogSearchInput.Text = "";
+        NavigateTo(AdvancedNav, revealStart: true);
+        await CaptureAsync(output, "advanced-tools-compact-dark.png");
+        CheckAdvancedToolGrid(2, check);
+
+        try
+        {
+            Root.Width = 460;
+            Root.HorizontalAlignment = HorizontalAlignment.Left;
+            await CaptureAsync(output, "advanced-tools-single-column-dark.png");
+            CheckAdvancedToolGrid(1, check);
+            check(Top(PageTitle) >= 46 && Top(WorkspaceDirectoryButton) >= Top(PageTitle) + PageTitle.ActualHeight - 1 &&
+                Left(WorkspaceDirectoryButton) + WorkspaceDirectoryButton.ActualWidth <= Left(PendingChangesButton) &&
+                Left(PendingChangesButton) + PendingChangesButton.ActualWidth <= Root.ActualWidth,
+                "The reduced logical viewport keeps the full directory command and pending changes reachable below the title");
+        }
+        finally
+        {
+            Root.Width = double.NaN;
+            Root.HorizontalAlignment = HorizontalAlignment.Stretch;
+        }
+        NavigateTo(ConnectionNav, revealStart: true);
+        await Task.Delay(100); Root.UpdateLayout();
+        BaseUrlInput.Focus(FocusState.Keyboard);
+        await CaptureAsync(output, "refined-connection-compact-dark.png");
+        check(Top(WorkspaceDirectoryButton) >= Top(PageTitle) + PageTitle.ActualHeight - 1 &&
+            Math.Abs(Left(PageTitle) - Left(SetupApiCard)) <= 2 && PendingChangesButton.Visibility == Visibility.Visible &&
+            Left(PendingChangesButton) + PendingChangesButton.ActualWidth <= Root.ActualWidth &&
+            Left(ApiKeyInput) + ApiKeyInput.ActualWidth <= Root.ActualWidth &&
+            Math.Abs(Left(PageTitle) - Left(SaveConnectionButton)) <= 2 &&
+            CompactSectionInput.Visibility == Visibility.Visible && ApplicationFooter.Visibility == Visibility.Visible &&
+            SaveConnectionButton.Content.ToString() == "核对连接" && Top(SaveConnectionButton) + SaveConnectionButton.ActualHeight <= Root.ActualHeight + 1,
+            $"The 720 × 540 dark connection keeps the page selector, pending changes and review action reachable ({Root.ActualWidth:0} × {Root.ActualHeight:0} DIP client area)");
     }
 }

@@ -6,13 +6,13 @@
 
 **Codex Dock** 是 Windows 配置应用，**Lovest Code** 是 Android 客户端。电脑端托管 Web / 手机网关，连接本机 Codex Desktop、CLI，以及已登记的 WSL / SSH 执行环境。
 
-[Windows 下载](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.19.0) · [Android 下载](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.5) · [全部版本](https://github.com/Lovest20018/Codex-Dock/releases) · [反馈问题](https://github.com/Lovest20018/Codex-Dock/issues)
+[Windows 下载](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.19.7) · [Android 下载](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.5) · [全部版本](https://github.com/Lovest20018/Codex-Dock/releases) · [反馈问题](https://github.com/Lovest20018/Codex-Dock/issues)
 
 ## 当前版本
 
 | 应用 | 版本 | 这次更新 |
 | --- | --- | --- |
-| Windows · Codex Dock | **[0.19.0](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.19.0)** | WinUI 3 成为默认界面，五个任务入口、统一保存与应用流程、旧聊天接续和增强、网关等待设置、实验功能读取，以及手机网关兼容与恢复修复。 |
+| Windows · Codex Dock | **[0.19.7](https://github.com/Lovest20018/Codex-Dock/releases/tag/v0.19.7)** | 精修首页、连接表单和高级工具，简化模型切换、首次连接与手机配对，补充网关响应诊断。 |
 | Android · Lovest Code | **[0.2.5](https://github.com/Lovest20018/Codex-Dock/releases/tag/android-v0.2.5)** | 更换为“接入 · 浅绿”图标，适配自适应启动器、Android 13+ 单色图标和通知；沿用原包名和签名，可覆盖升级。 |
 
 Windows、Android 与 Web 现在使用同一套开口 D、接入箭头和浅绿配色，Web 页头、浏览器及添加到主屏幕图标随 Windows 手机后台更新。两个应用独立构建与发布；Windows 的更新入口只跟踪 `v*`，安卓应用内更新只跟踪 `android-v*`。
@@ -21,18 +21,18 @@ Windows、Android 与 Web 现在使用同一套开口 D、接入箭头和浅绿�
 
 | 平台 | 安装文件 | 环境 |
 | --- | --- | --- |
-| Windows | [安装器 EXE](https://github.com/Lovest20018/Codex-Dock/releases/download/v0.19.0/CodexDock-0.19.0-Setup-win-x64.exe) · [便携 ZIP](https://github.com/Lovest20018/Codex-Dock/releases/download/v0.19.0/CodexDock-0.19.0-win-x64.zip) | Windows x64，目标最低版本 Windows 10 1809；.NET、Windows App SDK 和手机后台随包提供。 |
+| Windows | [安装器 EXE](https://github.com/Lovest20018/Codex-Dock/releases/download/v0.19.7/CodexDock-0.19.7-Setup-win-x64.exe) · [便携 ZIP](https://github.com/Lovest20018/Codex-Dock/releases/download/v0.19.7/CodexDock-0.19.7-win-x64.zip) | Windows x64，目标最低版本 Windows 10 1809，随包提供 .NET、Windows App SDK 和手机后台。 |
 | Android | [LovestCode-Android-0.2.5.apk](https://github.com/Lovest20018/Codex-Dock/releases/download/android-v0.2.5/LovestCode-Android-0.2.5.apk) | Android 8 / API 26 及以上。 |
 
-**Windows 覆盖升级：**在旧版 Dock 选择“停止网关并退出”，并从托盘退出此前单独打开的 WinUI 预览，再运行新安装器、选择原安装目录。无需先卸载；原快捷方式继续打开 `CodexDock.exe`，界面改为 WinUI。便携版请解压到独立目录，保留整个 `mobile` 文件夹和所有运行库。
+**Windows 覆盖升级**可直接在安装器中选择原目录。安装器会请求运行中的 Dock 正常退出，并停止同一安装目录的网关。遇到未保存修改提示时，先在 Dock 中处理草稿。便携版请解压到独立目录，保留整个 `mobile` 文件夹和所有运行库。
 
 **Android 覆盖升级：**直接安装新版 APK，不要先卸载。包名仍是 `io.github.lovest20018.codexdock`，原证书和应用数据目录保持；连接、授权及草稿可沿用。也可在“我的 → 版本与更新”检查新版，按系统提示允许 Lovest Code 安装应用。
 
-校验文件：[Windows SHA-256](https://github.com/Lovest20018/Codex-Dock/releases/download/v0.19.0/SHA256SUMS-0.19.0.txt) · [Android SHA-256](https://github.com/Lovest20018/Codex-Dock/releases/download/android-v0.2.5/SHA256SUMS-Android-0.2.5.txt)。更新后在电脑启动手机服务，并重新检测 HTTPS 入口。
+更新后可在电脑启动手机服务并重新检测 HTTPS 入口。下载校验文件。 [Windows SHA-256](https://github.com/Lovest20018/Codex-Dock/releases/download/v0.19.7/SHA256SUMS-0.19.7.txt) · [Android SHA-256](https://github.com/Lovest20018/Codex-Dock/releases/download/android-v0.2.5/SHA256SUMS-Android-0.2.5.txt)
 
 ## Windows 界面
 
-以下采用当前源码的 [Windows 0.19.6 界面](docs/release-0.19.6.md)。
+以下采用 Windows 0.19.7 界面。 [更新说明](docs/release-0.19.7.md)
 
 | 任务入口 | 用途 |
 | --- | --- |
@@ -85,7 +85,7 @@ Windows、Android 与 Web 现在使用同一套开口 D、接入箭头和浅绿�
 
 ## 验证范围
 
-仓库包含 Core / 共享服务、实际 WinUI 和 WPF 窗口、打包后台启停、安装与卸载、Python / HTTP、Web 浏览器以及 Android 模拟器检查。安装包验证包含文件摘要、同安装目录后台停止、其他安装目录隔离、已保存手机设置与用户哨兵文件保留。对应版本的证据与限制见 [Windows 0.19.0 审查](docs/review-0.19.0.md) 和 [Android 0.2.5 审查](docs/review-android-0.2.5.md)。
+仓库包含 Core / 共享服务、实际 WinUI 和 WPF 窗口、打包后台启停、安装与卸载、Python / HTTP、Web 浏览器以及 Android 模拟器检查。安装包验证包含文件摘要、同安装目录后台停止、其他安装目录隔离、已保存手机设置与用户文件保留。 [Windows 0.19.7 审查](docs/review-0.19.7.md) · [Android 0.2.5 审查](docs/review-android-0.2.5.md)
 
 自动化与模拟器不能代替实体手机的相机扫码、厂商键盘、省电策略、公网 HTTPS、其他物理 DPI、Windows 登录启动或真实模型 / WSL / SSH 任务验收。功能受执行端、模型目录和实际服务能力约束，文件保存成功与现有聊天实际采用分别核对。
 
@@ -102,6 +102,6 @@ Windows 主界面使用 **C# / .NET 8 / WinUI 3**，保留 WPF 兼容源码；�
 | `src/CodexAndroid` | Lovest Code 原生壳、图标资源与页面适配。 |
 | `tests`、`scripts` | 隔离回归、构建、安装验证及按平台发布。 |
 
-[开发与构建](docs/development.md) · [发布约定](docs/github-releases.md) · [Windows 更新说明](docs/release-0.19.0.md) · [Android 更新说明](docs/release-android-0.2.5.md) · [上游来源](src/CodexMobile/UPSTREAM.md)
+[开发与构建](docs/development.md) · [发布约定](docs/github-releases.md) · [Windows 更新说明](docs/release-0.19.7.md) · [Android 更新说明](docs/release-android-0.2.5.md) · [上游来源](src/CodexMobile/UPSTREAM.md)
 
 [MIT 许可证](LICENSE) · [第三方许可](THIRD-PARTY-NOTICES.md)

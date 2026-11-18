@@ -1,0 +1,237 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="DockCanvasBrush" Color="#F5F7F5" />
+            <SolidColorBrush x:Key="DockPaneBrush" Color="#ECF1EE" />
+            <SolidColorBrush x:Key="DockSurfaceBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="DockStatusSurfaceBrush" Color="#EAF2ED" />
+            <SolidColorBrush x:Key="DockOutlineBrush" Color="#CFDAD4" />
+            <SolidColorBrush x:Key="DockTextBrush" Color="#23332B" />
+            <SolidColorBrush x:Key="DockSecondaryTextBrush" Color="#496258" />
+            <SolidColorBrush x:Key="DockControlBrush" Color="#F1F5F2" />
+            <SolidColorBrush x:Key="DockFieldBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="DockFieldBorderBrush" Color="#82958B" />
+            <SolidColorBrush x:Key="DockHoverBrush" Color="#E5EFE9" />
+            <SolidColorBrush x:Key="DockPressedBrush" Color="#D7E5DD" />
+            <SolidColorBrush x:Key="DockSelectionBrush" Color="#DCECE3" />
+            <SolidColorBrush x:Key="DockAccentBrush" Color="#2C614F" />
+            <SolidColorBrush x:Key="DockAccentHoverBrush" Color="#235442" />
+            <SolidColorBrush x:Key="DockAccentPressedBrush" Color="#1A4737" />
+            <SolidColorBrush x:Key="DockOnAccentBrush" Color="#FFFFFF" />
+
+            <!-- The native templates continue to handle hover, focus, disabled and pressed states. -->
+            <StaticResource x:Key="NavigationViewContentBackground" ResourceKey="DockCanvasBrush" />
+            <StaticResource x:Key="NavigationViewDefaultPaneBackground" ResourceKey="DockPaneBrush" />
+            <StaticResource x:Key="NavigationViewExpandedPaneBackground" ResourceKey="DockPaneBrush" />
+            <StaticResource x:Key="NavigationViewContentGridBorderBrush" ResourceKey="DockOutlineBrush" />
+            <StaticResource x:Key="ButtonBorderBrush" ResourceKey="DockOutlineBrush" />
+            <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="DockOutlineBrush" />
+            <StaticResource x:Key="ToggleButtonBorderBrush" ResourceKey="DockOutlineBrush" />
+            <StaticResource x:Key="ToggleButtonBorderBrushPointerOver" ResourceKey="DockOutlineBrush" />
+            <StaticResource x:Key="ToggleButtonBorderBrushChecked" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="ToggleButtonBorderBrushCheckedPointerOver" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="ToggleButtonBorderBrushCheckedPressed" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="ButtonBackground" ResourceKey="DockControlBrush" />
+            <StaticResource x:Key="ToggleButtonBackground" ResourceKey="DockControlBrush" />
+            <StaticResource x:Key="DropDownButtonBackground" ResourceKey="DockControlBrush" />
+            <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="DockHoverBrush" />
+            <StaticResource x:Key="SubtleButtonBackgroundPointerOver" ResourceKey="DockHoverBrush" />
+            <StaticResource x:Key="ToggleButtonBackgroundPointerOver" ResourceKey="DockHoverBrush" />
+            <StaticResource x:Key="DropDownButtonBackgroundPointerOver" ResourceKey="DockHoverBrush" />
+            <StaticResource x:Key="TextControlBackgroundPointerOver" ResourceKey="DockHoverBrush" />
+            <StaticResource x:Key="ComboBoxBackgroundPointerOver" ResourceKey="DockHoverBrush" />
+            <StaticResource x:Key="NavigationViewItemBackgroundPointerOver" ResourceKey="DockHoverBrush" />
+            <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="DockPressedBrush" />
+            <StaticResource x:Key="SubtleButtonBackgroundPressed" ResourceKey="DockPressedBrush" />
+            <StaticResource x:Key="ToggleButtonBackgroundPressed" ResourceKey="DockPressedBrush" />
+            <StaticResource x:Key="DropDownButtonBackgroundPressed" ResourceKey="DockPressedBrush" />
+            <StaticResource x:Key="ComboBoxBackgroundPressed" ResourceKey="DockPressedBrush" />
+            <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="DockPressedBrush" />
+            <StaticResource x:Key="NavigationViewItemBackgroundSelectedPressed" ResourceKey="DockPressedBrush" />
+            <StaticResource x:Key="TextControlBackground" ResourceKey="DockFieldBrush" />
+            <StaticResource x:Key="TextControlBackgroundFocused" ResourceKey="DockFieldBrush" />
+            <StaticResource x:Key="ComboBoxBackground" ResourceKey="DockFieldBrush" />
+            <StaticResource x:Key="ComboBoxBackgroundUnfocused" ResourceKey="DockFieldBrush" />
+            <StaticResource x:Key="ComboBoxBackgroundFocused" ResourceKey="DockFieldBrush" />
+            <StaticResource x:Key="TextControlBorderBrush" ResourceKey="DockFieldBorderBrush" />
+            <StaticResource x:Key="TextControlBorderBrushPointerOver" ResourceKey="DockFieldBorderBrush" />
+            <StaticResource x:Key="ComboBoxBorderBrush" ResourceKey="DockFieldBorderBrush" />
+            <StaticResource x:Key="ComboBoxBorderBrushPointerOver" ResourceKey="DockFieldBorderBrush" />
+            <StaticResource x:Key="NavigationViewItemBackgroundSelected" ResourceKey="DockSelectionBrush" />
+            <StaticResource x:Key="NavigationViewItemBackgroundSelectedPointerOver" ResourceKey="DockSelectionBrush" />
+            <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="DockSelectionBrush" />
+            <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="DockSelectionBrush" />
+            <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="DockTextBrush" />
+            <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="DockTextBrush" />
+            <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="DockTextBrush" />
+            <StaticResource x:Key="TextControlPlaceholderForeground" ResourceKey="DockSecondaryTextBrush" />
+            <StaticResource x:Key="TextControlPlaceholderForegroundPointerOver" ResourceKey="DockSecondaryTextBrush" />
+            <StaticResource x:Key="TextControlPlaceholderForegroundFocused" ResourceKey="DockSecondaryTextBrush" />
+            <StaticResource x:Key="AccentButtonBackground" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="AccentButtonBorderBrush" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="NavigationViewSelectionIndicatorForeground" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="TextControlBorderBrushFocused" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="ComboBoxBackgroundBorderBrushFocused" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="HyperlinkButtonForeground" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="AccentButtonBackgroundPointerOver" ResourceKey="DockAccentHoverBrush" />
+            <StaticResource x:Key="AccentButtonBorderBrushPointerOver" ResourceKey="DockAccentHoverBrush" />
+            <StaticResource x:Key="HyperlinkButtonForegroundPointerOver" ResourceKey="DockAccentHoverBrush" />
+            <StaticResource x:Key="AccentButtonBackgroundPressed" ResourceKey="DockAccentPressedBrush" />
+            <StaticResource x:Key="HyperlinkButtonForegroundPressed" ResourceKey="DockAccentPressedBrush" />
+            <StaticResource x:Key="AccentButtonForeground" ResourceKey="DockOnAccentBrush" />
+            <StaticResource x:Key="AccentButtonForegroundPointerOver" ResourceKey="DockOnAccentBrush" />
+            <StaticResource x:Key="AccentButtonForegroundPressed" ResourceKey="DockOnAccentBrush" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="DockCanvasBrush" Color="#161E1A" />
+            <SolidColorBrush x:Key="DockPaneBrush" Color="#111814" />
+            <SolidColorBrush x:Key="DockSurfaceBrush" Color="#202C26" />
+            <SolidColorBrush x:Key="DockStatusSurfaceBrush" Color="#1E2D25" />
+            <SolidColorBrush x:Key="DockOutlineBrush" Color="#3D5146" />
+            <SolidColorBrush x:Key="DockTextBrush" Color="#EDF5EF" />
+            <SolidColorBrush x:Key="DockSecondaryTextBrush" Color="#B1C6B8" />
+            <SolidColorBrush x:Key="DockControlBrush" Color="#293831" />
+            <SolidColorBrush x:Key="DockFieldBrush" Color="#17221C" />
+            <SolidColorBrush x:Key="DockFieldBorderBrush" Color="#779286" />
+            <SolidColorBrush x:Key="DockHoverBrush" Color="#34473D" />
+            <SolidColorBrush x:Key="DockPressedBrush" Color="#3D5448" />
+            <SolidColorBrush x:Key="DockSelectionBrush" Color="#31483D" />
+            <SolidColorBrush x:Key="DockAccentBrush" Color="#A3D1BB" />
+            <SolidColorBrush x:Key="DockAccentHoverBrush" Color="#B4DFCA" />
+            <SolidColorBrush x:Key="DockAccentPressedBrush" Color="#90C3AA" />
+            <SolidColorBrush x:Key="DockOnAccentBrush" Color="#152A20" />
+
+            <!-- The native templates continue to handle hover, focus, disabled and pressed states. -->
+            <StaticResource x:Key="NavigationViewContentBackground" ResourceKey="DockCanvasBrush" />
+            <StaticResource x:Key="NavigationViewDefaultPaneBackground" ResourceKey="DockPaneBrush" />
+            <StaticResource x:Key="NavigationViewExpandedPaneBackground" ResourceKey="DockPaneBrush" />
+            <StaticResource x:Key="NavigationViewContentGridBorderBrush" ResourceKey="DockOutlineBrush" />
+            <StaticResource x:Key="ButtonBorderBrush" ResourceKey="DockOutlineBrush" />
+            <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="DockOutlineBrush" />
+            <StaticResource x:Key="ToggleButtonBorderBrush" ResourceKey="DockOutlineBrush" />
+            <StaticResource x:Key="ToggleButtonBorderBrushPointerOver" ResourceKey="DockOutlineBrush" />
+            <StaticResource x:Key="ToggleButtonBorderBrushChecked" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="ToggleButtonBorderBrushCheckedPointerOver" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="ToggleButtonBorderBrushCheckedPressed" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="ButtonBackground" ResourceKey="DockControlBrush" />
+            <StaticResource x:Key="ToggleButtonBackground" ResourceKey="DockControlBrush" />
+            <StaticResource x:Key="DropDownButtonBackground" ResourceKey="DockControlBrush" />
+            <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="DockHoverBrush" />
+            <StaticResource x:Key="SubtleButtonBackgroundPointerOver" ResourceKey="DockHoverBrush" />
+            <StaticResource x:Key="ToggleButtonBackgroundPointerOver" ResourceKey="DockHoverBrush" />
+            <StaticResource x:Key="DropDownButtonBackgroundPointerOver" ResourceKey="DockHoverBrush" />
+            <StaticResource x:Key="TextControlBackgroundPointerOver" ResourceKey="DockHoverBrush" />
+            <StaticResource x:Key="ComboBoxBackgroundPointerOver" ResourceKey="DockHoverBrush" />
+            <StaticResource x:Key="NavigationViewItemBackgroundPointerOver" ResourceKey="DockHoverBrush" />
+            <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="DockPressedBrush" />
+            <StaticResource x:Key="SubtleButtonBackgroundPressed" ResourceKey="DockPressedBrush" />
+            <StaticResource x:Key="ToggleButtonBackgroundPressed" ResourceKey="DockPressedBrush" />
+            <StaticResource x:Key="DropDownButtonBackgroundPressed" ResourceKey="DockPressedBrush" />
+            <StaticResource x:Key="ComboBoxBackgroundPressed" ResourceKey="DockPressedBrush" />
+            <StaticResource x:Key="ToggleButtonBackgroundCheckedPressed" ResourceKey="DockPressedBrush" />
+            <StaticResource x:Key="NavigationViewItemBackgroundSelectedPressed" ResourceKey="DockPressedBrush" />
+            <StaticResource x:Key="TextControlBackground" ResourceKey="DockFieldBrush" />
+            <StaticResource x:Key="TextControlBackgroundFocused" ResourceKey="DockFieldBrush" />
+            <StaticResource x:Key="ComboBoxBackground" ResourceKey="DockFieldBrush" />
+            <StaticResource x:Key="ComboBoxBackgroundUnfocused" ResourceKey="DockFieldBrush" />
+            <StaticResource x:Key="ComboBoxBackgroundFocused" ResourceKey="DockFieldBrush" />
+            <StaticResource x:Key="TextControlBorderBrush" ResourceKey="DockFieldBorderBrush" />
+            <StaticResource x:Key="TextControlBorderBrushPointerOver" ResourceKey="DockFieldBorderBrush" />
+            <StaticResource x:Key="ComboBoxBorderBrush" ResourceKey="DockFieldBorderBrush" />
+            <StaticResource x:Key="ComboBoxBorderBrushPointerOver" ResourceKey="DockFieldBorderBrush" />
+            <StaticResource x:Key="NavigationViewItemBackgroundSelected" ResourceKey="DockSelectionBrush" />
+            <StaticResource x:Key="NavigationViewItemBackgroundSelectedPointerOver" ResourceKey="DockSelectionBrush" />
+            <StaticResource x:Key="ToggleButtonBackgroundChecked" ResourceKey="DockSelectionBrush" />
+            <StaticResource x:Key="ToggleButtonBackgroundCheckedPointerOver" ResourceKey="DockSelectionBrush" />
+            <StaticResource x:Key="ToggleButtonForegroundChecked" ResourceKey="DockTextBrush" />
+            <StaticResource x:Key="ToggleButtonForegroundCheckedPointerOver" ResourceKey="DockTextBrush" />
+            <StaticResource x:Key="ToggleButtonForegroundCheckedPressed" ResourceKey="DockTextBrush" />
+            <StaticResource x:Key="TextControlPlaceholderForeground" ResourceKey="DockSecondaryTextBrush" />
+            <StaticResource x:Key="TextControlPlaceholderForegroundPointerOver" ResourceKey="DockSecondaryTextBrush" />
+            <StaticResource x:Key="TextControlPlaceholderForegroundFocused" ResourceKey="DockSecondaryTextBrush" />
+            <StaticResource x:Key="AccentButtonBackground" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="AccentButtonBorderBrush" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="NavigationViewSelectionIndicatorForeground" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="TextControlBorderBrushFocused" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="ComboBoxBackgroundBorderBrushFocused" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="HyperlinkButtonForeground" ResourceKey="DockAccentBrush" />
+            <StaticResource x:Key="AccentButtonBackgroundPointerOver" ResourceKey="DockAccentHoverBrush" />
+            <StaticResource x:Key="AccentButtonBorderBrushPointerOver" ResourceKey="DockAccentHoverBrush" />
+            <StaticResource x:Key="HyperlinkButtonForegroundPointerOver" ResourceKey="DockAccentHoverBrush" />
+            <StaticResource x:Key="AccentButtonBackgroundPressed" ResourceKey="DockAccentPressedBrush" />
+            <StaticResource x:Key="HyperlinkButtonForegroundPressed" ResourceKey="DockAccentPressedBrush" />
+            <StaticResource x:Key="AccentButtonForeground" ResourceKey="DockOnAccentBrush" />
+            <StaticResource x:Key="AccentButtonForegroundPointerOver" ResourceKey="DockOnAccentBrush" />
+            <StaticResource x:Key="AccentButtonForegroundPressed" ResourceKey="DockOnAccentBrush" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="DockCanvasBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="DockPaneBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="DockSurfaceBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="DockStatusSurfaceBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="DockOutlineBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="DockTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="DockSecondaryTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <Style x:Key="DockCardStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource DockSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource DockOutlineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Padding" Value="20" />
+    </Style>
+    <Style x:Key="DockFooterStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource DockSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource DockOutlineBrush}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+        <Setter Property="Padding" Value="24,14" />
+    </Style>
+    <Style x:Key="DockFooterContentStyle" TargetType="StackPanel">
+        <Setter Property="MaxWidth" Value="952" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="Spacing" Value="8" />
+    </Style>
+    <Style x:Key="DockSectionHeadingStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{ThemeResource DockTextBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style x:Key="DockFieldLabelStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{ThemeResource DockSecondaryTextBrush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <Style TargetType="Button">
+        <Setter Property="Padding" Value="12,7" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="CornerRadius" Value="7" />
+    </Style>
+    <Style x:Key="DockSectionTabStyle" TargetType="ToggleButton">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0,0,0,2" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="CornerRadius" Value="5,5,0,0" />
+    </Style>
+    <Style TargetType="TextBox">
+        <Setter Property="Padding" Value="11,7,11,7" />
+        <Setter Property="CornerRadius" Value="7" />
+    </Style>
+    <Style TargetType="PasswordBox">
+        <Setter Property="Padding" Value="11,7,11,7" />
+        <Setter Property="CornerRadius" Value="7" />
+    </Style>
+    <Style TargetType="ComboBox">
+        <Setter Property="Padding" Value="11,7,12,7" />
+        <Setter Property="CornerRadius" Value="7" />
+    </Style>
+    <Style TargetType="DropDownButton">
+        <Setter Property="Padding" Value="11,6" />
+        <Setter Property="CornerRadius" Value="7" />
+    </Style>
+</ResourceDictionary>

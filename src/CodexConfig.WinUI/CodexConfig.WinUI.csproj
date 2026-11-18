@@ -22,7 +22,8 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AssemblyName>CodexDock.WinUI</AssemblyName>
     <AssemblyName Condition="'$(InstalledBuild)' == 'true' Or '$(LocalInstallBuild)' == 'true'">CodexDock</AssemblyName>
-    <Version>0.19.6</Version>
+    <DefineConstants Condition="'$(UiPreviewBuild)' == 'true' And '$(InstalledBuild)' != 'true' And '$(LocalInstallBuild)' != 'true'">$(DefineConstants);CODEX_DOCK_UI_PREVIEW</DefineConstants>
+    <Version>0.19.7</Version>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
@@ -35,9 +36,10 @@
   </ItemGroup>
   <Target Name="IncludeCompiledWinUiResourcesInPublish" AfterTargets="ComputeFilesToPublish">
     <ItemGroup>
-      <ResolvedFileToPublish Remove="$(TargetDir)App.xbf;$(TargetDir)MainWindow.xbf;$(TargetDir)$(AssemblyName).pri" />
+      <ResolvedFileToPublish Remove="$(TargetDir)App.xbf;$(TargetDir)MainWindow.xbf;$(TargetDir)DockTheme.xbf;$(TargetDir)$(AssemblyName).pri" />
       <ResolvedFileToPublish Include="$(TargetDir)App.xbf" RelativePath="App.xbf" CopyToPublishDirectory="PreserveNewest" />
       <ResolvedFileToPublish Include="$(TargetDir)MainWindow.xbf" RelativePath="MainWindow.xbf" CopyToPublishDirectory="PreserveNewest" />
+      <ResolvedFileToPublish Include="$(TargetDir)DockTheme.xbf" RelativePath="DockTheme.xbf" CopyToPublishDirectory="PreserveNewest" />
       <ResolvedFileToPublish Include="$(TargetDir)$(AssemblyName).pri" RelativePath="$(AssemblyName).pri" CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>

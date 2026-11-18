@@ -37,7 +37,7 @@ public sealed partial class MainWindow
     private void RefreshQuickModelEntry(bool editable)
     {
         var available = connectionDraft.Available && !HasPendingRecovery && !viewModel.NeedsConnectionSetup;
-        QuickModelButton.Visibility = QuickModelHint.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        QuickModelButton.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
         QuickModelButton.IsEnabled = available && editable && quickModelRead is null;
         QuickModelButton.Content = connectionDraft.HasDraft && connectionDraft.Model.Length > 0 && connectionDraft.Model != viewModel.ModelLabel
             ? "继续更换模型" : "更换模型";
@@ -49,8 +49,8 @@ public sealed partial class MainWindow
             applying ? ApplicationStage.Text :
             (quickModelAwaitingApply || configurationResult?.WasWritten == true) && lastApplication is { } result ? result.Progress.Message :
             quickModelAwaitingApply ? "正在使用 Codex 时，可以等当前任务结束再应用。" :
-            connectionDraft.ConnectionChanged ? "先核对本次连接修改，再读取可用模型。" :
-            connectionDraft.ApiKey.Length > 0 ? "更换时从 " + ServiceOrigin(connectionDraft.BaseUrl) + " 读取可用模型。" : "更换时读取这份资料中已有的模型列表。";
+            connectionDraft.ConnectionChanged ? "先核对本次连接修改，再读取可用模型。" : "";
+        QuickModelHint.Visibility = available && QuickModelHint.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async void QuickModelClicked(object sender, RoutedEventArgs args) => await OpenQuickModelAsync();

@@ -28,7 +28,7 @@ try {
         & dotnet restore $taskProject @taskRestore
         if ($LASTEXITCODE -ne 0) { throw 'WinUI preview restore failed.' }
     }
-    & dotnet build $taskProject -c Release --no-restore -o $taskDelivery
+    & dotnet build $taskProject -c Release --no-restore -p:UiPreviewBuild=true -o $taskDelivery
     if ($LASTEXITCODE -ne 0) { throw 'WinUI preview build failed.' }
     if ([Reflection.AssemblyName]::GetAssemblyName((Join-Path $taskDelivery 'CodexDock.WinUI.dll')).Version.ToString(3) -ne $taskFormalVersion) {
         throw 'Delivered WinUI version does not match the Windows update baseline.'
@@ -40,12 +40,30 @@ try {
     }
     Copy-Item -LiteralPath (Join-Path $taskRoot 'LICENSE'),(Join-Path $taskRoot 'THIRD-PARTY-NOTICES.md') -Destination $taskDelivery -Force
     Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\winui-preview.md') -Destination (Join-Path $taskDelivery 'README.md') -Force
+    $taskExe = Join-Path $taskDelivery 'CodexDock.WinUI.exe'
     if ($Verify) {
+        $taskPreviewProcess = Start-Process -FilePath $taskExe -WindowStyle Hidden -PassThru
+        try {
+            $taskWindowDeadline = [DateTime]::UtcNow.AddSeconds(20)
+            do {
+                if ($taskPreviewProcess.WaitForExit(100)) { throw 'The argument-free preview process exited before opening its own window.' }
+                $taskPreviewProcess.Refresh()
+                if ($taskPreviewProcess.MainWindowTitle -eq 'Codex Dock · 界面预览') { break }
+            } while ([DateTime]::UtcNow -lt $taskWindowDeadline)
+            if ($taskPreviewProcess.MainWindowTitle -ne 'Codex Dock · 界面预览') { throw 'The argument-free preview did not open its isolated window.' }
+            Write-Output 'PASS WinUI preview opens its own titled window without arguments.'
+        } finally {
+            if (-not $taskPreviewProcess.HasExited -and (-not $taskPreviewProcess.CloseMainWindow() -or -not $taskPreviewProcess.WaitForExit(5000))) {
+                $taskPreviewProcess.Kill()
+                $taskPreviewProcess.WaitForExit()
+            }
+            $taskPreviewProcess.Dispose()
+        }
         $taskUi = Join-Path $taskOutput ('ui-' + [Guid]::NewGuid().ToString('N'))
         $taskOldTestFilter = $env:CODEX_DOCK_WINUI_TEST_FILTER
         try {
             Remove-Item Env:CODEX_DOCK_WINUI_TEST_FILTER -ErrorAction SilentlyContinue
-            $taskProcess = Start-Process -FilePath (Join-Path $taskDelivery 'CodexDock.WinUI.exe') -ArgumentList @('--smoke-test', ('"' + $taskUi + '"')) -WindowStyle Hidden -PassThru
+            $taskProcess = Start-Process -FilePath $taskExe -ArgumentList @('--smoke-test', ('"' + $taskUi + '"')) -WindowStyle Hidden -PassThru
         } finally { $env:CODEX_DOCK_WINUI_TEST_FILTER = $taskOldTestFilter }
         $taskDeadline = [DateTime]::UtcNow.AddMinutes(8)
         while (-not $taskProcess.WaitForExit(10000)) {
@@ -60,7 +78,7 @@ try {
         if ($taskReport.status -ne 'PASS' -or $taskReport.assemblySha256 -ne $taskHash) { throw 'WinUI report does not match the delivered application.' }
         Write-Output "PASS WinUI preview: $($taskReport.tests.Count) checks. Report: $taskReportPath"
     }
-    Write-Output "Preview executable: $(Join-Path $taskDelivery 'CodexDock.WinUI.exe')"
+    Write-Output "Preview executable: $taskExe"
 } finally {
     $env:DOTNET_CLI_HOME = $taskOldCliHome
     $env:NUGET_PACKAGES = $taskOldPackages

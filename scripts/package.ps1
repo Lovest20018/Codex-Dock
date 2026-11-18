@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.19.6',
+    [string]$Version = '0.19.7',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
@@ -28,7 +28,7 @@ if (-not $SkipPublish) {
 }
 $taskExe = Join-Path $taskRelease 'CodexDock.exe'
 if (-not (Test-Path -LiteralPath $taskExe)) { throw 'Missing published executable.' }
-foreach ($taskResource in @('CodexDock.pri','App.xbf','MainWindow.xbf','hostfxr.dll','coreclr.dll','Microsoft.AspNetCore.dll','Microsoft.UI.Xaml.dll')) {
+foreach ($taskResource in @('CodexDock.pri','App.xbf','MainWindow.xbf','DockTheme.xbf','hostfxr.dll','coreclr.dll','Microsoft.AspNetCore.dll','Microsoft.UI.Xaml.dll')) {
     if (-not (Test-Path -LiteralPath (Join-Path $taskRelease $taskResource))) { throw "Missing self-contained WinUI file: $taskResource" }
 }
 if (-not (Test-Path -LiteralPath (Join-Path $taskRelease 'mobile\CodexDock.Mobile.exe'))) { throw 'Missing self-contained mobile worker.' }

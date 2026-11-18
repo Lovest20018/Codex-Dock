@@ -93,9 +93,12 @@ public sealed partial class MainWindow : Window
     {
         if (initialized) return;
         initialized = true;
+        if (options.InteractivePreview) backgroundStatus = "当前窗口使用临时演示配置。关闭窗口即可退出。";
         LoadWorkspace(options.Home);
         RefreshView();
         WorkspaceSectionNav.Focus(FocusState.Programmatic);
+        // Keep the isolated UI available for inspection without running the automated sequence.
+        if (options.InteractivePreview) { Title = "Codex Dock · 界面预览"; return; }
         if (options.SmokeOutput is null)
         {
             InitializeTray();
@@ -253,7 +256,7 @@ public sealed partial class MainWindow : Window
             ErrorBar.Message = viewModel.Error.Length > 0 ? viewModel.Error : shellError;
             ErrorBar.IsOpen = ErrorBar.Message.Length > 0;
             ErrorBar.Visibility = ErrorBar.IsOpen ? Visibility.Visible : Visibility.Collapsed;
-            ConnectionText.Text = viewModel.ConnectionLabel; EndpointText.Text = viewModel.ServiceOrigin; ModelText.Text = "默认模型 " + viewModel.ModelLabel;
+            ConnectionText.Text = viewModel.ConnectionLabel; EndpointText.Text = viewModel.ServiceOrigin; ModelText.Text = viewModel.ModelLabel;
             ConnectionRecoveryToggle.IsOn = viewModel.ConnectionRecoveryEnabled;
             SpeedToggle.IsOn = viewModel.SpeedCompatibilityEnabled; AutomaticToggle.IsOn = viewModel.AutomaticReconnectEnabled;
             ConnectionRecoveryToggle.IsEnabled = SpeedToggle.IsEnabled = AutomaticToggle.IsEnabled = viewModel.PreferencesAvailable && !ManualApplicationBusy && !dialogOpen && !closing;

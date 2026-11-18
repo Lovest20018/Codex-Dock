@@ -31,6 +31,21 @@ public sealed partial class MainWindow
     private void CatalogSearchChanged(TextBox sender, TextBoxTextChangingEventArgs args)
     { if (initialized && !updatingControls) { catalogSearchTimer.Stop(); catalogSearchTimer.Start(); } }
     private void OpenCatalogClicked(object sender, RoutedEventArgs args) => NavigateTo(CatalogNav);
+    private void SearchAdvancedFieldsClicked(object sender, RoutedEventArgs args)
+    {
+        catalogSearchTimer.Stop();
+        updatingControls = true;
+        try
+        {
+            CatalogScopeInput.SelectedItem = ((IEnumerable<CatalogScope>)CatalogScopeInput.ItemsSource).Single(scope => scope.Id == "all");
+            CatalogCategoryInput.SelectedItem = ((IEnumerable<CatalogCategory>)CatalogCategoryInput.ItemsSource).Single(category => category.Id == "all");
+            CatalogSearchInput.Text = AdvancedSearchInput.Text.Trim();
+            catalogPageIndex = 0;
+        }
+        finally { updatingControls = false; }
+        NavigateTo(CatalogNav, revealStart: true);
+        FocusSearch(CatalogSearchInput);
+    }
     private void CatalogFilterChanged(object sender, RoutedEventArgs args)
     { if (initialized && !updatingControls && !buildingCatalog) { catalogPageIndex = 0; RenderConfigurationCatalog(); } }
     private void CatalogSelectionChanged(object sender, SelectionChangedEventArgs args) => CatalogFilterChanged(sender, args);
@@ -65,8 +80,12 @@ public sealed partial class MainWindow
     }
     private UIElement BuildConfigurationField(CatalogEntry entry)
     {
-        var path = entry.Path; var original = new TomlDocument(connectionDraft.Snapshot?.Config).Get(path);
-        var sensitive = ConfigurationCatalogService.Sensitive(path, original);
+        var path = entry.Path;
+        var document = new TomlDocument(connectionDraft.Snapshot?.Config);
+        object? original;
+        try { original = document.Get(path); }
+        catch (ArgumentException) when (entry.Dynamic) { original = null; }
+        var sensitive = !entry.Dynamic && ConfigurationCatalogService.Sensitive(path, original);
         var body = new StackPanel { Spacing = 10 };
         body.Children.Add(new TextBlock { Text = ConfigHelp.Name(entry.HelpPath), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
         body.Children.Add(new TextBlock { Text = path + " · " + entry.Lifecycle, Opacity = 0.65, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
@@ -142,7 +161,7 @@ public sealed partial class MainWindow
             finally { rowLoading = false; }
         }
         catalogRefreshers.Add(Refresh); Refresh(connectionDraft.Available && !HasPendingRecovery && !ManualApplicationBusy && !dialogOpen && !closing);
-        return new Border { Child = body, Padding = new(20), CornerRadius = new(8), Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(12, 128, 128, 128)) };
+        return new Border { Child = body, Style = (Style)Microsoft.UI.Xaml.Application.Current.Resources["DockCardStyle"] };
     }
     private void AddSettingClicked(object sender, RoutedEventArgs args)
     {

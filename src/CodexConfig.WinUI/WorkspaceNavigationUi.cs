@@ -1,5 +1,7 @@
 ﻿using CodexConfig.Application;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 
@@ -31,6 +33,19 @@ public sealed partial class MainWindow
     private static readonly DockPage HelpNav = new("help", "help", "help", "帮助", "按任务查找说明，并前往对应页面。");
     private static readonly DockPage[] Pages = [WorkspaceNav, ConnectionNav, ModelsNav, AdvancedNav, CatalogNav, TemplatesNav, ProfilesNav,
         EnhancementsNav, GatewaysNav, MobileNav, MobileDevicesNav, MobileSettingsNav, FilePreviewNav, SourcesNav, DiagnosticsNav, RecoveryNav, SettingsNav, UpdatesNav, AboutNav, HelpNav];
+    private static readonly (string Group, DockPage Page, string Label, string Keywords)[] AdvancedTools =
+    [
+        ("配置", CatalogNav, "全部配置", "配置字段 config.toml"),
+        ("配置", ProfilesNav, "Profile 文件", "资料 独立配置"),
+        ("配置", TemplatesNav, "配置方案", "模板"),
+        ("网关与增强", EnhancementsNav, "Codex 与增强", "速度 兼容 旧聊天 自动接回"),
+        ("网关与增强", GatewaysNav, "模型网关", "服务 运行 统计"),
+        ("网关与增强", MobileSettingsNav, "手机服务设置", "网关 端口 HTTPS"),
+        ("诊断与恢复", SourcesNav, "配置来源", "app-server 内核 生效 执行端 实验功能"),
+        ("诊断与恢复", DiagnosticsNav, "聊天参数", "诊断 会话 模型"),
+        ("诊断与恢复", FilePreviewNav, "已保存文件", "快照 预览"),
+        ("诊断与恢复", RecoveryNav, "备份与恢复", "加密 还原 回滚"),
+    ];
     private DockPage currentPage = WorkspaceNav;
     private readonly Dictionary<string, DockPage> sectionHistory = [];
     private bool synchronizingNavigation;
@@ -72,9 +87,10 @@ public sealed partial class MainWindow
             {
                 var tabs = Pages.Where(route => route.Section == page.Section).GroupBy(route => route.Tab).Select(group => group.First()).ToArray();
                 SectionTabs.Children.Clear();
+                var tabStyle = (Style)Microsoft.UI.Xaml.Application.Current.Resources["DockSectionTabStyle"];
                 foreach (var route in tabs)
                 {
-                    var button = new ToggleButton { Content = route.Title, Tag = route, IsChecked = route.Tab == page.Tab };
+                    var button = new ToggleButton { Content = route.Title, Tag = route, Style = tabStyle };
                     button.Click += (_, _) => NavigateTo(route.Tab == "resources" && sectionHistory.GetValueOrDefault("resources") is { } resource ? resource : route);
                     SectionTabs.Children.Add(button);
                 }
@@ -141,32 +157,87 @@ public sealed partial class MainWindow
 
     private void OpenAdvancedClicked(object sender, RoutedEventArgs args) => NavigateTo(AdvancedNav, revealStart: true);
     private void AdvancedSearchChanged(TextBox sender, TextBoxTextChangingEventArgs args) { if (initialized) RenderAdvancedTools(); }
+
     private void RenderAdvancedTools()
     {
         var search = AdvancedSearchInput.Text.Trim();
+        var resources = Microsoft.UI.Xaml.Application.Current.Resources;
         AdvancedToolsList.Children.Clear();
-        var tools = new (DockPage Page, string Label, string Keywords)[]
+        var matches = AdvancedTools.Where(tool => $"{tool.Group} {tool.Label} {tool.Keywords}".Contains(search, StringComparison.OrdinalIgnoreCase));
+        foreach (var group in matches.GroupBy(tool => tool.Group))
         {
-            (CatalogNav, "全部配置", "配置字段 config.toml"), (ProfilesNav, "Profile 文件", "资料 独立配置"),
-            (TemplatesNav, "配置方案", "模板"), (EnhancementsNav, "Codex 与增强", "速度 兼容 旧聊天 自动接回"),
-            (GatewaysNav, "模型网关", "服务 运行 统计"), (MobileSettingsNav, "手机服务设置", "网关 端口 HTTPS"),
-            (SourcesNav, "配置来源", "app-server 内核 生效 执行端 实验功能"), (DiagnosticsNav, "聊天参数", "诊断 会话 模型"),
-            (FilePreviewNav, "已保存文件", "快照 预览"), (RecoveryNav, "备份与恢复", "加密 还原 回滚")
-        };
-        foreach (var (page, label, keywords) in tools.Where(tool => (tool.Label + " " + tool.Keywords).Contains(search, StringComparison.OrdinalIgnoreCase)))
-        {
-            var button = new Button { Content = label, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left };
-            button.Click += (_, _) => NavigateTo(page, revealStart: true);
-            AdvancedToolsList.Children.Add(button);
+            var heading = new TextBlock { Text = group.Key, Style = (Style)resources["DockSectionHeadingStyle"], FontSize = 16 };
+            AutomationProperties.SetHeadingLevel(heading, AutomationHeadingLevel.Level2);
+            var section = new StackPanel { Spacing = 4 };
+            section.Children.Add(heading);
+            foreach (var (_, page, label, _) in group)
+            {
+                var button = new Button { Content = label, Style = (Style)resources["DockToolLinkStyle"] };
+                AutomationProperties.SetName(button, label);
+                button.Click += (_, _) => NavigateTo(page, revealStart: true);
+                section.Children.Add(button);
+            }
+            AdvancedToolsList.Children.Add(new Border { Style = (Style)resources["DockCardStyle"], Padding = new(14), Child = section });
         }
+        ArrangeAdvancedTools(AdvancedToolsList.ActualWidth);
+        var hasMatches = AdvancedToolsList.Children.Count > 0;
+        AdvancedToolsList.Visibility = hasMatches ? Visibility.Visible : Visibility.Collapsed;
+        AdvancedNoResults.Visibility = hasMatches ? Visibility.Collapsed : Visibility.Visible;
         AdvancedFieldSearchButton.Visibility = search.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
-    private void SearchAdvancedFieldsClicked(object sender, RoutedEventArgs args)
+
+    private void AdvancedToolsSizeChanged(object sender, SizeChangedEventArgs args)
     {
-        NavigateTo(CatalogNav, revealStart: true);
-        CatalogScopeInput.SelectedItem = ((IReadOnlyList<CatalogScope>)CatalogScopeInput.ItemsSource).First(scope => scope.Id == "all");
-        CatalogSearchInput.Text = AdvancedSearchInput.Text;
-        FocusSearch(CatalogSearchInput);
+        if (ToolColumns(args.PreviousSize.Width) != ToolColumns(args.NewSize.Width))
+            ArrangeAdvancedTools(args.NewSize.Width);
+    }
+
+    private static int ToolColumns(double width) => width switch { >= 760 => 3, >= 500 => 2, _ => 1 };
+
+    private void ArrangeAdvancedTools(double width)
+    {
+        var columns = ToolColumns(width);
+        AdvancedToolsList.ColumnDefinitions.Clear();
+        for (var column = 0; column < columns; column++)
+            AdvancedToolsList.ColumnDefinitions.Add(new());
+
+        AdvancedToolsList.RowDefinitions.Clear();
+        for (var index = 0; index < AdvancedToolsList.Children.Count; index++)
+        {
+            if (index % columns == 0) AdvancedToolsList.RowDefinitions.Add(new() { Height = GridLength.Auto });
+            var card = (Border)AdvancedToolsList.Children[index];
+            Grid.SetColumn(card, index % columns);
+            Grid.SetRow(card, index / columns);
+        }
+    }
+
+    private void PageLayoutSizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        if (args.NewSize.Width != args.PreviousSize.Width) UpdatePageLayout(args.NewSize.Width);
+    }
+
+    private void NavigationDisplayModeChanged(NavigationView sender, NavigationViewDisplayModeChangedEventArgs args)
+    {
+        if (PageFooters is not null) UpdatePageLayout(PageLayout.ActualWidth);
+    }
+
+    private void UpdatePageLayout(double width)
+    {
+        var compact = width < 720;
+        var inset = compact ? 16 : 24;
+        // In minimal navigation the pane toggle sits over the page instead of in a rail.
+        var headerTop = Navigation.DisplayMode == NavigationViewDisplayMode.Minimal ? 52 : compact ? 12 : 20;
+        var footerInset = compact ? 10 : 14;
+        PageHeader.Width = Math.Min(width, PageHeader.MaxWidth);
+        Grid.SetRow(PageHeaderActions, compact ? 1 : 0);
+        Grid.SetColumn(PageHeaderActions, compact ? 0 : 1);
+        Grid.SetColumnSpan(PageHeaderActions, compact ? 2 : 1);
+        PageHeading.ColumnSpacing = compact ? 0 : 16;
+        PageHeading.RowSpacing = compact ? 8 : 0;
+        PageHeader.Padding = new(inset, headerTop, inset, 12);
+        PageBody.Padding = new(inset, 6, inset, 28);
+        foreach (var footer in PageFooters.Children.OfType<Border>())
+            footer.Padding = new(inset, footerInset, inset, footerInset);
     }
 
     private void RefreshConsolidatedShell()
@@ -206,7 +277,7 @@ public sealed partial class MainWindow
         WorkspaceConnectionCard.Visibility = viewModel.SetupGuide.Kind == WorkspaceSetupKind.ExistingConnection ? Visibility.Visible : Visibility.Collapsed;
         WorkspaceProfileName.Text = viewModel.ProfileName.Length > 0 ? viewModel.ProfileName : viewModel.Home;
         WorkspaceDesktopStatus.Text = runningDesktopCount switch
-        { null => "Codex 状态待确认", 0 => "Codex 未运行", 1 => "Codex 正在运行", _ => runningDesktopCount + " 个 Codex 窗口正在运行" };
+        { null => "待确认", 0 => "未运行", 1 => "正在运行", _ => runningDesktopCount + " 个窗口正在运行" };
     }
 
     private sealed record WorkspaceStep(string Title, string Action, DockPage Page, bool Apply = false, bool Open = false);

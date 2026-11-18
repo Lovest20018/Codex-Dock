@@ -6,7 +6,36 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                <ResourceDictionary Source="DockTheme.xaml" />
             </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="DockPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+                <Setter Property="Padding" Value="12,7" />
+                <Setter Property="MinHeight" Value="36" />
+                <Setter Property="CornerRadius" Value="7" />
+            </Style>
+            <Style x:Key="DockQuietButtonStyle" TargetType="Button" BasedOn="{StaticResource SubtleButtonStyle}">
+                <Setter Property="Padding" Value="12,7" />
+                <Setter Property="MinHeight" Value="36" />
+                <Setter Property="CornerRadius" Value="7" />
+            </Style>
+            <Style x:Key="DockToolLinkStyle" TargetType="Button" BasedOn="{StaticResource DockQuietButtonStyle}">
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="MinHeight" Value="38" />
+                <Setter Property="Padding" Value="8,6" />
+                <Setter Property="ContentTemplate">
+                    <Setter.Value>
+                        <DataTemplate>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                <FontIcon Grid.Column="1" Glyph="&#xE76C;" FontSize="12" VerticalAlignment="Center"
+                                          AutomationProperties.AccessibilityView="Raw" />
+                            </Grid>
+                        </DataTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

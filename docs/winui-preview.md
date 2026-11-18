@@ -86,11 +86,15 @@ HTTPS 检测和配对只在明确点击时执行；二维码由已有本机后�
 
 本地开发预览需要 Windows x64、.NET 8 与 ASP.NET Core 8 运行时（安装 .NET 8 SDK 已包含）。Windows App SDK 文件随输出目录携带，无需另外安装 Windows App Runtime。请保留 EXE 的整个同目录内容。
 
+双击 `scripts/build-winui-preview.ps1` 生成的 `CodexDock.WinUI.exe` 会打开标题为「Codex Dock · 界面预览」的独立窗口。窗口使用临时演示配置，可与已安装的 Codex Dock 同时打开。
+
+开发时也可以显式指定要读取的配置目录，进入常规单实例启动流程。
+
 ```powershell
 & 'C:\path\to\app\CodexDock.WinUI.exe' --home 'D:\path\to\codex-home'
 ```
 
-未指定 `--home` 时，按现有 Core 规则读取 `CODEX_HOME`，否则读取当前用户的 `.codex`。界面中的“切换目录”可选择另一个配置目录。预览不会更改默认配置目录或系统环境变量。
+普通项目构建在未指定 `--home` 时读取 `CODEX_HOME` 或当前用户的 `.codex`。常规窗口的“切换目录”可以选择另一个配置目录。
 
 可加 `--start-in-tray` 启动后收起到托盘。只有托盘图标创建成功才隐藏窗口；此参数不会注册 Windows 开机启动。
 
@@ -102,7 +106,7 @@ HTTPS 检测和配对只在明确点击时执行；二维码由已有本机后�
 pwsh -NoProfile -File scripts/build-winui-preview.ps1 -Verify
 ```
 
-脚本在 `artifacts` 下创建独立输出目录，复制许可文件，启动隔离测试并核对报告与交付程序集 SHA-256。已还原依赖时可传 `-NoRestore`。测试配置、虚构认证和三套增强设置均位于测试输出目录；测试拒绝同时传入 `--home`，不会读取实际用户环境变量或增强偏好。所有桌面重启使用替身；另实际启停一个使用虚构连接的隔离模型网关，只检查本机控制入口，不请求远端模型。DPAPI 与进程检查需在正常 Windows 用户上下文运行。
+脚本在 `artifacts` 下创建独立输出目录，复制许可文件，先验证无参数启动会打开独立的预览窗口，再运行隔离测试并核对报告与交付程序集 SHA-256。已还原依赖时可传 `-NoRestore`。测试配置、虚构认证和三套增强设置均位于测试输出目录。桌面重启使用替身，模型网关测试使用虚构连接检查本机控制入口。DPAPI 与进程检查需在正常 Windows 用户上下文运行。
 
 完整预览需要先通过 `scripts/build-mobile.ps1` 生成 `artifacts/mobile-worker/CodexDock.Mobile`；WinUI 构建将其复制到输出的 `mobile` 目录，缺少后台时构建脚本会报错。隔离测试实际通过当前预览的共享网关服务启停、重启模型和自带手机后台，核对认证健康、进程退出、端口释放与设置保留，不联系远端模型或手机公网入口。
 
