@@ -44,11 +44,17 @@ if (args is ["--enhancement-unit", var enhancementRoot])
     var cases = new List<(string Name, Func<Task> Run)>(); DesktopEnhancementTests.Register(cases, enhancementRoot);
     foreach (var test in cases) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
 }
+if (args is ["--catalog-discovery-unit", var catalogDiscoveryRoot])
+{
+    catalogDiscoveryRoot = Path.GetFullPath(catalogDiscoveryRoot); Directory.CreateDirectory(catalogDiscoveryRoot);
+    var cases = new List<(string Name, Func<Task> Run)>(); CatalogDiscoverySaveTests.Register(cases, catalogDiscoveryRoot);
+    foreach (var test in cases) { await test.Run(); Console.WriteLine("PASS " + test.Name); } return 0;
+}
 if (args is ["--application-unit", var applicationRoot])
 {
     applicationRoot = Path.GetFullPath(applicationRoot); Directory.CreateDirectory(applicationRoot);
     var cases = new List<(string Name, Func<Task> Run)>(); ApplicationStateTests.Register(cases, applicationRoot); ClientEnhancementStateTests.Register(cases, applicationRoot); WorkspaceShellTests.Register(cases, applicationRoot); TestHarnessTests.Register(cases, applicationRoot); DesktopApplicationServiceTests.Register(cases, applicationRoot); AutomaticEnhancementServiceTests.Register(cases, applicationRoot); ConfigurationSaveServiceTests.Register(cases, applicationRoot); GatewayManagementServiceTests.Register(cases, applicationRoot); MobileConnectionServiceTests.Register(cases, applicationRoot);
-    OfficialLoginAndModelTests.Register(cases, applicationRoot);
+    OfficialLoginAndModelTests.Register(cases, applicationRoot); CatalogDiscoverySaveTests.Register(cases, applicationRoot);
     ConfigurationToolsTests.Register(cases, applicationRoot);
     WindowsToolsTests.Register(cases, applicationRoot);
     UpdatesAndDiagnosticsTests.Register(cases, applicationRoot);
@@ -755,7 +761,7 @@ SuperbaReuseTests.Register(tests, runRoot);
 DesktopRestartTests.Register(tests, runRoot);
 DesktopQuitTests.Register(tests, runRoot);
 DesktopSpeedTests.Register(tests, runRoot);
-ManagedCatalogTests.Register(tests, runRoot);
+ManagedCatalogTests.Register(tests, runRoot); CatalogDiscoverySaveTests.Register(tests, runRoot);
 CodexApplyTests.Register(tests, runRoot);
 ConfigWriteConcurrencyTests.Register(tests, runRoot);
 var filters = Environment.GetEnvironmentVariable("CODEX_CONFIG_TEST_FILTER")?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];

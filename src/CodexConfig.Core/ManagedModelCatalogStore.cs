@@ -12,7 +12,7 @@ public sealed record CatalogReference(string Path, byte[]? Content)
 }
 public sealed record ManagedCatalogIndex(int Version, string Model, string SourcePath, string SourceHash, string CatalogHash,
     string ConnectionId, DateTimeOffset UpdatedAt);
-public sealed record ManagedCatalogUpdate(byte[] Index, string Path, byte[] Content, string SourcePath, string SourceHash);
+public sealed record ManagedCatalogUpdate(byte[] Index, string Path, byte[] Content, string SourcePath, string SourceHash, bool EmbeddedSource = false);
 public sealed record ManagedCatalogInfo(string? ReviewModel, string SourcePath, int ModelCount, bool Managed, bool HasUpdate, DateTimeOffset? UpdatedAt);
 
 // Native metadata is retained verbatim; policy projection only pins the reviewer.
@@ -41,8 +41,10 @@ public static class ManagedModelCatalogStore
     }
     public static ManagedCatalogIndex? Index(byte[]? bytes) => bytes is null ? null :
         JsonSerializer.Deserialize<ManagedCatalogIndex>(bytes) is { Version: 1 } index ? index : throw new InvalidDataException("模型目录管理记录无效。");
+    public static void ValidateNative(byte[] bytes) => _ = Models(bytes);
     private static JsonArray Models(byte[] bytes)
     {
+        if (bytes.Length > MaxBytes) throw new InvalidDataException("模型目录超过 1 MiB，请核对来源。");
         var root = JsonNode.Parse(bytes)?.AsObject();
         var models = root?["models"]?.AsArray() ?? throw new InvalidDataException("需要包含原生能力信息的 models 目录，只有模型 ID 的列表不能用于固定审核。");
         if (models.Count is 0 or > 200) throw new InvalidDataException("模型目录条目数无效。");
@@ -71,7 +73,7 @@ public static class ManagedModelCatalogStore
         var update = managed && File.Exists(index!.SourcePath) && Hash(Read(index.SourcePath)!) != index.SourceHash;
         return new(reviewer, managed ? index!.SourcePath : source, models.Count, managed, update, managed ? index!.UpdatedAt : null);
     }
-    public static ConfigPlan Prepare(ConfigPlan plan, ReviewModelPolicy policy, string? requestedSource = null)
+    public static ConfigPlan Prepare(ConfigPlan plan, ReviewModelPolicy policy, string? requestedSource = null, byte[]? serviceCatalog = null)
     {
         var before = plan.Before;
         var doc = new TomlDocument(plan.Config);
@@ -82,7 +84,7 @@ public static class ManagedModelCatalogStore
         var info = Inspect(before);
         var source = System.IO.Path.GetFullPath(requestedSource ?? (info.Managed ? index!.SourcePath :
             doc.String("model_catalog_json") ?? System.IO.Path.Combine(before.Home, "models_cache.json")), before.Home);
-        var original = Read(source) ?? throw new InvalidDataException("尚无可读取的原生模型目录。请导入当前服务的模型能力文件。");
+        var original = serviceCatalog?.ToArray() ?? Read(source) ?? throw new InvalidDataException("尚无可读取的原生模型目录。请导入当前服务的模型能力文件。");
         var models = Models(original).DeepClone().AsArray();
         if (!models.OfType<JsonObject>().Any(m => m["slug"]!.GetValue<string>() == doc.String("model"))) throw new InvalidDataException("所选主模型不在目录中，不能保证固定审核模型。");
         var reviewer = models.OfType<JsonObject>().SingleOrDefault(m => m["slug"]!.GetValue<string>() == policy.Model);
@@ -93,12 +95,16 @@ public static class ManagedModelCatalogStore
         if (content.Length > MaxBytes) throw new InvalidDataException("生成的模型目录超过原生上限。");
         var path = CatalogPath(before.Home, content);
         var connection = ConnectionId(doc, plan.Bridge);
-        if (info.Managed && requestedSource is null && index!.ConnectionId != connection) throw new InvalidOperationException("模型服务已改变，请为当前服务重新选择模型目录后固定审核。");
-        var sourceHash = Hash(original);
-        var nextIndex = info.Managed && index!.CatalogHash == Hash(content) && index.SourceHash == sourceHash && index.ConnectionId == connection
+        if (info.Managed && requestedSource is null && serviceCatalog is null && index!.ConnectionId != connection) throw new InvalidOperationException("模型服务已改变，请为当前服务重新选择模型目录后固定审核。");
+        // A service response stays in memory until confirmation. The immutable,
+        // reviewed projection is its own future sync source; no temporary import
+        // file or extra unreviewed write is needed.
+        if (serviceCatalog is not null) source = path;
+        var sourceHash = Hash(serviceCatalog is null ? original : content);
+        var nextIndex = info.Managed && index!.CatalogHash == Hash(content) && index.SourceHash == sourceHash && index.SourcePath.Equals(source, StringComparison.OrdinalIgnoreCase) && index.ConnectionId == connection
             ? before.CatalogIndex! : JsonSerializer.SerializeToUtf8Bytes(new ManagedCatalogIndex(1, policy.Model, source, sourceHash, Hash(content), connection, DateTimeOffset.UtcNow));
         doc.Set("model_catalog_json", path);
-        return plan with { Config = doc.Bytes, ConfigPreview = doc.Masked(), CatalogUpdate = new(nextIndex, path, content, source, sourceHash),
+        return plan with { Config = doc.Bytes, ConfigPreview = doc.Masked(), CatalogUpdate = new(nextIndex, path, content, source, sourceHash, serviceCatalog is not null),
             Notes = plan.Notes.Concat(["固定审核模型为 " + policy.Model + "；审核失败会阻止执行。模型目录与管理记录同时备份，可一并恢复。"] ).ToArray() };
     }
     public static string ConnectionId(TomlDocument doc, byte[]? bridge = null)
@@ -115,7 +121,7 @@ public static class ManagedModelCatalogStore
         var models = Models(before.Catalog?.Content ?? throw new InvalidDataException("受管模型目录缺失，请恢复或重新同步。"));
         if (!models.OfType<JsonObject>().Any(model => model["slug"]!.GetValue<string>() == after.String("model") &&
             (model["slug"]!.GetValue<string>() == "codex-auto-review" || model["auto_review_model_override"]?.GetValue<string>() == "codex-auto-review")))
-            throw new InvalidOperationException("该主模型未包含专用审核配置，请同步包含它的能力目录。");
+            throw new InvalidOperationException("该主模型尚未包含专用审核配置，请先点击“获取服务模型”更新原生能力，或导入包含它的能力目录，再确认保存。");
     }
     public static void EnsureSafeTarget(string home, string path, byte[] bytes)
     {

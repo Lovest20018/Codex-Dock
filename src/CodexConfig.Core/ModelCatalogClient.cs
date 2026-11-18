@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace CodexConfig.Core;
 
-public sealed record ModelCatalogResult(IReadOnlyList<string> Models, long Milliseconds);
+public sealed record ModelCatalogResult(IReadOnlyList<string> Models, long Milliseconds, byte[]? NativeCatalog = null);
 
 public sealed class ModelCatalogClient : IDisposable
 {
@@ -43,7 +43,7 @@ public sealed class ModelCatalogClient : IDisposable
                 if (entry.TryGetProperty(name, out var id) && id.ValueKind == JsonValueKind.String && id.GetString() is { Length: > 0 } model)
                 { models.Add(model); break; }
         }
-        return new(models.Distinct(StringComparer.Ordinal).ToArray(), clock.ElapsedMilliseconds);
+        return new(models.Distinct(StringComparer.Ordinal).ToArray(), clock.ElapsedMilliseconds, NativeModelCatalog.DeclaredCatalog(entries));
     }
 
     private sealed record Endpoint(bool Ok, int Status, bool Intercepted, JsonElement Json, string Message);

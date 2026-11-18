@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.19.1',
+    [string]$Version = '0.19.2',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
@@ -39,7 +39,7 @@ if (-not (Test-Path -LiteralPath $InnoCompiler)) { throw 'Inno Setup 6 compiler 
 Copy-Item -LiteralPath (Join-Path $taskRoot 'README.md'),(Join-Path $taskRoot 'LICENSE'),(Join-Path $taskRoot 'THIRD-PARTY-NOTICES.md') -Destination $taskRelease -Force
 foreach ($taskFolder in @('docs','third_party','brand')) { New-Item -ItemType Directory -Path (Join-Path $taskRelease $taskFolder) -Force | Out-Null }
 Copy-Item -LiteralPath (Join-Path $taskRoot "docs\release-$Version.md"),(Join-Path $taskRoot 'docs\schema-maintenance.md'),(Join-Path $taskRoot 'docs\codex-dock-delivery.md'),(Join-Path $taskRoot 'docs\ui-layout-review.md'),(Join-Path $taskRoot 'docs\process-rename-review.md'),(Join-Path $taskRoot 'docs\github-releases.md'),(Join-Path $taskRoot "docs\review-$Version.md") -Destination (Join-Path $taskRelease 'docs') -Force
-foreach ($taskDocument in @('winui-preview.md','winui-consolidation-2026-11-17.md','codexplusplus-reuse-implementation-2026-11-17.md','review-fixes-mobile-validation-2026-11-17.md','mobile-upstream-backport-2026-11-15.md','brand-refresh-2026-11-17.md')) {
+foreach ($taskDocument in @('winui-preview.md','winui-consolidation-2026-11-17.md','codexplusplus-reuse-implementation-2026-11-17.md','review-fixes-mobile-validation-2026-11-17.md','mobile-upstream-backport-2026-11-15.md','brand-refresh-2026-11-17.md','upstream-reuse-review-2026-11-18.md')) {
     Copy-Item -LiteralPath (Join-Path $taskRoot "docs\$taskDocument") -Destination (Join-Path $taskRelease 'docs') -Force
 }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\configuration-implementation-2026-11-02.md'),(Join-Path $taskRoot 'docs\configuration-audit-2026-11-02.md'),(Join-Path $taskRoot 'docs\configuration-options-2026-11-02.md'),(Join-Path $taskRoot 'docs\runtime-settings-inventory-2026-11-02.md') -Destination (Join-Path $taskRelease 'docs') -Force

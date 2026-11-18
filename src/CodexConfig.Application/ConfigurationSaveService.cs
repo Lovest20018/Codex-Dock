@@ -5,7 +5,7 @@ namespace CodexConfig.Application;
 
 public sealed record ConfigurationPlanRequest(ConfigSnapshot Before, ConnectionSettings Settings,
     IReadOnlyDictionary<string, string?>? Edits = null, bool UpdateConnection = true, bool UpdateModel = false,
-    bool UpdateDetails = false, byte[]? OfficialAuth = null, bool SynchronizeCatalog = false, bool ReviewPolicyChanged = false, string? CatalogSource = null);
+    bool UpdateDetails = false, byte[]? OfficialAuth = null, bool SynchronizeCatalog = false, bool ReviewPolicyChanged = false, string? CatalogSource = null, byte[]? ServiceCatalog = null, string? ServiceCatalogFingerprint = null);
 public sealed record ConfigurationChange(string Name, string Path, string Previous, string Next);
 public enum ConfigurationSaveOutcome { Saved, NoChanges, Busy, Cancelled, Conflict, Failed }
 public sealed record ConfigurationSaveResult(ConfigurationSaveOutcome Outcome, string Message, ConfigSnapshot? Saved = null, string? BackupPath = null)
@@ -39,8 +39,10 @@ public sealed class ConfigurationSaveService(ConfigStore store, WorkspaceApplyCo
         if (store.HasPending(request.Before.Home)) throw new InvalidOperationException("请先恢复未完成的保存，再核对修改。");
         var plan = store.Plan(request.Before, request.Settings, request.Edits, request.UpdateConnection, request.UpdateModel, request.UpdateDetails, request.OfficialAuth);
         var doc = new TomlDocument(plan.Config);
+        if (request.ServiceCatalog is not null && request.ServiceCatalogFingerprint != (request.Settings with { Model = "model-catalog" }).Fingerprint())
+            throw new InvalidOperationException("连接设置已改变，请重新获取当前服务的模型能力。");
         if (request.SynchronizeCatalog || request.ReviewPolicyChanged && doc.String("approvals_reviewer") == "auto_review")
-            return ManagedModelCatalogStore.Prepare(plan, new(), request.CatalogSource);
+            return ManagedModelCatalogStore.Prepare(plan, new(), request.CatalogSource, request.ServiceCatalog);
         if (request.Before.CatalogIndex is not null && ManagedModelCatalogStore.Inspect(request.Before).Managed && doc.String("approvals_reviewer") == "auto_review")
         {
             if (ManagedModelCatalogStore.ConnectionId(doc, plan.Bridge) != ManagedModelCatalogStore.ConnectionId(new TomlDocument(request.Before.Config), request.Before.Bridge))

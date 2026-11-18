@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using CodexConfig.Application;
 using CodexConfig.Core;
 using Microsoft.UI.Xaml;
@@ -82,6 +82,38 @@ public sealed partial class MainWindow
                 ModelCapabilityStatus.Text.Contains("128,000"), "Native capabilities limit offered effort levels while retaining an existing unlisted value");
             Choose("model_reasoning_effort", "\"max\"");
             Check(await SaveConnectionAsync(), "Capability-backed behavior changes use the same reviewed save path");
+            var beforeRefresh = store.Load(home); BehaviorModelInput.Text = "gpt-6.2-sol"; Choose("approval_policy", null);
+            var refreshedCatalog = JsonSerializer.SerializeToUtf8Bytes(new { models = new[] { "main", "other", "gpt-6.2-sol", "codex-auto-review" }.Select(slug => new {
+                slug, display_name = slug, supported_in_api = true, default_reasoning_level = "low", context_window = slug == "gpt-6.2-sol" ? 777777 : 128000,
+                supported_reasoning_levels = new[] { new { effort = "low" }, new { effort = "max" } }, service_tiers = new[] { new { id = "priority" } },
+                base_instructions = "Offline refreshed WinUI capabilities", future_metadata = "retained"
+            }) });
+            modelDiscovery = new((_, _) => Task.FromResult(new ModelCatalogResult(["main", "other", "gpt-6.2-sol", "codex-auto-review"], 2, refreshedCatalog)));
+            await DiscoverModelsAsync();
+            Check(connectionDraft.SynchronizeCatalog && connectionDraft.Request().ServiceCatalog is not null && beforeRefresh.SameContents(store.Load(home)) &&
+                BehaviorModelInput.Text == "gpt-6.2-sol" && ModelDiscoveryStatus.Text.Contains("原生能力已暂存"),
+                "Fetching native capabilities stages the new selected model and fixed reviewer without writing saved files");
+            smokeDialog = async dialog =>
+            {
+                var text = ConfigurationDialogText(dialog);
+                Check(text.Contains("gpt-6.2-sol") && text.Contains("codex-auto-review") && text.Contains("approval_policy") && !text.Contains("fake-login-ui-key"),
+                    "Refreshed-model review includes the new model policy inheritance and fixed reviewer while masking credentials");
+                var shown = dialog.ShowAsync();
+                try { await CaptureAsync(output, "models-refresh-review.png", dialog); }
+                finally { dialog.Hide(); await shown; }
+                return ContentDialogResult.None;
+            };
+            Check(!await SaveConnectionAsync() && connectionDraft.HasDraft && beforeRefresh.SameContents(store.Load(home)),
+                "Cancelling refreshed capabilities preserves the complete model and approval draft without saved changes");
+            smokeDialog = _ => Task.FromResult(ContentDialogResult.Primary);
+            Check(await SaveConnectionAsync() && connectionDraft.Document().String("model") == "gpt-6.2-sol" &&
+                connectionDraft.Document().Get("approval_policy") is null && DedicatedReviewerInput.IsChecked == true && ModelCapabilityStatus.Text.Contains("777,777") &&
+                beforeRefresh.Auth!.SequenceEqual(store.Load(home).Auth!),
+                "Confirming refreshed capabilities saves the new model and native context while retaining dedicated review and credentials");
+            store.Restore(store.Load(home)); LoadWorkspace(home); NavigateTo(ModelsNav);
+            Check(beforeRefresh.SameContents(store.Load(home)) && connectionDraft.Document().String("model") == new TomlDocument(beforeRefresh.Config).String("model") &&
+                ConfigSchema.Literal(connectionDraft.Document().Get("approval_policy")) == policy,
+                "Restoring the refreshed-model save recovers the previous model capabilities and structured approval policy together");
             Root.RequestedTheme = ElementTheme.Dark; AppWindow.Resize(new(900, 760)); PageScroll.ChangeView(null, 0, null, true);
             await CaptureAsync(output, "models-compact-dark.png");
             Check(BehaviorModelInput.ActualWidth > 250 && BehaviorModelInput.TransformToVisual(Root).TransformPoint(new()).X + BehaviorModelInput.ActualWidth <= Root.ActualWidth &&

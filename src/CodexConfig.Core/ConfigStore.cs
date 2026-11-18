@@ -349,10 +349,16 @@ public sealed partial class ConfigStore(IUserEnvironment environment, Func<strin
         var dependency = catalogUpdate is not null ? new CatalogReference(catalogUpdate.Path, catalogUpdate.Content) : restoreCatalog ?? ManagedModelCatalogStore.Capture(before.Home, config);
         if (catalogUpdate is not null)
         {
-            if (ManagedModelCatalogStore.Hash(ManagedModelCatalogStore.Read(catalogUpdate.SourcePath) ?? []) != catalogUpdate.SourceHash)
+            ManagedModelCatalogStore.EnsureSafeTarget(before.Home, catalogUpdate.Path, catalogUpdate.Content);
+            if (catalogUpdate.EmbeddedSource)
+            {
+                if (!catalogUpdate.SourcePath.Equals(catalogUpdate.Path, StringComparison.OrdinalIgnoreCase) ||
+                    catalogUpdate.SourceHash != ManagedModelCatalogStore.Hash(catalogUpdate.Content))
+                    throw new IOException("服务模型目录与已确认内容不一致。");
+            }
+            else if (ManagedModelCatalogStore.Hash(ManagedModelCatalogStore.Read(catalogUpdate.SourcePath) ?? []) != catalogUpdate.SourceHash)
                 throw new IOException("来源模型目录在预览后发生变化，请重新读取。");
             if (new TomlDocument(config).String("model_catalog_json") != catalogUpdate.Path) throw new IOException("模型目录与配置计划不一致。");
-            ManagedModelCatalogStore.EnsureSafeTarget(before.Home, catalogUpdate.Path, catalogUpdate.Content);
         }
         if (dependency?.Content is { } desired && !File.Exists(dependency.Path)) ManagedModelCatalogStore.EnsureSafeTarget(before.Home, dependency.Path, desired);
         if (dependency?.Content is { } expected && File.Exists(dependency.Path) && Hash(ManagedModelCatalogStore.Read(dependency.Path)) != Hash(expected))

@@ -22,7 +22,7 @@ public sealed class ModelDiscoveryService
         catch (ArgumentException) { currentFingerprint = null; }
         if (!string.Equals(home, latest.Home, StringComparison.OrdinalIgnoreCase) || fingerprint != currentFingerprint)
             throw new OperationCanceledException("连接设置已更改，请重新获取模型。");
-        return result with { Models = result.Models.Where(value => !string.IsNullOrWhiteSpace(value) && value.Length <= 512 &&
+        return result with { NativeCatalog = result.NativeCatalog?.ToArray(), Models = result.Models.Where(value => !string.IsNullOrWhiteSpace(value) && value.Length <= 512 &&
             !value.Any(char.IsControl)).Distinct(StringComparer.Ordinal).ToArray() };
     }
 }

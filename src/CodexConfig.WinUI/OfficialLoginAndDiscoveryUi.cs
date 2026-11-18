@@ -79,8 +79,12 @@ public sealed partial class MainWindow
             var result = await modelDiscovery.ReadAsync(home, settings, () => (viewModel.Home, connectionDraft.Settings()), cancellation.Token);
             if (closing) return;
             discoveredModels = result.Models; discoveredFingerprint = (settings with { Model = "model-catalog" }).Fingerprint();
+            var stagedCapabilities = connectionDraft.AdoptDiscoveredCatalog(result, settings);
             discoveryStatus = result.Models.Count > 0 ? "已获取 " + result.Models.Count + " 个模型 · " + result.Milliseconds + " ms，当前选择保持不变。" :
                 "服务返回空模型目录，可继续手填模型 ID；当前选择保持不变。";
+            if (stagedCapabilities) discoveryStatus += " 原生能力已暂存；确认保存后同步固定审核目录。";
+            else if (result.NativeCatalog is null && connectionDraft.Document().String("approvals_reviewer") == "auto_review")
+                discoveryStatus += " 服务未提供完整原生能力；固定审核需导入原生能力目录。";
         }
         catch (OperationCanceledException error) { if (!closing) discoveryStatus = error.Message.Contains("连接设置", StringComparison.Ordinal) ? error.Message : "获取已取消，当前模型选择保持不变。"; }
         catch (Exception error) { if (!closing) { discoveryStatus = error.Message; SetShellError("获取模型未完成", error.Message); } }

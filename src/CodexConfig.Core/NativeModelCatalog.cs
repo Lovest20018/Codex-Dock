@@ -6,6 +6,16 @@ namespace CodexConfig.Core;
 // Translate the list shape only. Capabilities absent from the upstream are not enabled.
 public static class NativeModelCatalog
 {
+    // Discovery may stage only metadata actually supplied in native form. An ID-only
+    // list is still useful to the picker, but cannot establish reviewer capabilities.
+    public static byte[]? DeclaredCatalog(JsonElement entries)
+    {
+        if (entries.ValueKind != JsonValueKind.Array) return null;
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(new { models = entries });
+        try { ManagedModelCatalogStore.ValidateNative(bytes); return bytes; }
+        catch (Exception error) when (error is InvalidDataException or JsonException or InvalidOperationException or ArgumentException) { return null; }
+    }
+
     public static byte[] Convert(byte[] bytes)
     {
         using var document = JsonDocument.Parse(bytes);
