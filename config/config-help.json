@@ -106,15 +106,15 @@
   {
     "path": "model_auto_compact_token_limit",
     "name": "自动压缩阈值",
-    "summary": "对话积累到多少内容时，自动整理历史。",
-    "effect": "达到阈值后压缩对话历史，腾出空间。",
-    "valueHelp": "填写触发压缩的 Token 数，留空使用模型默认值。",
-    "usage": "通常无需修改；设得太低会频繁压缩。",
-    "limitations": "压缩会减少历史细节；此项不是总用量上限。",
-    "defaultBehavior": "使用模型默认值。",
+    "summary": "达到 token 用量阈值时自动压缩会话历史。",
+    "effect": "结合统计范围决定何时触发压缩。",
+    "valueHelp": "以 token 为单位。",
+    "usage": "需要为长会话控制自动压缩时机时使用。",
+    "limitations": "各模型的可用上下文和内核限制可能不同。",
+    "defaultBehavior": "留空采用模型默认。",
     "relatedKeys": [
-      "model_context_window",
-      "model_auto_compact_token_limit_scope"
+      "model_auto_compact_token_limit_scope",
+      "model_context_window"
     ],
     "sources": [
       {
@@ -122,7 +122,7 @@
         "url": "https://learn.chatgpt.com/docs/config-file/config-reference"
       }
     ],
-    "verifiedAt": "2026-10-28",
+    "verifiedAt": "2026-11-18",
     "verificationStatus": "verified"
   },
   {
@@ -319,6 +319,68 @@
       }
     ],
     "verifiedAt": "2026-10-28",
+    "verificationStatus": "verified"
+  },
+  {
+    "path": "agents.max_concurrent_threads_per_session",
+    "name": "子代理并发上限",
+    "summary": "限制同一会话同时打开的子代理线程数。",
+    "effect": "主会话不计入此上限。",
+    "valueHelp": "填写内核支持的整数。",
+    "usage": "需要约束多个子代理同时运行时使用。",
+    "limitations": "旧配置可能使用 agents.max_threads，编辑前先核对执行端。",
+    "defaultBehavior": "留空由 Codex 决定。",
+    "relatedKeys": [
+      "agents.enabled"
+    ],
+    "sources": [
+      {
+        "title": "OpenAI 配置参考",
+        "url": "https://learn.chatgpt.com/docs/config-file/config-reference"
+      }
+    ],
+    "verifiedAt": "2026-11-18",
+    "verificationStatus": "verified"
+  },
+  {
+    "path": "background_terminal_max_timeout",
+    "name": "后台终端轮询上限",
+    "summary": "限制等待后台终端输出的一次空输入轮询。",
+    "effect": "该值约束空输入的 write_stdin 轮询。",
+    "valueHelp": "毫秒。",
+    "usage": "后台终端返回很慢时可核对这个值。",
+    "limitations": "命令自身的执行时长由其他设置决定。旧字段为 background_terminal_timeout。",
+    "defaultBehavior": "300000 毫秒（5 分钟）。",
+    "relatedKeys": [],
+    "sources": [
+      {
+        "title": "OpenAI 配置参考",
+        "url": "https://learn.chatgpt.com/docs/config-file/config-reference"
+      }
+    ],
+    "verifiedAt": "2026-11-18",
+    "verificationStatus": "verified"
+  },
+  {
+    "path": "approval_policy",
+    "name": "审批策略",
+    "summary": "决定 Codex 何时暂停并请求审批。",
+    "effect": "普通模式选择审批时机，也可在 granular 中逐类设置。",
+    "valueHelp": "on-request、never 或 granular 表。",
+    "usage": "需分别处理沙箱、规则、MCP 和技能等审批时可使用 granular。",
+    "limitations": "组织要求可能约束可用选项。on-failure 是旧值，现版不支持显式 untrusted。",
+    "defaultBehavior": "留空跟随当前执行端、项目与组织策略。",
+    "relatedKeys": [
+      "approvals_reviewer",
+      "sandbox_mode"
+    ],
+    "sources": [
+      {
+        "title": "OpenAI 配置参考",
+        "url": "https://learn.chatgpt.com/docs/config-file/config-reference"
+      }
+    ],
+    "verifiedAt": "2026-11-18",
     "verificationStatus": "verified"
   }
 ]

@@ -22,6 +22,7 @@ public sealed class ConfigurationCatalogService
             : schema.ExpandedEntries(draft.Document().Model).Concat(schema.ConfiguredEntries(original, pending.Keys));
         entries = entries.Where(entry => entry.SupportedPlatform).DistinctBy(entry => entry.Path);
         if (query.Scope == "changed") entries = entries.Where(entry => pending.ContainsKey(entry.Path));
+        if (query.Scope == "common") entries = entries.Where(entry => entry.Common && entry.Stage is not ("removed" or "deprecated" or "under_development") && !entry.Deprecated);
         var search = query.Search.Trim();
         if (search.Length > 0) entries = entries.Where(entry => (entry.Path + " " + ConfigHelp.Name(entry.HelpPath) + " " + ConfigHelp.Summary(entry)).Contains(search, StringComparison.OrdinalIgnoreCase));
         else if (query.Scope == "all" && !query.Advanced) entries = entries.Where(entry => entry.Stage is not ("removed" or "deprecated" or "under_development") && !entry.Deprecated && entry.Kind is not ("table" or "map" or "recursive"));

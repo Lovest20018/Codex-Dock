@@ -12,7 +12,7 @@ public sealed partial class MainWindow
     private CancellationTokenSource? quickModelRead;
     private bool quickModelAwaitingApply;
 
-    private sealed record QuickModelApplyChoice(string Home, CodexDesktopTarget Target, int TargetCount,
+    private sealed record ReviewedDesktopChoice(string Home, CodexDesktopTarget Target, int TargetCount,
         bool NeedsGateway, bool Speed, bool Connections)
     {
         public bool Matches(CodexDesktopTarget current) =>
@@ -70,7 +70,7 @@ public sealed partial class MainWindow
             var revision = connectionDraft.Revision;
             var source = connectionDraft.Settings();
             var modelRead = ReadQuickModelListAsync(snapshot, source, cancellation.Token);
-            var targetRead = ReadQuickModelTargetsAsync(cancellation.Token);
+            var targetRead = FindDesktopTargetsAsync(cancellation.Token);
             await Task.WhenAll(modelRead, targetRead);
             cancellation.Token.ThrowIfCancellationRequested();
             if (closing || currentPage != WorkspaceNav || revision != connectionDraft.Revision) return;
@@ -93,9 +93,9 @@ public sealed partial class MainWindow
             if (picker.AdvancedRequested) { NavigateTo(ModelsNav, revealStart: true); return; }
             if (result == ContentDialogResult.None || picker.Review is not { HasChanges: true } review) return;
             var choice = result == ContentDialogResult.Primary && picker.SelectedTarget is { } target
-                ? new QuickModelApplyChoice(snapshot.Home, target, targets.Count, picker.NeedsGateway, picker.Speed, picker.Connections) : null;
+                ? new ReviewedDesktopChoice(snapshot.Home, target, targets.Count, picker.NeedsGateway, picker.Speed, picker.Connections) : null;
             if (result == ContentDialogResult.Primary && choice is null) return;
-            if (await SaveConnectionAsync((review, connectionDraft.Revision)) && choice is not null)
+            if (await SaveConnectionAsync((review, connectionDraft.Revision), modelSave: true) && choice is not null)
                 await ApplyDesktopAsync(modelChoice: choice);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
@@ -141,7 +141,7 @@ public sealed partial class MainWindow
         return ([], service, status);
     }
 
-    private async Task<(IReadOnlyList<CodexDesktopTarget> Targets, string Error)> ReadQuickModelTargetsAsync(CancellationToken cancellation)
+    private async Task<(IReadOnlyList<CodexDesktopTarget> Targets, string Error)> FindDesktopTargetsAsync(CancellationToken cancellation)
     {
         try { return (await applicationRuntime.FindTargetsAsync(cancellation), ""); }
         catch (Exception error) when (error is not OperationCanceledException) { return ([], error.Message); }

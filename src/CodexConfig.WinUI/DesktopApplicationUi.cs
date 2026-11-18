@@ -12,13 +12,13 @@ public sealed partial class MainWindow
     private DesktopApplyResult? lastApplication;
     private Func<ContentDialog, Task<ContentDialogResult>>? smokeDialog;
     private readonly DispatcherTimer runtimeTimer = new() { Interval = TimeSpan.FromSeconds(2) };
-    private bool ManualApplicationBusy => applying || savingConfiguration || restoringConfiguration || savingProfile || restoringNativeClipboard || readingSavedPreview || readingSource || readingFeatures || readingDiagnostics || installingUpdate || readingOfficialLogin || discoveringModels || quickModelRead is not null || mobileAction || gatewayAction || gatewayLaunch || gatewayExit || desktopApplication.IsBusy;
+    private bool ManualApplicationBusy => applying || openingDesktop || reviewingConnection || savingConfiguration || restoringConfiguration || savingProfile || restoringNativeClipboard || readingSavedPreview || readingSource || readingFeatures || readingDiagnostics || installingUpdate || readingOfficialLogin || discoveringModels || quickModelRead is not null || mobileAction || gatewayAction || gatewayLaunch || gatewayExit || desktopApplication.IsBusy;
     private bool ApplicationBusy => ManualApplicationBusy || automaticEnhancements.IsBusy;
 
     private async void ApplyClicked(object sender, RoutedEventArgs e) => await ApplyDesktopAsync();
     private async void ForceExitClicked(object sender, RoutedEventArgs e) => await ApplyDesktopAsync(forceExit: true);
 
-    private async Task ApplyDesktopAsync(bool forceExit = false, bool enhancedLaunch = false, QuickModelApplyChoice? modelChoice = null)
+    private async Task ApplyDesktopAsync(bool forceExit = false, bool enhancedLaunch = false, ReviewedDesktopChoice? modelChoice = null)
     {
         if (ApplicationBusy || dialogOpen || closing || HasPendingRecovery || connectionDraft.HasDraft || !viewModel.PreferencesAvailable || !viewModel.CanApplyConfiguration || viewModel.Snapshot is not { } saved) return;
         applying = true; ApplicationTargetDetails.Visibility = Visibility.Collapsed; RefreshView();
@@ -82,6 +82,7 @@ public sealed partial class MainWindow
                 ApplicationStatus.Text = session.Status;
                 ApplicationStatus.Visibility = Visibility.Visible;
             }
+            if (currentPage == WorkspaceNav) await ObserveDesktopTargetsAsync();
             await TryAutomaticEnhancementsAsync();
             if (++gatewayTicks % 5 == 0) await RefreshGatewaysAsync();
             if (IsPhonePage) await MobilePairTickAsync();
@@ -178,7 +179,7 @@ public sealed partial class MainWindow
         completion.Task.WaitAsync(lifetime.Token).GetAwaiter().GetResult();
     }
 
-    private sealed class WinUiDesktopApplyInteraction(MainWindow window, QuickModelApplyChoice? modelChoice = null) : IDesktopApplyInteraction
+    private sealed class WinUiDesktopApplyInteraction(MainWindow window, ReviewedDesktopChoice? modelChoice = null) : IDesktopApplyInteraction
     {
         public string ActiveHome => window.viewModel.Home;
         public void ValidateContext()
@@ -207,6 +208,6 @@ public sealed partial class MainWindow
             window.ApplicationTargetDetails.Visibility = Visibility.Visible;
         }
         public void DesktopOpened(CodexDesktopTarget target, ConfigSnapshot saved)
-            => window.viewModel.Session.SetRuntime(new(true, target.Processes.Count) { DesktopProcesses = target.Processes });
+            => window.RecordOpenedDesktop(target, saved.Home);
     }
 }

@@ -19,8 +19,8 @@ public sealed class ExperimentalFeatureClient
     public static bool ValidName(string value) => Regex.IsMatch(value, "^[A-Za-z][A-Za-z0-9_]{0,99}$", RegexOptions.CultureInvariant);
     public async Task<ExperimentalFeatureSnapshot> ReadAsync(string executable, string home, string project, string? profile, CancellationToken cancellation = default)
     {
+        using var process = await CodexDesktopRuntime.StartAsync(ConfigReadClient.StartInfo(executable, home, project, profile), cancellation);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation); timeout.CancelAfter(TimeSpan.FromSeconds(20));
-        using var process = Process.Start(ConfigReadClient.StartInfo(executable, home, project, profile)) ?? throw new IOException("无法启动所选执行端。");
         var stderr = DrainAsync(process.StandardError);
         using var cancel = timeout.Token.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch (InvalidOperationException) { } });
         try

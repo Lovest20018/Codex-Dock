@@ -27,7 +27,7 @@ public sealed partial class MainWindow
         try
         {
             await SwitchHomeAsync(home); NavigateTo(CatalogNav); var original = store.Load(home);
-            Check(CatalogPanel.Visibility == Visibility.Visible && PageTitle.Text == "Codex 配置" && catalogInputs.ContainsKey("future_setting") && !connectionDraft.HasDraft && original.SameContents(store.Load(home)),
+            Check(CatalogPanel.Visibility == Visibility.Visible && PageTitle.Text == "高级工具" && catalogInputs.ContainsKey("future_setting") && !connectionDraft.HasDraft && original.SameContents(store.Load(home)),
                 "Full configuration opens configured and unknown fields without writing files or creating a draft");
             Filter("all"); Check(catalogPage is { Pages: > 1 } && CatalogRows.Children.Count <= ConfigurationCatalogService.PageSize,
                 "Full schema rendering is bounded to a paginated set of configuration controls");

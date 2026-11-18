@@ -12,23 +12,31 @@ public static class CodexExecutableLocator
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var running = RunningExecutables().ToArray();
-        return Find(path, local, roaming, running);
+        return Find(path, local, roaming, running, CodexDesktopRuntime.Registered());
     }
 
     // Bounded discovery under known installation roots; never run npm, a shell shim or a candidate executable.
-    public static string? Find(string? path, string localAppData, string roamingAppData, IEnumerable<string>? runningExecutables = null)
+    public static string? Find(string? path, string localAppData, string roamingAppData, IEnumerable<string>? runningExecutables = null,
+        IEnumerable<string>? registeredRuntimes = null)
     {
         var prefixes = (path ?? "").Split(Path.PathSeparator).Select(Normalize).Where(value => value is not null).Cast<string>()
             .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        var candidates = (runningExecutables ?? []).Where(IsRuntimePath)
+        var registered = (registeredRuntimes ?? []).Select(Normalize).OfType<string>().Where(File.Exists).ToArray();
+        var extractedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.Combine(localAppData, "OpenAI", "Codex", "bin"))) + Path.DirectorySeparatorChar;
+        var aliases = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.Combine(localAppData, "Microsoft", "WindowsApps"))) + Path.DirectorySeparatorChar;
+        var candidates = (runningExecutables ?? []).Select(Normalize).OfType<string>().Where(IsRuntimePath)
             .Concat(prefixes.Select(directory => Path.Combine(directory, "codex.exe")))
-            .Concat(DesktopCandidates(localAppData))
+            .Where(candidate => registered.Contains(candidate, StringComparer.OrdinalIgnoreCase) ||
+                (!CodexDesktopRuntime.IsStoreRuntime(candidate) && !candidate.StartsWith(aliases, StringComparison.OrdinalIgnoreCase) &&
+                    (registered.Length == 0 || !candidate.StartsWith(extractedRoot, StringComparison.OrdinalIgnoreCase))))
+            .Concat(registered)
+            .Concat(registered.Length == 0 ? DesktopCandidates(localAppData) : [])
             .Append(Path.Combine(localAppData, "Programs", "OpenAI", "Codex", "bin", "codex.exe"))
             .Concat(prefixes.Append(Path.Combine(roamingAppData, "npm")).Distinct(StringComparer.OrdinalIgnoreCase).SelectMany(NpmCandidates));
         return candidates.Select(Normalize).Where(value => value is not null).Distinct(StringComparer.OrdinalIgnoreCase).FirstOrDefault(File.Exists);
     }
 
-    private static IEnumerable<string> DesktopCandidates(string localAppData)
+    internal static IEnumerable<string> DesktopCandidates(string localAppData)
     {
         var bin = Path.Combine(localAppData, "OpenAI", "Codex", "bin");
         yield return Path.Combine(bin, "codex.exe");

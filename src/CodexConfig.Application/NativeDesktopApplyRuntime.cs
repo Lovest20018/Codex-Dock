@@ -7,6 +7,7 @@ public sealed class NativeDesktopApplyRuntime(DesktopEnhancementRuntime enhancem
     public bool IsEnhancementRunning => enhancements.Session is { IsRunning: true };
     public Task<IReadOnlyList<CodexDesktopTarget>> FindTargetsAsync(CancellationToken cancellation)
         => Task.Run(() => new CodexDesktop().FindTargets(), cancellation);
+    public bool Activate(CodexDesktopTarget target) => new CodexDesktop().Activate(target);
     public Task<DesktopEnhancementPreparation> PrepareEnhancementsAsync(CodexDesktopTarget target, ConfigSnapshot saved, CancellationToken cancellation)
         => enhancements.PrepareAsync(target, saved, cancellation);
     public async Task PrepareGatewayAsync(ConfigSnapshot saved, CancellationToken cancellation)

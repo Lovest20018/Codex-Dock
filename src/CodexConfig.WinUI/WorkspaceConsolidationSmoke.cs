@@ -26,27 +26,31 @@ public sealed partial class MainWindow
         var desktop = (SmokeDesktopApplyRuntime)applicationRuntime; var restarts = desktop.Restarts;
         try
         {
-            await SwitchHomeAsync(home); NavigateTo(WorkspaceNav); var original = store.Load(home);
+            Check(await SwitchHomeAsync(home) && viewModel.Home == home, "The navigation fixture loads its saved API connection");
+            NavigateTo(WorkspaceNav); var original = store.Load(home);
             AppWindow.Resize(new(1120, 820)); await Settle();
-            Check(Navigation.MenuItems.Count == 5 && Navigation.FooterMenuItems.Count == 2, "Five task destinations and two footer destinations replace the flat seventeen item sidebar");
+            Check(Navigation.MenuItems.Count == 3 && Navigation.FooterMenuItems.Count == 3, "The three daily tasks have separate entries above advanced tools, settings and help");
             foreach (var route in Pages)
             {
                 NavigateTo(route); await Settle();
-                Check(((NavigationViewItem)Navigation.SelectedItem).Tag?.ToString() == route.Section && PageTitle.Text == SectionTitle(route.Section), "Route " + route.Tag + " selects its task and retains an accessible destination");
+                Check(((NavigationViewItem)Navigation.SelectedItem).Tag?.ToString() == NavigationSection(route) && PageTitle.Text == SectionTitle(route.Section), "Route " + route.Tag + " selects its task and retains an accessible destination");
             }
             Check(original.SameContents(store.Load(home)) && store.LatestBackup(home) is null && desktop.Restarts == restarts,
                 "Visiting every destination performs no configuration save backup or desktop restart");
             NavigateTo(ConnectionNav); await Settle(); PageScroll.ChangeView(null, 0, null, true); await Settle();
-            Check(InViewport(ConnectionModeInput) && InViewport(BaseUrlInput) && InViewport(ApiKeyInput), "Connection type endpoint and key fit the initial 1120 by 820 viewport after removing the repeated directory card");
-            Check(!VisualDescendants<FrameworkElement>(PageScroll).Contains(WorkspaceContextCard), "The complete directory and file commands are outside the main form in the directory flyout");
             await CaptureAsync(output, "consolidated-connection-light.png");
+            string Position(FrameworkElement element) => element.Name + " " + element.TransformToVisual(Root).TransformPoint(new()) + " " + element.ActualWidth + "x" + element.ActualHeight;
+            Check(InViewport(ConnectionModeInput) && InViewport(BaseUrlInput) && InViewport(ApiKeyInput),
+                $"Connection type endpoint and key fit the initial viewport ({Position(PageScroll)}; {Position(ConnectionModeInput)}; {Position(BaseUrlInput)}; {Position(ApiKeyInput)}; root {Root.ActualWidth}x{Root.ActualHeight})");
+            Check(!VisualDescendants<FrameworkElement>(PageScroll).Contains(WorkspaceContextCard), "The complete directory and file commands are outside the main form in the directory flyout");
 
             // Use the visible secondary navigation rather than changing model from a hidden connection control.
             CompactSectionInput.SelectedItem = ModelsNav; await Settle();
-            Check(currentPage == ModelsNav && ModelsPanel.Visibility == Visibility.Visible && VisibleAncestors(DiscoverModelsButton), "The model editor and explicit service model discovery share one page");
+            Check(currentPage == ModelsNav && ModelsPanel.Visibility == Visibility.Visible && VisibleAncestors(BehaviorModelInput), "The advanced model editor remains reachable in the connection task");
             BehaviorModelInput.Text = "task-selected-model"; await Settle(); var revision = connectionDraft.Revision;
             NavigateTo(ConnectionNav); await Settle();
-            Check(ConnectionModelSummary.Text.Contains("task-selected-model") && connectionDraft.Revision == revision && connectionDraft.HasDraft, "Connection summary reflects the single model editor without creating a second draft");
+            Check(ConnectionModelSummary.Text.Contains("task-selected-model") && ConnectionModelEditorHost.Children.Contains(BehaviorModelInput) && VisibleAncestors(DiscoverModelsButton) &&
+                connectionDraft.Revision == revision && connectionDraft.HasDraft, "The connection page reads models inline and shares the draft with the advanced model editor");
             var confirmations = 0; smokeDialog = _ => { confirmations++; return Task.FromResult(ContentDialogResult.None); };
             NavigateTo(HelpNav); await ExecuteWorkspaceShortcutAsync(VirtualKey.S, VirtualKeyModifiers.Control);
             Check(ApplicationFooter.Visibility == Visibility.Collapsed && PendingChangesButton.Visibility == Visibility.Visible && confirmations == 0 && connectionDraft.Revision == revision, "Help exposes pending changes but Ctrl S cannot save a different page's main configuration");
@@ -78,8 +82,8 @@ public sealed partial class MainWindow
             NavigateTo(ProfilesNav); ResourceTypeInput.SelectedIndex = 0; ResourceTypeInput.SelectedIndex = 1;
             Check(currentPage == ProfilesNav && HasTemplateDraft && connectionDraft.Revision == mainRevision && profileDraft.Revision == profileRevision && mobileDraft.Revision == mobileRevision && original.SameContents(store.Load(home)),
                 "Switching resource types and help preserves every draft and all saved files");
-            Navigation.SelectedItem = RuntimeSectionNav; Navigation.SelectedItem = ConfigurationSectionNav;
-            Check(currentPage == ProfilesNav && ResourceTypeInput.SelectedIndex == 1, "Returning to a task restores its previously selected resource without losing editor state");
+            Navigation.SelectedItem = ConfigurationSectionNav; Navigation.SelectedItem = AdvancedSectionNav;
+            Check(currentPage == AdvancedNav && profileDraft.Revision == profileRevision && AdvancedToolsList.Children.Count > 0, "Advanced tools are discoverable independently of the three daily tasks");
             Root.RequestedTheme = ElementTheme.Dark; AppWindow.Resize(new(720, 540)); NavigateTo(MobileSettingsNav); await Settle();
             Check(CompactSectionInput.Visibility == Visibility.Visible && SectionTabs.Visibility == Visibility.Collapsed && MobileFooter.ActualHeight > 0 &&
                 SaveMobileButton.TransformToVisual(Root).TransformPoint(new()).Y + SaveMobileButton.ActualHeight <= Root.ActualHeight + 1,
@@ -87,7 +91,7 @@ public sealed partial class MainWindow
             await CaptureAsync(output, "consolidated-phone-compact-dark.png");
             AppWindow.Resize(new(1120, 820)); NavigateTo(ProfilesNav); await Settle(); await CaptureAsync(output, "consolidated-resources-dark.png");
             NavigateTo(WorkspaceNav); Root.RequestedTheme = ElementTheme.Light; await Settle(); await CaptureAsync(output, "consolidated-workspace-pending.png");
-            Check(WorkspaceNextButton.Content.ToString() == "查看修改" && ApplicationFooter.Visibility == Visibility.Collapsed, "The workbench presents one primary next step for the outstanding main configuration");
+            Check(WorkspaceNextButton.Content.ToString() == "继续编辑" && ApplicationFooter.Visibility == Visibility.Collapsed, "Home presents one primary next step for the outstanding main configuration");
         }
         finally
         {

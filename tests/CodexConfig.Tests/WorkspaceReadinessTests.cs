@@ -13,7 +13,7 @@ internal static class WorkspaceReadinessTests
         {
             var f = new Fixture(root); f.Shell.Load(f.Home);
             Assert(f.Shell.ConfigurationAvailable && f.Shell.NeedsConnectionSetup && !f.Shell.CanApplyConfiguration && !f.Shell.IsBusy);
-            Assert(f.Shell.Snapshot is { Config: null, Auth: null } && f.Shell.SetupGuide.Message.Contains("官方账号") && !Directory.Exists(f.Directory));
+            Assert(f.Shell.Snapshot is { Config: null, Auth: null } && f.Shell.SetupGuide.Message.Contains("ChatGPT") && !Directory.Exists(f.Directory));
             f.Shell.Load(f.Home); Assert(!Directory.Exists(f.Directory));
         });
         Test("first run preserves ordinary settings and requires credentials without inventing authentication", () =>

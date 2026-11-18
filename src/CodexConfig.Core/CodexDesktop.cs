@@ -228,6 +228,7 @@ public sealed class CodexDesktop
         start.Environment["CODEX_HOME"] = Path.GetFullPath(home);
         if (string.IsNullOrEmpty(authApiBaseUrl)) start.Environment.Remove(WindowsUserEnvironment.Variable);
         else start.Environment[WindowsUserEnvironment.Variable] = authApiBaseUrl;
+        CodexLaunchProxy.Apply(start);
         return start;
     }
 
@@ -291,8 +292,9 @@ internal sealed class WindowsCodexDesktopPlatform(string? fixtureExecutable = nu
             .Concat(RegisteredExecutables()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
     }
 
-    private static IReadOnlyList<string> RegisteredExecutables()
+    internal static IReadOnlyList<string> RegisteredExecutables()
     {
+        if (!OperatingSystem.IsWindows()) return [];
         var result = new List<string>();
         uint count = 0, length = 0;
         if (GetPackagesByPackageFamily(PackageFamily, ref count, IntPtr.Zero, ref length, IntPtr.Zero) == 122 && count is > 0 and < 100 && length < 1024 * 1024)

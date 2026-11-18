@@ -131,10 +131,12 @@ internal static class ExperimentalFeatureTests
         var home = Path.Combine(root, "home"); Directory.CreateDirectory(home);
         File.WriteAllText(Path.Combine(home, "config.toml"), "model='fixture-native-read'\n[features]\nfast_mode=false\n");
         var before = File.ReadAllBytes(Path.Combine(home, "config.toml"));
+        var sources = await new ConfigReadClient().ReadAsync(executable, home, home, null, before);
+        Assert(sources.Rows.Any(row => row.Path == "model" && row.EffectiveValue == "\"fixture-native-read\""));
         var result = await new ExperimentalFeatureClient().ReadAsync(executable, home, home, null);
         Assert(before.AsSpan().SequenceEqual(File.ReadAllBytes(Path.Combine(home, "config.toml"))) && !Directory.Exists(Path.Combine(home, "sessions")) && !File.Exists(Path.Combine(home, "auth.json")));
-        await File.WriteAllTextAsync(Path.Combine(root, "report.json"), JsonSerializer.Serialize(new { status = "PASS", scope = "Fresh native execution end, list only; no login, conversation, turn or tool", result }, new JsonSerializerOptions { WriteIndented = true }));
-        Console.WriteLine("PASS native feature read: " + result.Features.Count + " entries, no configuration writes or conversation");
+        await File.WriteAllTextAsync(Path.Combine(root, "report.json"), JsonSerializer.Serialize(new { status = "PASS", scope = "Fresh native execution end, config and feature reads only; no login, conversation, turn or tool", configRows = sources.Rows.Count, configRuntime = sources.RuntimeInfo, result }, new JsonSerializerOptions { WriteIndented = true }));
+        Console.WriteLine($"PASS native read: {sources.Rows.Count} configuration rows, {result.Features.Count} features, no configuration writes or conversation");
     }
     private sealed class Fixture
     {

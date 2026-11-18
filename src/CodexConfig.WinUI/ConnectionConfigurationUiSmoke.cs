@@ -21,7 +21,7 @@ public sealed partial class MainWindow
         try
         {
             await SwitchHomeAsync(fixture); NavigateTo(ConnectionNav);
-            Check(ConnectionPanel.Visibility == Visibility.Visible && WorkspacePanel.Visibility == Visibility.Collapsed && PageTitle.Text == "Codex 配置" &&
+            Check(ConnectionPanel.Visibility == Visibility.Visible && WorkspacePanel.Visibility == Visibility.Collapsed && PageTitle.Text == "连接与模型" &&
                 BaseUrlInput.Text == "https://editor.invalid/v1" && BehaviorModelInput.Text == "editor-old-model" && !connectionDraft.HasDraft,
                 "WinUI connection page loads the shared saved settings without creating a draft");
             Check(ApiKeyInput.PasswordRevealMode == PasswordRevealMode.Peek && original.SameContents(store.Load(fixture)) && store.LatestBackup(fixture) is null,
@@ -33,7 +33,8 @@ public sealed partial class MainWindow
             NavigateTo(EnhancementsNav); NavigateTo(ConnectionNav);
             await TryAutomaticEnhancementsAsync(); await ApplyDesktopAsync();
             Check(BehaviorModelInput.Text == "editor-new-model" && ConnectionDraftActions.Visibility == Visibility.Visible && runtime.Restarts == launches && !automaticEnhancements.IsBusy,
-                "Navigation preserves the draft while manual application and automatic reconnect leave desktops untouched");
+                "Navigation preserves the draft while manual application and automatic reconnect leave desktops untouched (" + currentPage.Tag + ", model " +
+                BehaviorModelInput.Text + ", draft " + connectionDraft.HasDraft + ", actions " + ConnectionDraftActions.Visibility + ", restarts " + (runtime.Restarts - launches) + ")");
             PageScroll.ChangeView(null, double.MaxValue, null, true);
             await CaptureAsync(output, "connection-draft.png");
             var savePosition = SaveConnectionButton.TransformToVisual(Root).TransformPoint(new());

@@ -18,7 +18,7 @@ internal static class ConfigurationOptimizationTests
         Test("catalog provenance, removed options and array/table constraints match the verified schema", () =>
         {
             var schema = ConfigSchema.Instance;
-            Assert(schema.Entries.Count >= 1064 && schema.VerifiedRuntime == "codex-cli 0.168.0-alpha.4");
+            Assert(schema.Entries.Count == 1096 && schema.VerifiedRuntime == "codex-cli 0.171.0-alpha.5");
             Assert(schema.Find("features.reasoning_effort_override") is { Stage: "stable", Default.ValueKind: JsonValueKind.True });
             Assert(schema.Find("features.secret_auth_storage")!.Default.GetBoolean());
             Assert(schema.Find("features.code_mode_tool_description_first") is { CanEdit: false, Stage: "removed" });
@@ -30,6 +30,15 @@ internal static class ConfigurationOptimizationTests
             schema.Validate("approval_policy", "{ granular = { sandbox_approval = true, rules = false, mcp_elicitations = false } }");
             Throws<ArgumentException>(() => schema.Validate("approval_policy", "{ granular = { sandbox_approval = true } }"));
             Throws<ArgumentException>(() => schema.Validate("approval_policy", "{ granular = { sandbox_approval = 'wrong' } }"));
+            Assert(schema.Entries.Count(entry => entry.VerifiedSince == "0.171.0-alpha.5") == 32);
+            Assert(schema.Find("features.tui_workspace") is { Stage: "stable", UpdatedIn: "0.171.0-alpha.5", Default.ValueKind: JsonValueKind.True });
+            Assert(schema.Find("features.plugin_discovery_prefetch") is { Stage: "removed", CanEdit: false });
+            Assert(schema.Find("auto_review.extra_policy") is not null);
+            schema.Validate("tui.status_line_provider", "'default'");
+            schema.Validate("tui.status_line_provider", "{ server = 'local', tool = 'status' }");
+            Throws<ArgumentException>(() => schema.Validate("tui.status_line_provider", "{ server = 'local' }"));
+            Throws<ArgumentException>(() => schema.Validate("otel.headers_helper_refresh_interval_ms", "0"));
+            Assert(TomlDocument.IsSensitivePath("otel.headers_helper") && TomlDocument.IsSensitivePath("model_providers.demo.gateway_oauth.credential_export.args"));
         });
         Test("configured and expanded entries preserve quoted names, multiple instances, explicit false and removal drafts", () =>
         {

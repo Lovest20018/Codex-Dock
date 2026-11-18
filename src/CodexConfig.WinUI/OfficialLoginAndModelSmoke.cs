@@ -27,7 +27,7 @@ public sealed partial class MainWindow
         {
             await SwitchHomeAsync(home); NavigateTo(ModelsNav);
             var original = store.Load(home); var policy = ConfigSchema.Literal(connectionDraft.Document().Get("approval_policy"));
-            Check(ModelsPanel.Visibility == Visibility.Visible && PageTitle.Text == "Codex 配置" && BehaviorModelInput.Text == "main" &&
+            Check(ModelsPanel.Visibility == Visibility.Visible && PageTitle.Text == "连接与模型" && BehaviorModelInput.Text == "main" &&
                 behaviorChoices["model_verbosity"].SelectedItem is BehaviorChoice { Value: null } && !connectionDraft.HasDraft,
                 "Model and behavior page displays inherited defaults without creating a draft");
             Check(behaviorChoices["approval_policy"].SelectedItem is BehaviorChoice { Label: var label } && label.Contains("结构化规则") &&
@@ -166,8 +166,12 @@ public sealed partial class MainWindow
             Check(!discoveringModels && BaseUrlInput.IsEnabled && ModelDiscoveryStatus.Text.Contains("取消") && !connectionDraft.HasDraft && direct.SameContents(store.Load(home)),
                 "Cancelling discovery restores controls and retains the saved selection and files");
             modelDiscovery = new((_, _) => throw new HttpRequestException("Offline model fixture error")); await DiscoverModelsAsync();
-            Check(ErrorBar.IsOpen && BaseUrlInput.IsEnabled && connectionDraft.Model == selectedModel && direct.SameContents(store.Load(home)),
-                "Model discovery failure is recoverable and preserves the current model and files");
+            Check(ModelDiscoveryStatus.Text.Contains("Offline model fixture error") && DiscoverModelsButton.Content.ToString() == "重试读取" &&
+                BaseUrlInput.IsEnabled && connectionDraft.Model == selectedModel && direct.SameContents(store.Load(home)),
+                "Model discovery failure exposes a retry beside the fields and preserves the current model and files");
+            modelDiscovery = new((_, _) => throw new HttpRequestException("fixture", null, System.Net.HttpStatusCode.Unauthorized)); await DiscoverModelsAsync();
+            Check(CheckServiceKeyButton.Visibility == Visibility.Visible && ModelDiscoveryStatus.Text.Contains("服务未接受") && direct.SameContents(store.Load(home)),
+                "Rejected credentials expose a route back to the masked key field on the same page");
             modelDiscovery = new((_, _) => { connectionDraft.ApiKey = "fake-key-changed-during-read"; return Task.FromResult(new ModelCatalogResult(["stale-result"], 1)); });
             await DiscoverModelsAsync();
             Check(discoveredModels.Count == 0 && ModelDiscoveryStatus.Text.Contains("连接设置") && direct.SameContents(store.Load(home)),

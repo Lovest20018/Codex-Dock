@@ -20,8 +20,10 @@ public sealed partial class MainWindow
 
     private void InitializeConfigurationCatalog()
     {
-        CatalogScopeInput.ItemsSource = new[] { new CatalogScope("已配置", "configured"), new("全部", "all"), new("已修改", "changed") };
+        CatalogScopeInput.ItemsSource = new[] { new CatalogScope("已配置", "configured"), new("全部", "all"), new("已修改", "changed"), new("常用", "common") };
         CatalogScopeInput.SelectedIndex = 0;
+        CatalogReferenceText.Text = "配置资料核对版本 " + ConfigSchema.Instance.VerifiedRuntime + " · " + ConfigSchema.Instance.RetrievedAt +
+            "\n旧内核的可用字段与默认值请在“配置来源”中核对。";
         CatalogCategoryInput.ItemsSource = new[] { new CatalogCategory("all", "所有分类"), new("unlisted", "未收录配置") }.Concat(ConfigSchema.Instance.Categories).ToArray();
         CatalogCategoryInput.DisplayMemberPath = "Name"; CatalogCategoryInput.SelectedIndex = 0;
         catalogSearchTimer.Tick += (_, _) => { catalogSearchTimer.Stop(); catalogPageIndex = 0; RenderConfigurationCatalog(); };
@@ -68,6 +70,9 @@ public sealed partial class MainWindow
         var body = new StackPanel { Spacing = 10 };
         body.Children.Add(new TextBlock { Text = ConfigHelp.Name(entry.HelpPath), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
         body.Children.Add(new TextBlock { Text = path + " · " + entry.Lifecycle, Opacity = 0.65, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
+        var referenceVersion = entry.UpdatedIn.Length > 0 ? entry.UpdatedIn : entry.VerifiedSince;
+        if (referenceVersion.Length > 0)
+            body.Children.Add(new TextBlock { Text = "资料核对版本 " + referenceVersion, Opacity = 0.7, TextWrapping = TextWrapping.Wrap });
         body.Children.Add(new TextBlock { Text = ConfigHelp.Summary(entry), Opacity = 0.75, TextWrapping = TextWrapping.Wrap });
         var state = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.7 }; body.Children.Add(state);
         var error = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 200, 55, 55)) };
@@ -82,7 +87,7 @@ public sealed partial class MainWindow
         }
         if (ConfigurationCatalogService.CanEdit(entry))
         {
-            if (entry.Kind is "boolean" or "enum" && original is not Tomlyn.Model.TomlTable && !sensitive)
+            if (entry.Kind is "boolean" or "enum" && !entry.EnumHasTableForm && original is not Tomlyn.Model.TomlTable && !sensitive)
             {
                 var choices = new List<BehaviorChoice> { new("不设本地覆盖 · 跟随 Codex", null) };
                 choices.AddRange(entry.Kind == "boolean" ? new[] { new BehaviorChoice("开启", "true"), new("关闭", "false") } : entry.EnumValues.Select(value => new BehaviorChoice(value, TomlDocument.Quote(value))));

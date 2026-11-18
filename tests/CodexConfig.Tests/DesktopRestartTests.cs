@@ -38,6 +38,22 @@ internal static class DesktopRestartTests
             Assert(!CodexDesktop.CreateStartInfo(executable, home, null).Environment.ContainsKey(WindowsUserEnvironment.Variable));
             Throws<ArgumentException>(() => CodexDesktop.CreateStartInfo("codex.exe", home, null));
         });
+        Test("Codex child processes keep explicit proxy exceptions and bypass loopback without changing parent proxies", () =>
+        {
+            var start = new ProcessStartInfo(executable);
+            var parentNoProxy = Environment.GetEnvironmentVariable("NO_PROXY");
+            var parentProxy = Environment.GetEnvironmentVariable("HTTPS_PROXY");
+            start.Environment["NO_PROXY"] = " corp.example,LOCALHOST,.private.example ";
+            start.Environment["HTTPS_PROXY"] = "http://proxy.example:8080";
+            CodexLaunchProxy.Apply(start);
+            Assert(start.Environment["NO_PROXY"] == "corp.example,LOCALHOST,.private.example,127.0.0.1,::1");
+            Assert(start.Environment["HTTPS_PROXY"] == "http://proxy.example:8080");
+            Assert(Environment.GetEnvironmentVariable("NO_PROXY") == parentNoProxy && Environment.GetEnvironmentVariable("HTTPS_PROXY") == parentProxy);
+            Assert(CodexLaunchProxy.Merge([], "10.* ;172.16.*.*;*.corp.example;<local>") == "10.0.0.0/8,172.16.0.0/16,corp.example,<local>,localhost,127.0.0.1,::1");
+            var home = Home();
+            foreach (var child in new[] { CodexDesktop.CreateStartInfo(executable, home, null), ConfigReadClient.StartInfo(executable, home, home) })
+                Assert(new[] { "localhost", "127.0.0.1", "::1" }.All(entry => child.Environment["NO_PROXY"]!.Split(',').Contains(entry, StringComparer.OrdinalIgnoreCase)));
+        });
         Test("Store launch uses the package-specific alias and rejects stale or unrelated registrations before exit", () =>
         {
             var package = Home(); var gui = Path.Combine(package, "app", "ChatGPT.exe"); var local = Home();

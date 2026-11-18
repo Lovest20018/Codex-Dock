@@ -9,12 +9,13 @@ public sealed partial class MainWindow
 {
     // Routes retain the old destinations, while the visible navigation follows tasks.
     private sealed record DockPage(string Tag, string Section, string Tab, string Title, string Description, bool EditsConfiguration = false);
-    private static readonly DockPage WorkspaceNav = new("workspace", "workspace", "workspace", "工作台", "确认当前状态，继续需要完成的操作。");
-    private static readonly DockPage ConnectionNav = new("connection", "configuration", "connection", "连接", "设置服务和认证，再选择模型。", true);
+    private static readonly DockPage WorkspaceNav = new("workspace", "workspace", "workspace", "首页", "");
+    private static readonly DockPage ConnectionNav = new("connection", "configuration", "connection", "连接", "", true);
     private static readonly DockPage ModelsNav = new("models", "configuration", "models", "模型与行为", "选择模型与默认行为，核对差异后保存。", true);
-    private static readonly DockPage CatalogNav = new("catalog", "configuration", "catalog", "高级配置", "搜索全部字段，修改保留在同一份主配置草稿中。", true);
-    private static readonly DockPage TemplatesNav = new("templates", "configuration", "resources", "方案与 Profile", "配置方案加入主配置草稿；Profile 单独编辑与保存。", true);
-    private static readonly DockPage ProfilesNav = new("profiles", "configuration", "resources", "方案与 Profile", "Profile 单独保存，不切换主配置与现有聊天。");
+    private static readonly DockPage AdvancedNav = new("tools", "tools", "tools", "高级工具", "");
+    private static readonly DockPage CatalogNav = new("catalog", "data", "catalog", "全部配置", "搜索全部字段，修改保留在同一份主配置草稿中。", true);
+    private static readonly DockPage TemplatesNav = new("templates", "data", "resources", "方案与 Profile", "配置方案加入主配置草稿；Profile 单独编辑与保存。", true);
+    private static readonly DockPage ProfilesNav = new("profiles", "data", "resources", "方案与 Profile", "Profile 单独保存，不切换主配置与现有聊天。");
     private static readonly DockPage EnhancementsNav = new("enhancements", "runtime", "enhancements", "Codex 与增强", "管理增强偏好，并核对实例后应用。");
     private static readonly DockPage GatewaysNav = new("gateways", "runtime", "gateways", "模型网关", "管理已保存连接使用的模型网关与运行统计。");
     private static readonly DockPage MobileNav = new("mobile", "phone", "mobile", "连接与配对", "检测已保存入口，在本机生成安卓配对码。");
@@ -28,7 +29,7 @@ public sealed partial class MainWindow
     private static readonly DockPage UpdatesNav = new("updates", "settings", "updates", "软件更新", "检查正式发布，校验安装包后再决定是否安装。");
     private static readonly DockPage AboutNav = new("about", "settings", "about", "关于", "了解当前版本与使用范围。");
     private static readonly DockPage HelpNav = new("help", "help", "help", "帮助", "按任务查找说明，并前往对应页面。");
-    private static readonly DockPage[] Pages = [WorkspaceNav, ConnectionNav, ModelsNav, CatalogNav, TemplatesNav, ProfilesNav,
+    private static readonly DockPage[] Pages = [WorkspaceNav, ConnectionNav, ModelsNav, AdvancedNav, CatalogNav, TemplatesNav, ProfilesNav,
         EnhancementsNav, GatewaysNav, MobileNav, MobileDevicesNav, MobileSettingsNav, FilePreviewNav, SourcesNav, DiagnosticsNav, RecoveryNav, SettingsNav, UpdatesNav, AboutNav, HelpNav];
     private DockPage currentPage = WorkspaceNav;
     private readonly Dictionary<string, DockPage> sectionHistory = [];
@@ -37,13 +38,14 @@ public sealed partial class MainWindow
     private readonly Dictionary<string, double> pageScrollOffsets = [];
     private int pageNavigationRevision;
     private static string SectionTitle(string section) => section switch
-    { "configuration" => "Codex 配置", "runtime" => "运行与增强", "phone" => "手机访问", "diagnosis" => "诊断与恢复", "settings" => "设置", "help" => "帮助", _ => "工作台" };
+    { "configuration" => "连接与模型", "tools" or "data" => "高级工具", "runtime" => "运行与增强", "phone" => "手机连接", "diagnosis" => "诊断与恢复", "settings" => "设置", "help" => "帮助", _ => "首页" };
+    private static string NavigationSection(DockPage page) => page.Section is "data" or "runtime" or "diagnosis" ? "tools" : page.Section;
     private bool IsPhonePage => currentPage.Section == "phone";
 
     private void NavigationChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (synchronizingNavigation || viewModel is null || (args.SelectedItem as NavigationViewItem)?.Tag is not string section) return;
-        var destination = sectionHistory.GetValueOrDefault(section) ?? Pages.First(page => page.Section == section);
+        var destination = section == "tools" ? AdvancedNav : sectionHistory.GetValueOrDefault(section) ?? Pages.First(page => page.Section == section);
         if (section == "phone" && !sectionHistory.ContainsKey(section) && mobileDraft.Settings?.Configured != true) destination = MobileSettingsNav;
         NavigateTo(destination);
     }
@@ -52,12 +54,21 @@ public sealed partial class MainWindow
     {
         var changed = currentPage != page;
         if (changed && currentPage == WorkspaceNav) quickModelRead?.Cancel();
+        if (changed && currentPage == ConnectionNav) ClearConnectionReview(refresh: false);
         if (changed) pageScrollOffsets[currentPage.Tag] = PageScroll.VerticalOffset;
         currentPage = page; sectionHistory[page.Section] = page;
+        var modelHost = page == ConnectionNav ? ConnectionModelEditorHost : AdvancedModelEditorHost;
+        if (!modelHost.Children.Contains(BehaviorModelInput))
+        {
+            var previousHost = page == ConnectionNav ? AdvancedModelEditorHost : ConnectionModelEditorHost;
+            previousHost.Children.Remove(BehaviorModelInput);
+            modelHost.Children.Add(BehaviorModelInput);
+            BehaviorModelInput.Header = page == ConnectionNav ? "手动填写模型 ID" : "模型 ID";
+        }
         synchronizingNavigation = true;
         try
         {
-            Navigation.SelectedItem = Navigation.MenuItems.Concat(Navigation.FooterMenuItems).OfType<NavigationViewItem>().Single(item => item.Tag?.ToString() == page.Section);
+            Navigation.SelectedItem = Navigation.MenuItems.Concat(Navigation.FooterMenuItems).OfType<NavigationViewItem>().Single(item => item.Tag?.ToString() == NavigationSection(page));
             if (renderedSection != page.Section)
             {
                 var tabs = Pages.Where(route => route.Section == page.Section).GroupBy(route => route.Tab).Select(group => group.First()).ToArray();
@@ -75,13 +86,14 @@ public sealed partial class MainWindow
             ResourceTypeInput.Visibility = page.Tab == "resources" ? Visibility.Visible : Visibility.Collapsed;
             ResourceTypeInput.SelectedIndex = page == ProfilesNav ? 1 : 0;
             if (page.Tab == "resources") sectionHistory["resources"] = page;
-            SectionNavigation.Visibility = page.Section is "workspace" or "help" ? Visibility.Collapsed : Visibility.Visible;
+            SectionNavigation.Visibility = page.Section is "workspace" or "help" or "tools" ? Visibility.Collapsed : Visibility.Visible;
+            BackToAdvancedButton.Visibility = NavigationSection(page) == "tools" && page != AdvancedNav ? Visibility.Visible : Visibility.Collapsed;
         }
         finally { synchronizingNavigation = false; }
 
         PageTitle.Text = SectionTitle(page.Section); PageDescription.Text = page.Description;
         foreach (var (panel, route) in new (FrameworkElement, DockPage)[] { (WorkspacePanel, WorkspaceNav), (ConnectionPanel, ConnectionNav), (ModelsPanel, ModelsNav),
-            (CatalogPanel, CatalogNav), (TemplatesPanel, TemplatesNav), (ProfilesPanel, ProfilesNav), (EnhancementsPanel, EnhancementsNav), (GatewaysPanel, GatewaysNav),
+            (AdvancedPanel, AdvancedNav), (CatalogPanel, CatalogNav), (TemplatesPanel, TemplatesNav), (ProfilesPanel, ProfilesNav), (EnhancementsPanel, EnhancementsNav), (GatewaysPanel, GatewaysNav),
             (FilePreviewPanel, FilePreviewNav), (SourcesPanel, SourcesNav), (DiagnosticsPanel, DiagnosticsNav), (RecoveryPanel, RecoveryNav), (SettingsPanel, SettingsNav),
             (UpdatesPanel, UpdatesNav), (AboutPanel, AboutNav), (HelpPanel, HelpNav) }) panel.Visibility = page == route ? Visibility.Visible : Visibility.Collapsed;
         MobilePanel.Visibility = IsPhonePage ? Visibility.Visible : Visibility.Collapsed;
@@ -108,11 +120,13 @@ public sealed partial class MainWindow
             if ((page == GatewaysNav || page.Section == "phone") && options.SmokeOutput is null) await RefreshGatewaysAsync();
             if (page.Section == "phone") await RefreshMobileAsync();
             if (page == CatalogNav) RenderConfigurationCatalog();
+            if (page == AdvancedNav) RenderAdvancedTools();
             if (page == TemplatesNav) EnsureTemplateLibrary();
             if (page == RecoveryNav) ReadRecoveryStatus();
             if (page == ProfilesNav) ReadProfileNames();
             if (page == SettingsNav) ReadStartupSettings();
             if (page == FilePreviewNav) await ReadSavedConfigurationPreviewAsync();
+            if (page == WorkspaceNav && options.SmokeOutput is null) await ObserveDesktopTargetsAsync();
             if (!closing) RefreshView();
         }
         catch (Exception error) { if (!closing) SetShellError("页面读取未完成", error.Message); }
@@ -126,6 +140,36 @@ public sealed partial class MainWindow
     { NavigateTo(ModelsNav); FocusSearch(BehaviorModelInput); }
     private void OpenMobileSettingsClicked(object sender, RoutedEventArgs args) => NavigateTo(MobileSettingsNav);
 
+    private void OpenAdvancedClicked(object sender, RoutedEventArgs args) => NavigateTo(AdvancedNav, revealStart: true);
+    private void AdvancedSearchChanged(TextBox sender, TextBoxTextChangingEventArgs args) { if (initialized) RenderAdvancedTools(); }
+    private void RenderAdvancedTools()
+    {
+        var search = AdvancedSearchInput.Text.Trim();
+        AdvancedToolsList.Children.Clear();
+        var tools = new (DockPage Page, string Label, string Keywords)[]
+        {
+            (CatalogNav, "全部配置", "配置字段 config.toml"), (ProfilesNav, "Profile 文件", "资料 独立配置"),
+            (TemplatesNav, "配置方案", "模板"), (EnhancementsNav, "Codex 与增强", "速度 兼容 旧聊天 自动接回"),
+            (GatewaysNav, "模型网关", "服务 运行 统计"), (MobileSettingsNav, "手机服务设置", "网关 端口 HTTPS"),
+            (SourcesNav, "配置来源", "app-server 内核 生效 执行端 实验功能"), (DiagnosticsNav, "聊天参数", "诊断 会话 模型"),
+            (FilePreviewNav, "已保存文件", "快照 预览"), (RecoveryNav, "备份与恢复", "加密 还原 回滚")
+        };
+        foreach (var (page, label, keywords) in tools.Where(tool => (tool.Label + " " + tool.Keywords).Contains(search, StringComparison.OrdinalIgnoreCase)))
+        {
+            var button = new Button { Content = label, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left };
+            button.Click += (_, _) => NavigateTo(page, revealStart: true);
+            AdvancedToolsList.Children.Add(button);
+        }
+        AdvancedFieldSearchButton.Visibility = search.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+    private void SearchAdvancedFieldsClicked(object sender, RoutedEventArgs args)
+    {
+        NavigateTo(CatalogNav, revealStart: true);
+        CatalogScopeInput.SelectedItem = ((IReadOnlyList<CatalogScope>)CatalogScopeInput.ItemsSource).First(scope => scope.Id == "all");
+        CatalogSearchInput.Text = AdvancedSearchInput.Text;
+        FocusSearch(CatalogSearchInput);
+    }
+
     private void RefreshConsolidatedShell()
     {
         var editable = !ApplicationBusy && !dialogOpen && !closing;
@@ -134,7 +178,7 @@ public sealed partial class MainWindow
         // Switch to a compact selector before tabs need to compete with the form.
         var compact = Root.ActualWidth < 900;
         PageTitle.FontSize = compact ? 24 : 28;
-        PageDescription.Visibility = Root.ActualHeight < 600 ? Visibility.Collapsed : Visibility.Visible;
+        PageDescription.Visibility = Root.ActualHeight < 600 || currentPage.Description.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         SectionTabs.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         CompactSectionInput.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
         var pending = new List<(string Label, DockPage Page)>();
@@ -160,18 +204,19 @@ public sealed partial class MainWindow
         WorkspaceNextTitle.Text = next.Title; WorkspaceNextButton.Content = next.Action;
         WorkspaceNextButton.IsEnabled = editable;
         RefreshQuickModelEntry(editable);
-        var overview = gatewayManagement.Overview?.Home == viewModel.Home ? gatewayManagement.Overview : null;
-        WorkspaceRuntimeSummary.Text = "客户端增强：" + (applicationRuntime.IsEnhancementRunning ? "已接入" : "当前未接入") +
-            "\n模型网关：" + (overview?.Model.Status ?? "尚未确认") + "　手机服务：" + (overview?.Mobile.Status ?? "尚未确认") +
-            "\n配置文件、应用结果和聊天实际参数分别核对；聊天参数可在诊断与恢复查看。";
+        WorkspaceConnectionCard.Visibility = viewModel.SetupGuide.Kind == WorkspaceSetupKind.ExistingConnection ? Visibility.Visible : Visibility.Collapsed;
+        WorkspaceProfileName.Text = viewModel.ProfileName.Length > 0 ? viewModel.ProfileName : viewModel.Home;
+        WorkspaceDesktopStatus.Text = runningDesktopCount switch
+        { null => "Codex 状态待确认", 0 => "Codex 未运行", 1 => "Codex 正在运行", _ => runningDesktopCount + " 个 Codex 窗口正在运行" };
     }
 
-    private sealed record WorkspaceStep(string Title, string Action, DockPage Page, bool Apply = false);
+    private sealed record WorkspaceStep(string Title, string Action, DockPage Page, bool Apply = false, bool Open = false);
     private WorkspaceStep WorkspaceNextStep()
     {
         if (HasPendingRecovery) return new("配置需要恢复", "查看恢复记录", RecoveryNav);
-        if (viewModel.Error.Length > 0) return new("配置需要处理", "诊断与恢复", RecoveryNav);
-        if (connectionDraft.HasDraft) return new("主配置有未保存修改", "查看修改", CatalogNav);
+        if (viewModel.Error.Length > 0) return new("配置需要处理", "查看恢复记录", RecoveryNav);
+        if (connectionDraft.HasDraft) return new("主配置有未保存修改", "继续编辑",
+            connectionDraft.Edits.Count > 0 || connectionDraft.FieldErrors.Count > 0 ? CatalogNav : connectionDraft.ConnectionChanged || connectionDraft.DetailsChanged ? ConnectionNav : ModelsNav);
         if (!viewModel.CanApplyConfiguration) return new("先完成连接设置", "设置连接", ConnectionNav);
         if (lastApplication?.Outcome == DesktopApplyOutcome.Conflict) return new("配置已变化，需要核对", "核对配置来源", SourcesNav);
         if (desktopApplication.PendingRetry is not null) return new("客户端增强可重试", "重试增强", EnhancementsNav, true);
@@ -184,21 +229,22 @@ public sealed partial class MainWindow
             return new("模型已保存，等待应用", "在 Codex 使用新模型", WorkspaceNav, true);
         }
         if (lastApplication?.Outcome == DesktopApplyOutcome.ExitBlocked) return new("所选 Codex 尚未退出", "查看应用结果", EnhancementsNav);
-        if (lastApplication?.Outcome == DesktopApplyOutcome.Failed) return new("本次应用未完成", "查看应用结果", EnhancementsNav);
+        if (lastApplication?.Outcome == DesktopApplyOutcome.Failed && configurationResult?.WasWritten == true)
+            return new("配置已保存，应用未完成", "查看应用结果", EnhancementsNav);
         if (configurationResult?.Outcome == ConfigurationSaveOutcome.Saved && lastApplication?.Outcome is null or DesktopApplyOutcome.Cancelled)
-            return new("配置已保存，等待应用", "应用到 Codex", EnhancementsNav, true);
-        if (profileDraft.HasDraft) return new("还有未保存修改", "继续编辑 Profile", ProfilesNav);
-        if (HasTemplateDraft) return new("还有未保存修改", "继续编辑方案", TemplatesNav);
-        if (mobileDraft.HasDraft) return new("还有未保存修改", "继续编辑手机设置", MobileSettingsNav);
-        return lastApplication?.Outcome == DesktopApplyOutcome.Completed
-            ? new("本次应用已完成", "运行与增强", EnhancementsNav) : new("当前配置已读取", "运行与增强", EnhancementsNav);
+            return new("配置已保存，等待应用", runningDesktopCount switch
+            { > 0 => "重启 Codex 使用新设置", 0 => "打开 Codex 使用新设置", _ => "在 Codex 使用新设置" }, WorkspaceNav, true);
+        return new(lastApplication?.DesktopOpened == true ? "Codex 已打开" : "本机设置已读取",
+            runningDesktopCount is > 0 ? "回到 Codex" : "打开 Codex", WorkspaceNav, Open: true);
     }
     private async void WorkspaceNextClicked(object sender, RoutedEventArgs args)
         => await RunWorkspaceNextAsync();
     private async Task RunWorkspaceNextAsync()
     {
         if (ApplicationBusy || dialogOpen || closing) return;
-        var next = WorkspaceNextStep(); NavigateTo(next.Page, revealStart: true);
+        var next = WorkspaceNextStep();
+        if (next.Open) { await OpenWorkspaceDesktopAsync(); return; }
+        NavigateTo(next.Page, revealStart: true);
         if (next.Apply) await ApplyDesktopAsync();
     }
 }

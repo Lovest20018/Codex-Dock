@@ -13,36 +13,51 @@ public sealed partial class MainWindow
         void Check(bool value, string message)
         { if (!value) throw new InvalidOperationException(message); checks.Add(message); File.AppendAllText(Path.Combine(output, "progress.log"), "PASS " + message + Environment.NewLine); }
         var previous = viewModel.Home; var runtime = (SmokeDesktopApplyRuntime)applicationRuntime; var restarts = runtime.Restarts;
+        var previousTargets = runtime.Targets;
         var home = Path.Combine(output, "first-run-home"); var bad = Path.Combine(output, "first-run-broken-home");
         try
         {
             NavigateTo(WorkspaceNav); await SwitchHomeAsync(home);
-            Check(WorkspaceSetupCard.Visibility == Visibility.Visible && WorkspaceSetupTitle.Text.Contains("先设置连接") && !ApplyButton.IsEnabled && connectionDraft.Available &&
+            Check(WorkspaceNextButton.Content.ToString() == "设置连接" && WorkspaceConnectionCard.Visibility == Visibility.Collapsed && !ApplyButton.IsEnabled && connectionDraft.Available &&
                 !connectionDraft.HasDraft && !Directory.Exists(home) && !viewModel.IsBusy, "First-run workspace explains the next step keeps editing available and creates no home or settings");
             await ApplyDesktopAsync(); await TryAutomaticEnhancementsAsync();
             Check(runtime.Restarts == restarts && !Directory.Exists(home), "Empty first-run configuration cannot trigger manual desktop application or automatic reconnect");
             await CaptureAsync(output, "first-run-workspace-light.png");
-            OpenConnectionClicked(SetupConnectionButton, new());
-            Check(ConnectionPanel.Visibility == Visibility.Visible && BaseUrlInput.IsEnabled && ApiKeyInput.IsEnabled && !ApplyButton.IsEnabled,
+            await RunWorkspaceNextAsync();
+            Check(ConnectionPanel.Visibility == Visibility.Visible && SetupAuthenticationChoices.Visibility == Visibility.Visible && BaseUrlInput.IsEnabled && ApiKeyInput.IsEnabled && !ApplyButton.IsEnabled,
                 "First-run setup action opens the existing editable connection form without starting Codex");
             BaseUrlInput.Text = "https://first-ui.invalid/v1"; ConnectionKindInput.SelectedIndex = (int)ConnectionKind.ResponsesApi;
-            ApiKeyInput.Password = "fake-first-ui-secret"; BehaviorModelInput.Text = "first-selected-model";
+            ApiKeyInput.Password = "fake-first-ui-secret";
+            for (var i = 0; i < 30 && connectionDraft.ApiKey != "fake-first-ui-secret"; i++) await Task.Delay(20);
+            SelectSetupAuthentication(native: true); await ReadOfficialLoginAsync(backup: false, native: true);
+            Check(SetupNativeCard.Visibility == Visibility.Visible && SetupNativeStatus.Text.Contains("未") && !Directory.Exists(home) &&
+                connectionDraft.ApiKey == "fake-first-ui-secret", "Checking native login without credentials leaves the alternate API draft intact");
+            SelectSetupAuthentication(native: false); await DiscoverModelsAsync();
+            Check(DiscoveredModelsInput.Visibility == Visibility.Visible && connectionDraft.Model.Length == 0 && !Directory.Exists(home), "Reading available models is explicit and renders a choice on the first connection page");
+            DiscoveredModelsInput.SelectedIndex = 0;
+            Check(connectionDraft.Model == DiscoveredModelsInput.SelectedItem as string, "Selecting the listed model updates the same connection draft");
+            BehaviorModelInput.Text = "first-selected-model";
             for (var i = 0; i < 30 && (connectionDraft.ApiKey != "fake-first-ui-secret" || connectionDraft.Model != "first-selected-model"); i++) await Task.Delay(20);
             Check(connectionDraft.ApiKey == "fake-first-ui-secret" && connectionDraft.Model == "first-selected-model", "Immediate password and adjacent text edits retain the first-run key in the shared draft");
-            smokeDialog = async dialog =>
-            {
-                var text = ConfigurationDialogText(dialog);
-                Check(text.Contains(Path.Combine(home, "config.toml")) && !text.Contains("fake-first-ui-secret") && !Directory.Exists(home),
-                    "First connection review shows exact targets hides the key and remains read only before confirmation");
-                var shown = dialog.ShowAsync(); try { await CaptureAsync(output, "first-run-save-review.png", dialog); } finally { dialog.Hide(); await shown; }
-                return ContentDialogResult.None;
-            };
-            Check(!await SaveConnectionAsync() && connectionDraft.HasDraft && !Directory.Exists(home), "Cancelling first connection review preserves its draft without creating configuration or backup files");
+            runtime.Targets = [new(Path.Combine(output, "first-run-Codex.exe"), [])];
+            await PrepareConnectionReviewAsync();
+            Check(ConnectionReviewCard.Visibility == Visibility.Visible && connectionReview!.Review.Targets.Contains(Path.Combine(home, "config.toml")) &&
+                !ConnectionReviewSummary.Text.Contains("fake-first-ui-secret") && SaveConnectionButton.Content.ToString() == "保存并打开 Codex" && !Directory.Exists(home),
+                "First connection review shows the scope and default model without writing files or displaying the key");
+            await CaptureAsync(output, "first-run-save-review.png");
+            SetupEditReviewClicked(SetupEditReviewButton, new());
+            Check(connectionReview is null && connectionDraft.HasDraft && !Directory.Exists(home), "Returning from first connection review preserves its draft without creating configuration or backup files");
             smokeDialog = _ => Task.FromResult(ContentDialogResult.None);
             Check(!await SwitchHomeAsync(Path.Combine(output, "cancel-first-run-switch")) && viewModel.Home == home && connectionDraft.HasDraft && !Directory.Exists(home),
                 "Continuing to edit first-run settings cancels a directory switch without discarding the draft");
-            smokeDialog = _ => Task.FromResult(ContentDialogResult.Primary);
-            Check(await SaveConnectionAsync() && configurationResult?.BackupPath is { } backup && File.Exists(backup) && !connectionDraft.HasDraft &&
+            smokeDialog = _ => throw new InvalidOperationException("Inline connection review should be the only confirmation.");
+            await PrepareConnectionReviewAsync();
+            runtime.Targets = [new(Path.Combine(output, "different-Codex.exe"), [])];
+            await ConfirmConnectionReviewAsync(apply: true);
+            Check(connectionReview is null && connectionDraft.HasDraft && !Directory.Exists(home) && runtime.Restarts == restarts,
+                "A changed launch target invalidates the inline review before any save or restart");
+            await PrepareConnectionReviewAsync(); await ConfirmConnectionReviewAsync(apply: false);
+            Check(configurationResult?.BackupPath is { } backup && File.Exists(backup) && !connectionDraft.HasDraft &&
                 viewModel.CanApplyConfiguration && ApplyButton.IsEnabled && WorkspaceSetupCard.Visibility == Visibility.Collapsed && runtime.Restarts == restarts,
                 "Confirmed first connection save creates its encrypted backup clears setup guidance and waits for separate application");
             var saved = store.Load(home); var firstConfig = saved.Config!.ToArray(); var firstAuth = saved.Auth!.ToArray();
@@ -81,8 +96,36 @@ public sealed partial class MainWindow
             Check(viewModel.ConnectionLabel == "官方账号" && viewModel.CanApplyConfiguration && ApplyButton.IsEnabled && WorkspaceSetupCard.Visibility == Visibility.Collapsed &&
                 auth.SequenceEqual(File.ReadAllBytes(Path.Combine(official, "auth.json"))) && runtime.Restarts == restarts,
                 "Existing official login bypasses API setup while preserving native credentials and requiring explicit application");
+
+            var nativeHome = Path.Combine(output, "native-login-home"); await SwitchHomeAsync(nativeHome); NavigateTo(ConnectionNav);
+            SelectSetupAuthentication(native: true);
+            await OpenWorkspaceDesktopAsync(forLogin: true);
+            Check(runtime.Restarts == restarts + 1 && runtime.LastTarget?.IsRunning == false && !runtime.LastForce && !Directory.Exists(nativeHome),
+                "The native login action opens the isolated target with no restart, force exit or Dock file save");
+            Directory.CreateDirectory(nativeHome);
+            File.WriteAllText(Path.Combine(nativeHome, "config.toml"), "model='native-default'\n");
+            File.WriteAllBytes(Path.Combine(nativeHome, "auth.json"), auth);
+            await ReadOfficialLoginAsync(backup: false, native: true);
+            Check(viewModel.CanApplyConfiguration && viewModel.ModelLabel == "native-default" && SetupNativeStatus.Text.Contains("已读到登录") && store.LatestBackup(nativeHome) is null,
+                "Re-reading native login adopts credentials and defaults written by Codex without a Dock transaction");
+            NavigateTo(WorkspaceNav); var activations = runtime.Activations;
+            await RunWorkspaceNextAsync();
+            Check(WorkspaceNextButton.Content.ToString() == "回到 Codex" && runtime.Activations == activations + 1 && runtime.Restarts == restarts + 1,
+                "Home returns to the identified running window in one action without restarting it");
+
+            var combinedHome = Path.Combine(output, "first-run-apply-home"); await SwitchHomeAsync(combinedHome); NavigateTo(ConnectionNav);
+            runtime.Targets = [new(Path.Combine(output, "apply-Codex.exe"), [])];
+            connectionDraft.BaseUrl = "https://first-apply.invalid/v1"; connectionDraft.ApiKey = "fake-first-apply-key"; connectionDraft.Model = "apply-model";
+            await PrepareConnectionReviewAsync(); await ConfirmConnectionReviewAsync(apply: true);
+            Check(runtime.Restarts == restarts + 2 && lastApplication?.DesktopOpened == true && store.ReadSettings(store.Load(combinedHome)).Model == "apply-model" &&
+                store.LatestBackup(combinedHome) is not null && !connectionDraft.HasDraft && currentPage == ConnectionNav,
+                "One inline confirmation backs up, saves the reviewed connection and opens the identified desktop target");
         }
-        finally { smokeDialog = _ => Task.FromResult(ContentDialogResult.Secondary); await SwitchHomeAsync(previous); smokeDialog = null; Root.RequestedTheme = ElementTheme.Light; NavigateTo(WorkspaceNav); }
+        finally
+        {
+            runtime.Targets = previousTargets; openedDesktop = null; runningDesktopCount = null;
+            smokeDialog = _ => Task.FromResult(ContentDialogResult.Secondary); await SwitchHomeAsync(previous); smokeDialog = null; Root.RequestedTheme = ElementTheme.Light; NavigateTo(WorkspaceNav);
+        }
     }
     private async Task RunGatewayDiagnosticsSmokeAsync(string output, List<string> checks)
     {

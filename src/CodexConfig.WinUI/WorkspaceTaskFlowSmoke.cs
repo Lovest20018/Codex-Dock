@@ -29,7 +29,7 @@ public sealed partial class MainWindow
             NavigateTo(ConnectionNav); await Settle(); OpenModelsClicked(WorkspaceNextButton, new()); await Settle();
             var position = BehaviorModelInput.TransformToVisual(PageScroll).TransformPoint(new());
             Check(ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), BehaviorModelInput) && position.Y >= -1 && position.Y + BehaviorModelInput.ActualHeight <= PageScroll.ActualHeight + 1,
-                "The choose model link reveals and focuses the only model input after any remembered page position");
+                "Opening advanced model editing focuses the model input after any remembered page position");
             var original = store.Load(home); var runtime = (SmokeDesktopApplyRuntime)applicationRuntime;
             lastApplication = new(DesktopApplyOutcome.ExitBlocked, original, null, false, false, new("退出受阻", "模拟实例仍未退出", true)); RefreshView(); NavigateTo(WorkspaceNav); await Settle();
             Check(WorkspaceNextTitle.Text.Contains("未退出") && WorkspaceNextButton.Content.ToString() == "查看应用结果", "Workbench distinguishes an exit failure from a merely loaded configuration");
@@ -41,12 +41,11 @@ public sealed partial class MainWindow
             Check(currentPage == SourcesNav && sourceResult is null && runtime.Restarts == restarts, "Conflict diagnosis opens the source page without launching a native read or reapplying stale files");
             configurationResult = new(ConfigurationSaveOutcome.Saved, "fixture saved", original);
             lastApplication = new(DesktopApplyOutcome.Cancelled, original, null, false, false, new("已取消", "fixture cancelled")); RefreshView(); NavigateTo(WorkspaceNav);
-            Check(WorkspaceNextTitle.Text == "配置已保存，等待应用" && WorkspaceNextButton.Content.ToString() == "应用到 Codex", "Cancelling application retains the saved configuration's next step without claiming success");
+            Check(WorkspaceNextTitle.Text == "配置已保存，等待应用" && WorkspaceNextButton.Content.ToString()!.Contains("使用新设置"), "Cancelling application retains the saved configuration's next step without claiming success");
             lastApplication = null; configurationResult = null;
             await LoadProfileAsync("flow-profile"); ProfileDocumentInput.Text = "model='flow-profile-edit'\n"; RefreshView();
-            Check(WorkspaceNextTitle.Text == "还有未保存修改" && WorkspaceNextButton.Content.ToString() == "继续编辑 Profile", "Workbench gives an independent Profile draft a direct next step when the main configuration is clean");
-            WorkspaceNextClicked(WorkspaceNextButton, new()); await Settle();
-            Check(currentPage == ProfilesNav && profileDraft.HasDraft && original.SameContents(store.Load(home)), "Continuing an independent draft navigates without saving or replacing the main configuration");
+            Check(WorkspaceNextStep().Open && PendingChangesList.Children.Count == 1 && profileDraft.HasDraft && original.SameContents(store.Load(home)),
+                "Pending changes shows the independent Profile while Home keeps the normal Codex action");
             profileDraft.Load(null); NavigateTo(ConnectionNav); await Settle();
             var gap = ConnectionFields.TransformToVisual(PageScroll).TransformPoint(new()).Y;
             Check(gap >= 0 && gap < 35, "Closed global warnings and login guidance do not reserve empty rows above the connection fields");

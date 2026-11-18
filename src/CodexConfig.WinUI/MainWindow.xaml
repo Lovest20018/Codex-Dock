@@ -18,13 +18,12 @@
                 </StackPanel>
             </NavigationView.PaneHeader>
             <NavigationView.MenuItems>
-                <NavigationViewItem x:Name="WorkspaceSectionNav" Content="工作台" Tag="workspace" Icon="Home" />
-                <NavigationViewItem x:Name="ConfigurationSectionNav" Content="Codex 配置" Tag="configuration" Icon="Edit" />
-                <NavigationViewItem x:Name="RuntimeSectionNav" Content="运行与增强" Tag="runtime" Icon="Repair" />
-                <NavigationViewItem x:Name="MobileSectionNav" Content="手机访问" Tag="phone" Icon="CellPhone" />
-                <NavigationViewItem x:Name="DiagnosticsSectionNav" Content="诊断与恢复" Tag="diagnosis" Icon="Find" />
+                <NavigationViewItem x:Name="WorkspaceSectionNav" Content="首页" Tag="workspace" Icon="Home" />
+                <NavigationViewItem x:Name="ConfigurationSectionNav" Content="连接与模型" Tag="configuration" Icon="Edit" />
+                <NavigationViewItem x:Name="MobileSectionNav" Content="手机连接" Tag="phone" Icon="CellPhone" />
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
+                <NavigationViewItem x:Name="AdvancedSectionNav" Content="高级工具" Tag="tools" Icon="Repair" />
                 <NavigationViewItem x:Name="SettingsSectionNav" Content="设置" Tag="settings" Icon="Setting" />
                 <NavigationViewItem x:Name="HelpSectionNav" Content="帮助" Tag="help" Icon="Help" />
             </NavigationView.FooterMenuItems>
@@ -51,7 +50,8 @@
                 </Grid>
                 <StackPanel Grid.Row="1" Margin="24,8,24,14" Spacing="12">
                     <StackPanel Spacing="6">
-                        <TextBlock x:Name="PageTitle" Text="工作台" Style="{StaticResource TitleTextBlockStyle}" />
+                        <HyperlinkButton x:Name="BackToAdvancedButton" Content="返回高级工具" Click="OpenAdvancedClicked" Padding="0" Visibility="Collapsed" />
+                        <TextBlock x:Name="PageTitle" Text="首页" Style="{StaticResource TitleTextBlockStyle}" />
                         <TextBlock x:Name="PageDescription" Text="先确认工作区，再完成当前需要的操作。" TextWrapping="Wrap" Opacity="0.7" />
                     </StackPanel>
 
@@ -81,7 +81,6 @@
                             <TextBlock x:Name="WorkspaceSetupTitle" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
                             <TextBlock x:Name="WorkspaceSetupMessage" TextWrapping="Wrap" Opacity="0.8" />
                             <local:ActionWrapPanel>
-                                <Button x:Name="SetupConnectionButton" Content="设置连接" Click="OpenConnectionClicked" />
                                 <Button x:Name="SetupReloadButton" Content="重新读取" Click="ReloadClicked" />
                                 <Button x:Name="SetupRecoveryButton" Content="查看恢复记录" Click="OpenRecoveryClicked" Visibility="Collapsed" />
                             </local:ActionWrapPanel>
@@ -96,86 +95,108 @@
                                 <local:ActionWrapPanel>
                                     <Button x:Name="WorkspaceNextButton" Content="设置连接" Click="WorkspaceNextClicked" Style="{StaticResource AccentButtonStyle}" />
                                     <Button x:Name="QuickModelButton" Content="更换模型" Click="QuickModelClicked" />
+                                    <Button Content="连接手机" Click="OpenMobileClicked" />
                                     <Button x:Name="CancelQuickModelReadButton" Content="取消读取" Click="CancelQuickModelReadClicked" Visibility="Collapsed" />
                                     <Button x:Name="QuickModelApplyDetailsButton" Content="查看应用详情" Click="OpenEnhancementsClicked" Visibility="Collapsed" />
                                 </local:ActionWrapPanel>
                                 <TextBlock x:Name="QuickModelHint" TextWrapping="Wrap" Opacity="0.75" />
                             </StackPanel>
                         </Border>
-                        <Grid ColumnSpacing="16">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                            <Border Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                        <Border x:Name="WorkspaceConnectionCard" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                                 <StackPanel Spacing="10">
-                                    <TextBlock Text="当前连接" FontWeight="SemiBold" />
+                                    <TextBlock x:Name="WorkspaceProfileName" FontWeight="SemiBold" TextWrapping="Wrap" />
                                     <TextBlock x:Name="ConnectionText" Text="尚未读取" Style="{StaticResource SubtitleTextBlockStyle}" />
                                     <TextBlock x:Name="EndpointText" TextWrapping="Wrap" Opacity="0.7" />
                                     <TextBlock x:Name="ModelText" TextWrapping="Wrap" Opacity="0.7" />
-                                    <HyperlinkButton Content="编辑连接配置" Click="OpenConnectionClicked" Padding="0" HorizontalAlignment="Left" />
+                                    <TextBlock x:Name="WorkspaceDesktopStatus" TextWrapping="Wrap" Opacity="0.7" />
+                                    <HyperlinkButton Content="编辑连接" Click="OpenConnectionClicked" Padding="0" HorizontalAlignment="Left" />
                                 </StackPanel>
-                            </Border>
-                            <Border Grid.Column="1" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                                <StackPanel Spacing="10">
-                                    <TextBlock Text="客户端增强" FontWeight="SemiBold" />
-                                    <TextBlock x:Name="EnhancementSummary" Text="尚未读取" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                    <TextBlock Text="旧聊天接续、速度兼容和自动接回" TextWrapping="Wrap" Opacity="0.7" />
-                                    <HyperlinkButton Content="管理客户端增强" Click="OpenEnhancementsClicked" Padding="0" HorizontalAlignment="Left" />
-                                </StackPanel>
-                            </Border>
-                        </Grid>
-                        <TextBlock x:Name="WorkspaceRuntimeSummary" TextWrapping="Wrap" />
-                        <local:ActionWrapPanel>
-                            <Button Content="运行与增强" Click="OpenEnhancementsClicked" />
-                            <Button Content="手机访问" Click="OpenMobileClicked" />
-                            <Button x:Name="ReloadButton" Content="重新读取配置" Click="ReloadClicked" />
-                        </local:ActionWrapPanel>
+                        </Border>
+                        <Expander Header="更多操作" HorizontalAlignment="Stretch">
+                            <StackPanel Spacing="10">
+                                <TextBlock x:Name="EnhancementSummary" TextWrapping="Wrap" />
+                                <local:ActionWrapPanel>
+                                    <Button Content="查看运行状态" Click="OpenEnhancementsClicked" />
+                                    <Button x:Name="ReloadButton" Content="重新读取配置" Click="ReloadClicked" />
+                                </local:ActionWrapPanel>
+                            </StackPanel>
+                        </Expander>
                     </StackPanel>
 
                     <StackPanel x:Name="ConnectionPanel" Spacing="16" Visibility="Collapsed">
-                        <InfoBar x:Name="ConnectionLoginInfo" IsOpen="True" IsClosable="False" Severity="Informational" />
-                                <StackPanel x:Name="OfficialLoginPanel" Spacing="10" Visibility="Collapsed">
-                                    <TextBlock Text="请先在 Codex 桌面完成 ChatGPT 登录，再读取当前目录的官方登录。" TextWrapping="Wrap" Opacity="0.7" />
+                        <local:ActionWrapPanel x:Name="SetupAuthenticationChoices">
+                            <ToggleButton x:Name="SetupChatGptChoice" Content="用 ChatGPT 账号登录" Click="SetupChatGptClicked" />
+                            <ToggleButton x:Name="SetupApiChoice" Content="用服务商给的密钥" Click="SetupApiClicked" />
+                        </local:ActionWrapPanel>
+                        <Border x:Name="SetupNativeCard" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Visibility="Collapsed">
+                            <StackPanel Spacing="12">
+                                <TextBlock x:Name="SetupNativeHint" TextWrapping="Wrap" />
+                                <local:ActionWrapPanel>
+                                    <Button x:Name="OpenNativeLoginButton" Content="打开 Codex 登录" Click="OpenNativeLoginClicked" Style="{StaticResource AccentButtonStyle}" />
+                                    <Button x:Name="RereadNativeLoginButton" Content="我已登录，重新读取" Click="RereadNativeLoginClicked" />
+                                </local:ActionWrapPanel>
+                                <TextBlock x:Name="SetupNativeStatus" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <Border x:Name="SetupApiCard" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                            <StackPanel x:Name="ConnectionFields" Spacing="16">
+                                <ComboBox x:Name="ConnectionModeInput" Header="连接方式" HorizontalAlignment="Stretch" SelectionChanged="ConnectionSelectionChanged">
+                                    <ComboBoxItem Content="仅用服务商密钥" />
+                                    <ComboBoxItem Content="保留 ChatGPT 登录，模型使用此密钥" />
+                                </ComboBox>
+                                <TextBlock x:Name="ConnectionModeHint" TextWrapping="Wrap" Opacity="0.7" />
+                                <InfoBar x:Name="ConnectionLoginInfo" IsOpen="True" IsClosable="False" Severity="Informational" />
+                                <StackPanel x:Name="OfficialLoginPanel" Spacing="8" Visibility="Collapsed">
                                     <local:ActionWrapPanel>
-                                        <Button x:Name="ReadOfficialLoginButton" Content="读取当前官方登录" Click="ReadOfficialLoginClicked" />
+                                        <Button x:Name="ReadOfficialLoginButton" Content="读取当前 ChatGPT 登录" Click="ReadOfficialLoginClicked" />
                                         <Button x:Name="RestoreOfficialLoginButton" Content="读取登录备份" Click="RestoreOfficialLoginClicked" />
                                     </local:ActionWrapPanel>
                                     <TextBlock x:Name="OfficialLoginStatus" TextWrapping="Wrap" />
                                 </StackPanel>
-                        <Border Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                            <StackPanel x:Name="ConnectionFields" Spacing="16">
-                                <ComboBox x:Name="ConnectionModeInput" Header="连接方式" HorizontalAlignment="Stretch" SelectionChanged="ConnectionSelectionChanged">
-                                    <ComboBoxItem Content="API Key 直连" />
-                                    <ComboBoxItem Content="官方账号 + API 服务" />
-                                </ComboBox>
-                                <TextBlock x:Name="ConnectionModeHint" TextWrapping="Wrap" Opacity="0.7" />
                                 <TextBox x:Name="BaseUrlInput" Header="服务地址" PlaceholderText="https://your-service.example/v1" TextChanging="ConnectionTextChanged" MaxLength="4096" />
                                 <CheckBox x:Name="HttpConsentInput" Checked="HttpConsentChanged" Unchecked="HttpConsentChanged" Visibility="Collapsed">
                                     <TextBlock x:Name="HttpConsentText" TextWrapping="Wrap" />
                                 </CheckBox>
-                                <PasswordBox x:Name="ApiKeyInput" Header="API Key" PasswordRevealMode="Peek" PasswordChanging="ConnectionKeyChanging" MaxLength="8192" />
-                                <TextBlock x:Name="CredentialSourceText" TextWrapping="Wrap" Opacity="0.7" />
+                                <PasswordBox x:Name="ApiKeyInput" Header="服务商密钥（API Key）" PasswordRevealMode="Peek" PasswordChanging="ConnectionKeyChanging" MaxLength="8192" />
                                 <InfoBar x:Name="LegacyKeyInfo" IsOpen="False" IsClosable="False" Severity="Informational" Title="当前使用旧 PAT">
                                     <InfoBar.ActionButton><Button x:Name="MigrateKeyButton" Content="迁移为 API Key" Click="MigrateKeyClicked" /></InfoBar.ActionButton>
                                 </InfoBar>
-                                <ComboBox x:Name="ConnectionKindInput" Header="服务协议" HorizontalAlignment="Stretch" SelectionChanged="ConnectionSelectionChanged">
-                                    <ComboBoxItem Content="Codex Relay（/backend-api/codex）" />
-                                    <ComboBoxItem Content="Responses API（/v1）" />
-                                </ComboBox>
-                                <CheckBox x:Name="ConnectionProxyInput" Content="模型网关使用系统代理" Checked="ConnectionProxyChanged" Unchecked="ConnectionProxyChanged" />
-                                <StackPanel x:Name="GatewayWaitFields" Spacing="8">
-                                    <TextBox x:Name="GatewayHeaderWaitInput" Header="模型网关等待响应头（秒）" TextChanging="ConnectionTextChanged" MaxLength="4" />
-                                    <TextBlock Text="60–3600 秒，默认 120。仅用于本网关的 HTTP 请求；连接最多 30 秒，开始传输后每次数据间最多等待 5 分钟。保存后新请求采用，当前请求不变。" TextWrapping="Wrap" Opacity="0.7" />
-                                </StackPanel>
-                                <Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                    <TextBlock x:Name="ConnectionModelSummary" VerticalAlignment="Center" TextWrapping="Wrap" />
-                                    <Button Grid.Column="1" Content="选择模型 →" Click="OpenModelsClicked" />
-                                </Grid>
-                                <Expander Header="名称与备注（可选）" HorizontalAlignment="Stretch"><StackPanel Spacing="12">
-                                <TextBox x:Name="ConnectionNameInput" Header="连接名称（可选）" TextChanging="ConnectionTextChanged" MaxLength="60" />
-                                <TextBox x:Name="ConnectionNoteInput" Header="备注（可选）" TextChanging="ConnectionTextChanged" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="500" MinHeight="80" />
-                                </StackPanel></Expander>
+                                <TextBlock x:Name="ConnectionModelSummary" TextWrapping="Wrap" FontWeight="SemiBold" />
+                                <local:ActionWrapPanel>
+                                    <Button x:Name="DiscoverModelsButton" Content="读取可用模型" Click="DiscoverModelsClicked" />
+                                    <Button x:Name="CancelDiscoveryButton" Content="取消读取" Click="CancelDiscoveryClicked" Visibility="Collapsed" />
+                                    <Button x:Name="CheckServiceKeyButton" Content="检查密钥" Click="CheckServiceKeyClicked" Visibility="Collapsed" />
+                                </local:ActionWrapPanel>
+                                <TextBlock x:Name="ModelDiscoveryStatus" TextWrapping="Wrap" Opacity="0.7" AutomationProperties.LiveSetting="Polite" />
+                                <ComboBox x:Name="DiscoveredModelsInput" Header="默认模型" Visibility="Collapsed" HorizontalAlignment="Stretch" SelectionChanged="DiscoveredModelChanged" PlaceholderText="选择一个模型" />
+                                <Expander x:Name="ConnectionOptions" Header="更多选项" HorizontalAlignment="Stretch">
+                                    <StackPanel Spacing="12">
+                                        <StackPanel x:Name="ConnectionModelEditorHost" />
+                                        <ComboBox x:Name="ConnectionKindInput" Header="服务协议" HorizontalAlignment="Stretch" SelectionChanged="ConnectionSelectionChanged">
+                                            <ComboBoxItem Content="Codex Relay（/backend-api/codex）" />
+                                            <ComboBoxItem Content="Responses API（/v1）" />
+                                        </ComboBox>
+                                        <CheckBox x:Name="ConnectionProxyInput" Content="模型网关使用系统代理" Checked="ConnectionProxyChanged" Unchecked="ConnectionProxyChanged" />
+                                        <StackPanel x:Name="GatewayWaitFields" Spacing="8">
+                                            <TextBox x:Name="GatewayHeaderWaitInput" Header="模型网关等待响应头（秒）" TextChanging="ConnectionTextChanged" MaxLength="4" />
+                                            <TextBlock Text="60–3600 秒，默认 120。保存后新请求采用。" TextWrapping="Wrap" Opacity="0.7" />
+                                        </StackPanel>
+                                        <TextBlock x:Name="CredentialSourceText" TextWrapping="Wrap" Opacity="0.7" />
+                                        <TextBox x:Name="ConnectionNameInput" Header="连接名称（可选）" TextChanging="ConnectionTextChanged" MaxLength="60" />
+                                        <TextBox x:Name="ConnectionNoteInput" Header="备注（可选）" TextChanging="ConnectionTextChanged" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="500" MinHeight="80" />
+                                    </StackPanel>
+                                </Expander>
                             </StackPanel>
                         </Border>
-                        <TextBlock Text="修改先保留为草稿。查看差异并确认后，才写入文件并加密备份；保存不会自动重启 Codex。" TextWrapping="Wrap" Opacity="0.7" />
+                        <Border x:Name="ConnectionReviewCard" Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" Visibility="Collapsed">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="核对连接" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <TextBlock x:Name="ConnectionReviewSummary" TextWrapping="Wrap" />
+                                <ComboBox x:Name="ConnectionTargetInput" Header="选择本次使用的 Codex" DisplayMemberPath="Label" HorizontalAlignment="Stretch" SelectionChanged="ConnectionTargetChanged" />
+                                <TextBlock x:Name="ConnectionReviewImpact" TextWrapping="Wrap" />
+                                <Expander Header="查看本次修改明细" x:Name="ConnectionReviewDetails" HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                        </Border>
                         <TextBlock x:Name="SavedBackupText" TextWrapping="Wrap" IsTextSelectionEnabled="True" Opacity="0.7" Visibility="Collapsed" />
                     </StackPanel>
 
@@ -183,13 +204,10 @@
                         <Border Padding="20" CornerRadius="8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                             <StackPanel Spacing="12">
                                 <TextBlock Text="默认主模型" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                <TextBox x:Name="BehaviorModelInput" Header="模型 ID" TextChanging="BehaviorModelChanged" MaxLength="512" />
-                                <local:ActionWrapPanel>
-                                    <Button x:Name="DiscoverModelsButton" Content="获取服务模型" Click="DiscoverModelsClicked" />
-                                    <Button x:Name="CancelDiscoveryButton" Content="取消获取" Click="CancelDiscoveryClicked" Visibility="Collapsed" />
-                                </local:ActionWrapPanel>
-                                <TextBlock x:Name="ModelDiscoveryStatus" Text="只向当前服务读取模型目录；不会发送对话或自动更改模型。" TextWrapping="Wrap" Opacity="0.7" />
-                                <ComboBox x:Name="DiscoveredModelsInput" Header="服务返回的模型" Visibility="Collapsed" HorizontalAlignment="Stretch" SelectionChanged="DiscoveredModelChanged" PlaceholderText="请选择，或继续手填模型 ID" />
+                                <StackPanel x:Name="AdvancedModelEditorHost">
+                                    <TextBox x:Name="BehaviorModelInput" Header="模型 ID" TextChanging="BehaviorModelChanged" MaxLength="512" />
+                                </StackPanel>
+                                <HyperlinkButton Content="读取服务模型" Click="OpenConnectionClicked" Padding="0" />
 
                                 <TextBlock x:Name="ModelCapabilityStatus" TextWrapping="Wrap" Opacity="0.7" />
                                 <StackPanel x:Name="BehaviorFields" Spacing="14" />
@@ -215,8 +233,16 @@
                         <HyperlinkButton Content="管理旧聊天接续和速度兼容" Click="OpenEnhancementsClicked" Padding="0" HorizontalAlignment="Left" />
                     </StackPanel>
 
+                    <StackPanel x:Name="AdvancedPanel" Spacing="14" Visibility="Collapsed">
+                        <TextBox x:Name="AdvancedSearchInput" Header="搜索高级工具" PlaceholderText="例如备份、Profile 或 approval_policy" TextChanging="AdvancedSearchChanged" MaxLength="200" />
+                        <StackPanel x:Name="AdvancedToolsList" Spacing="8" />
+                        <HyperlinkButton x:Name="AdvancedFieldSearchButton" Content="在全部配置中搜索字段" Click="SearchAdvancedFieldsClicked" Padding="0" Visibility="Collapsed" />
+                    </StackPanel>
+
                     <StackPanel x:Name="CatalogPanel" Spacing="16" Visibility="Collapsed">
                         <TextBlock Text="编辑当前目录的 config.toml；字段先进入同一份草稿，确认差异后才写入。实际生效值还可能受项目、Profile 和组织配置影响。" TextWrapping="Wrap" Opacity="0.7" />
+                        <TextBlock x:Name="CatalogReferenceText" TextWrapping="Wrap" Opacity="0.7" />
+                        <HyperlinkButton Content="核对配置来源" Click="OpenSourcesClicked" Padding="0" />
                         <TextBox x:Name="CatalogSearchInput" Header="搜索配置名称、说明或字段" TextChanging="CatalogSearchChanged" MaxLength="200" />
                         <Grid ColumnSpacing="12">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
@@ -246,7 +272,10 @@
                     <StackPanel x:Name="SourcesPanel" Spacing="16" Visibility="Collapsed">
                         <TextBlock Text="明确选择本机执行端后，通过一个临时 app-server 读取配置层与来源。只读已保存文件，不启动聊天或执行工具；现有聊天可能采用不同参数。" TextWrapping="Wrap" Opacity="0.7" />
                         <TextBox x:Name="SourceExecutableInput" Header="本机执行端 codex.exe" TextChanging="SourceConditionChanged" MaxLength="2000" />
-                        <Button x:Name="ChooseSourceExecutableButton" Content="选择执行端" Click="ChooseSourceExecutableClicked" HorizontalAlignment="Left" />
+                        <local:ActionWrapPanel>
+                            <Button x:Name="FindSourceExecutableButton" Content="自动查找" Click="FindSourceExecutableClicked" />
+                            <Button x:Name="ChooseSourceExecutableButton" Content="选择执行端" Click="ChooseSourceExecutableClicked" />
+                        </local:ActionWrapPanel>
                         <TextBox x:Name="SourceProjectInput" Header="项目目录（决定项目覆盖层）" TextChanging="SourceConditionChanged" MaxLength="2000" />
                         <Button x:Name="ChooseSourceProjectButton" Content="选择项目目录" Click="ChooseSourceProjectClicked" HorizontalAlignment="Left" />
                         <TextBox x:Name="SourceProfileInput" Header="Profile 名称（留空读取主配置）" TextChanging="SourceConditionChanged" MaxLength="64" />
@@ -464,7 +493,7 @@
 
                     <StackPanel x:Name="AboutPanel" Visibility="Collapsed" Spacing="16">
                         <TextBlock Text="Codex Dock · Windows" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
-                        <TextBlock Text="通过工作台、Codex 配置、运行与增强、手机访问、诊断与恢复管理连接、模型、Profile、方案库、备份与后台服务。修改先保留为草稿，核对差异并确认保存后，再按需要应用到 Codex。" TextWrapping="Wrap" />
+                        <TextBlock Text="在 Windows 管理 Codex 的模型连接和手机服务。高级工具提供配置查询、网关和备份。" TextWrapping="Wrap" />
                         <TextBlock Text="增强偏好按配置目录保存。窗口关闭后收起到托盘，增强继续运行。可创建增强快捷方式；重开程序会核对并接回之前确认的实例。" TextWrapping="Wrap" Opacity="0.7" />
                     </StackPanel>
 
@@ -612,9 +641,10 @@
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                     <StackPanel Spacing="8">
                         <StackPanel x:Name="ConnectionDraftActions" Spacing="8" Visibility="Collapsed">
-                            <TextBlock Text="配置有未保存修改，查看并确认后再应用。" TextWrapping="Wrap" />
                             <local:ActionWrapPanel>
                                 <Button x:Name="SaveConnectionButton" Content="查看差异并保存" Style="{StaticResource AccentButtonStyle}" Click="SaveConnectionClicked" />
+                                <Button x:Name="SetupSaveOnlyButton" Content="仅保存" Click="SetupSaveOnlyClicked" Visibility="Collapsed" />
+                                <Button x:Name="SetupEditReviewButton" Content="返回修改" Click="SetupEditReviewClicked" Visibility="Collapsed" />
                                 <Button x:Name="DiscardConnectionButton" Content="撤销修改" Click="DiscardConnectionClicked" />
                             </local:ActionWrapPanel>
                         </StackPanel>

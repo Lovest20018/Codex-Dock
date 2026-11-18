@@ -34,6 +34,7 @@ public sealed partial class MainWindow
         {
             if (ReferenceEquals(currentPage, HelpNav)) FocusSearch(HelpSearchInput);
             else if (ReferenceEquals(currentPage, SourcesNav)) FocusSearch(SourceSearchInput);
+            else if (ReferenceEquals(currentPage, AdvancedNav)) FocusSearch(AdvancedSearchInput);
             else { NavigateTo(CatalogNav); FocusSearch(CatalogSearchInput); }
             return;
         }
@@ -44,8 +45,11 @@ public sealed partial class MainWindow
         { if (SaveTemplateButton.IsEnabled) { SaveTemplateEdit(); RefreshView(); } return; }
         if (ReferenceEquals(currentPage, MobileSettingsNav))
         { if (mobileDraft.HasDraft && SaveMobileButton.IsEnabled) await SaveMobileAsync(); return; }
-        if (ApplicationFooter.Visibility == Visibility.Visible && ConnectionDraftActions.Visibility == Visibility.Visible && SaveConnectionButton.IsEnabled)
-            await SaveConnectionAsync();
+        if (ApplicationFooter.Visibility == Visibility.Visible && ConnectionDraftActions.Visibility == Visibility.Visible)
+        {
+            if (currentPage == ConnectionNav && connectionReview is not null && SetupSaveOnlyButton.IsEnabled) await ConfirmConnectionReviewAsync(apply: false);
+            else if (SaveConnectionButton.IsEnabled) await SaveConnectionAsync();
+        }
     }
     private void FocusSearch(TextBox input)
     {

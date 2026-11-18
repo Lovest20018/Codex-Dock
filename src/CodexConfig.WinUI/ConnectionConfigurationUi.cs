@@ -8,7 +8,7 @@ namespace CodexConfig.WinUI;
 
 public sealed partial class MainWindow
 {
-    private bool savingConfiguration, loadingConnection;
+    private bool savingConfiguration, loadingConnection, setupProtocolSelected;
     private ConfigurationSaveResult? configurationResult;
 
     private void LoadWorkspace(string home) { quickModelAwaitingApply = false; viewModel.Load(home); LoadConnectionDraft(); LoadGatewayPreferences(); ResetMobileHome(); ResetProfileHome(); ResetDiagnosticHome(); }
@@ -17,17 +17,20 @@ public sealed partial class MainWindow
     {
         InvalidateSavedPreview();
         ReadRecoveryStatus(); templateApplication = null;
-        officialLoginStatus = ""; ResetModelDiscovery();
+        officialLoginStatus = ""; setupNativeStatus = ""; ClearConnectionReview(refresh: false); ResetModelDiscovery();
         loadingConnection = true;
-        try { connectionDraft.Load(viewModel.ConfigurationAvailable && !HasPendingRecovery ? viewModel.Snapshot : null); }
+        try { connectionDraft.Load(viewModel.ConfigurationAvailable && !HasPendingRecovery ? viewModel.Snapshot : null, firstConnection: viewModel.NeedsConnectionSetup); }
         finally { loadingConnection = false; }
+        setupProtocolSelected = false;
+        setupUsesChatGpt = connectionDraft.HasCurrentOfficialLogin && !connectionDraft.HasSavedApiConnection;
+        ConnectionOptions.IsExpanded = false;
         RefreshView();
     }
 
     private void ConnectionDraftChanged(object? sender, PropertyChangedEventArgs args)
     {
         if (args.PropertyName != nameof(ConnectionDraftViewModel.Revision) || loadingConnection || closing) return;
-        automaticEnhancements.Cancel(); desktopApplication.ClearEnhancementRetry();
+        automaticEnhancements.Cancel(); desktopApplication.ClearEnhancementRetry(); ClearConnectionReview(refresh: false);
         lastApplication = null; configurationResult = null; shellError = "";
         viewModel.Session.MarkDraft(connectionDraft.HasDraft); RefreshView();
     }
@@ -39,6 +42,8 @@ public sealed partial class MainWindow
         foreach (var control in new Control[] { ConnectionModeInput, ConnectionKindInput, BaseUrlInput, ApiKeyInput,
             ConnectionNameInput, ConnectionNoteInput, ConnectionProxyInput, HttpConsentInput, GatewayHeaderWaitInput }) control.IsEnabled = editable;
         ConnectionModeInput.SelectedIndex = (int)connectionDraft.Mode; ConnectionKindInput.SelectedIndex = (int)connectionDraft.Kind;
+        ConnectionModeInput.Visibility = connectionDraft.HasOfficialLogin || connectionDraft.HasSavedApiConnection || connectionDraft.Mode == ConnectionMode.OfficialWithApi
+            ? Visibility.Visible : Visibility.Collapsed;
         if (BaseUrlInput.Text != connectionDraft.BaseUrl) BaseUrlInput.Text = connectionDraft.BaseUrl;
         if (ApiKeyInput.Password != connectionDraft.ApiKey) ApiKeyInput.Password = connectionDraft.ApiKey;
         if (ConnectionNameInput.Text != connectionDraft.Name) ConnectionNameInput.Text = connectionDraft.Name;
@@ -48,14 +53,15 @@ public sealed partial class MainWindow
         ConnectionProxyInput.IsChecked = connectionDraft.UseSystemProxy;
         ConnectionProxyInput.Visibility = connectionDraft.Mode == ConnectionMode.OfficialWithApi ? Visibility.Visible : Visibility.Collapsed;
         ConnectionLoginInfo.Title = connectionDraft.HasStagedOfficialLogin ? "官方登录已暂存" : connectionDraft.HasOfficialLogin ? "已读取本地官方登录" : "使用服务提供的 API Key";
-        ConnectionLoginInfo.IsOpen = connectionDraft.Mode == ConnectionMode.OfficialWithApi || connectionDraft.HasStagedOfficialLogin;
+        ConnectionLoginInfo.IsOpen = connectionDraft.Mode == ConnectionMode.OfficialWithApi || connectionDraft.HasOfficialLogin;
         ConnectionLoginInfo.Visibility = ConnectionLoginInfo.IsOpen ? Visibility.Visible : Visibility.Collapsed;
         ConnectionLoginInfo.Message = connectionDraft.HasStagedOfficialLogin ? "确认保存后才使用这份登录；切换为 API Key 直连时不会采用暂存身份。" :
             connectionDraft.HasOfficialLogin ? "只修改模型或备注会保留现有登录。切换为 API Key 直连时，原登录纳入加密备份。" :
             "“官方账号 + API 服务”需要在 Codex 桌面登录后读取当前文件；服务的 API Key 与官方账号分别使用。";
         ConnectionModeHint.Text = connectionDraft.Mode == ConnectionMode.OfficialWithApi
             ? "保留官方账号身份，模型请求通过本机网关使用下方 API Key。应用时会先准备网关。"
-            : "使用服务提供的 API Key。模型在“模型与行为”中选择。";
+            : connectionDraft.HasOfficialLogin ? "保存纯密钥连接后，Codex 将使用服务商密钥登录。" : "";
+        ConnectionModeHint.Visibility = ConnectionModeHint.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         CredentialSourceText.Text = "当前凭据来源：" + connectionDraft.CredentialSource +
             (connectionDraft.ProviderName.Length > 0 ? "\n供应商：" + connectionDraft.ProviderName : "");
         LegacyKeyInfo.IsOpen = connectionDraft.NeedsApiKeyMigration;
@@ -64,24 +70,36 @@ public sealed partial class MainWindow
         HttpConsentInput.Visibility = connectionDraft.HttpRequiredOrigin is null ? Visibility.Collapsed : Visibility.Visible;
         HttpConsentInput.IsChecked = connectionDraft.HttpAuthorized;
         HttpConsentText.Text = "确认凭据和模型内容将以明文发送到 " + connectionDraft.HttpRequiredOrigin;
-        var configurationScope = currentPage.EditsConfiguration && !(currentPage == TemplatesNav && editingTemplate is not null);
+        var configurationScope = currentPage.EditsConfiguration && !(currentPage == TemplatesNav && editingTemplate is not null) && !(currentPage == ConnectionNav && ShowingNativeLogin);
         ConnectionDraftActions.Visibility = configurationScope && connectionDraft.HasDraft ? Visibility.Visible : Visibility.Collapsed;
         var showApply = currentPage == EnhancementsNav || configurationScope && configurationResult?.Succeeded == true;
         DesktopApplicationActions.Visibility = showApply && !(configurationScope && connectionDraft.HasDraft) ? Visibility.Visible : Visibility.Collapsed;
         ApplicationFooter.Visibility = configurationScope && connectionDraft.HasDraft || showApply ? Visibility.Visible : Visibility.Collapsed;
-        SaveConnectionButton.Content = savingConfiguration ? "正在核对…" : "查看差异并保存";
+        SaveConnectionButton.Content = savingConfiguration ? "正在保存…" : "查看差异并保存";
         SaveConnectionButton.IsEnabled = DiscardConnectionButton.IsEnabled = connectionDraft.HasDraft && !ManualApplicationBusy && !dialogOpen && !closing;
         SavedBackupText.Visibility = configurationResult?.BackupPath is null ? Visibility.Collapsed : Visibility.Visible;
         SavedBackupText.Text = configurationResult?.BackupPath is { } backup ? "本次加密备份：\n" + backup : "";
         RefreshOfficialAndDiscoveryControls(editable);
+        RefreshConnectionSetupReview(editable);
     }
 
-    private void OpenConnectionClicked(object sender, RoutedEventArgs args) => NavigateTo(ConnectionNav);
+    private void OpenConnectionClicked(object sender, RoutedEventArgs args) => NavigateTo(ConnectionNav, revealStart: true);
     private bool CanEditConnection => initialized && !updatingControls && !loadingConnection && !HasPendingRecovery && !ManualApplicationBusy && !dialogOpen && !closing;
     private void ConnectionTextChanged(TextBox sender, TextBoxTextChangingEventArgs args)
     {
         if (!CanEditConnection) return;
-        if (ReferenceEquals(sender, BaseUrlInput)) connectionDraft.BaseUrl = BaseUrlInput.Text;
+        if (ReferenceEquals(sender, BaseUrlInput))
+        {
+            var address = sender.Text;
+            connectionDraft.BaseUrl = address;
+            if (viewModel.NeedsConnectionSetup && !setupProtocolSelected && Uri.TryCreate(address, UriKind.Absolute, out var uri))
+            {
+                var path = uri.AbsolutePath.TrimEnd('/');
+                if (path.EndsWith("/models", StringComparison.OrdinalIgnoreCase) || path.EndsWith("/responses", StringComparison.OrdinalIgnoreCase))
+                    path = path[..path.LastIndexOf('/')];
+                connectionDraft.Kind = path is "/backend-api/codex" or "/codex/v1" ? ConnectionKind.CodexRelay : ConnectionKind.ResponsesApi;
+            }
+        }
         else if (ReferenceEquals(sender, ConnectionNameInput)) connectionDraft.Name = ConnectionNameInput.Text;
         else if (ReferenceEquals(sender, ConnectionNoteInput)) connectionDraft.Note = ConnectionNoteInput.Text;
         else if (ReferenceEquals(sender, GatewayHeaderWaitInput)) connectionDraft.GatewayHeaderTimeout = sender.Text;
@@ -91,23 +109,32 @@ public sealed partial class MainWindow
     {
         if (!CanEditConnection) return;
         if (ReferenceEquals(sender, ConnectionModeInput) && ConnectionModeInput.SelectedIndex >= 0) connectionDraft.Mode = (ConnectionMode)ConnectionModeInput.SelectedIndex;
-        if (ReferenceEquals(sender, ConnectionKindInput) && ConnectionKindInput.SelectedIndex >= 0) connectionDraft.Kind = (ConnectionKind)ConnectionKindInput.SelectedIndex;
+        if (ReferenceEquals(sender, ConnectionKindInput) && ConnectionKindInput.SelectedIndex >= 0)
+        { setupProtocolSelected = true; connectionDraft.Kind = (ConnectionKind)ConnectionKindInput.SelectedIndex; }
     }
     private void ConnectionProxyChanged(object sender, RoutedEventArgs args) { if (CanEditConnection) connectionDraft.UseSystemProxy = ConnectionProxyInput.IsChecked == true; }
     private void HttpConsentChanged(object sender, RoutedEventArgs args) { if (CanEditConnection) connectionDraft.HttpAuthorized = HttpConsentInput.IsChecked == true; }
     private void MigrateKeyClicked(object sender, RoutedEventArgs args) { if (CanEditConnection) connectionDraft.MigrateLegacyPat = true; }
-    private async void SaveConnectionClicked(object sender, RoutedEventArgs args) => await SaveConnectionAsync();
+    private async void SaveConnectionClicked(object sender, RoutedEventArgs args)
+    {
+        if (currentPage == ConnectionNav && !ShowingNativeLogin)
+        {
+            if (connectionReview is null) await PrepareConnectionReviewAsync();
+            else await ConfirmConnectionReviewAsync(apply: true);
+        }
+        else await SaveConnectionAsync();
+    }
     private void DiscardConnectionClicked(object sender, RoutedEventArgs args)
     {
         if (ApplicationBusy || dialogOpen || closing) return;
         configurationResult = null; shellError = ""; LoadConnectionDraft(); viewModel.Session.MarkDraft(false); RefreshView();
     }
 
-    private async Task<bool> SaveConnectionAsync((ConfigurationSaveReview Review, long Revision)? inlineConfirmation = null)
+    private async Task<bool> SaveConnectionAsync((ConfigurationSaveReview Review, long Revision)? inlineConfirmation = null, bool modelSave = false)
     {
         if (ManualApplicationBusy || dialogOpen || closing || !connectionDraft.HasDraft || viewModel.Snapshot is not { } snapshot) return false;
         if (string.IsNullOrWhiteSpace(connectionDraft.Model))
-        { SetShellError("先选择默认模型", "填写模型 ID，或获取当前服务的模型后再保存。"); OpenModelsClicked(SaveConnectionButton, new()); return false; }
+        { FocusMissingConnectionModel(); return false; }
         savingConfiguration = true; shellError = ""; RefreshView();
         try
         {
@@ -121,13 +148,13 @@ public sealed partial class MainWindow
             }, lifetime.Token);
             if (!configurationResult.Succeeded || configurationResult.Saved is not { } saved)
             { SetShellError("保存未完成，修改已保留", configurationResult.Message); return false; }
-            if (configurationResult.WasWritten) quickModelAwaitingApply = inlineConfirmation is not null;
+            if (configurationResult.WasWritten) quickModelAwaitingApply = modelSave;
             desktopApplication.Reset(); lastApplication = null;
             viewModel.ConfigurationSaved(saved);
             loadingConnection = true;
             try { connectionDraft.Load(saved); }
             finally { loadingConnection = false; }
-            officialLoginStatus = ""; ResetModelDiscovery();
+            officialLoginStatus = ""; ClearConnectionReview(refresh: false); ResetModelDiscovery();
             ReadRecoveryStatus(); templateApplication = null;
             InvalidateSource();
             InvalidateSavedPreview();
@@ -142,6 +169,14 @@ public sealed partial class MainWindow
     {
         var content = new StackPanel { Spacing = 16 };
         content.Children.Add(new TextBlock { Text = "确认后自动加密备份，再写入以下本地文件。保存不会启动或重启 Codex。", TextWrapping = TextWrapping.Wrap });
+        content.Children.Add(ConfigurationReviewBody(review));
+        return new ContentDialog { Title = "确认写入 " + review.Changes.Count + " 项修改", PrimaryButtonText = "确认保存", CloseButtonText = "返回调整",
+            DefaultButton = ContentDialogButton.Close, XamlRoot = Root.XamlRoot, Content = new ScrollViewer { MaxHeight = 420, Content = content } };
+    }
+
+    private static StackPanel ConfigurationReviewBody(ConfigurationSaveReview review)
+    {
+        var content = new StackPanel { Spacing = 16 };
         content.Children.Add(new TextBlock { Text = "本次写入目标：\n" + string.Join("\n", review.Targets), TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, Opacity = 0.7 });
         foreach (var change in review.Changes)
         {
@@ -152,8 +187,7 @@ public sealed partial class MainWindow
             content.Children.Add(row);
         }
         if (review.Notes.Count > 0) content.Children.Add(new TextBlock { Text = string.Join("\n", review.Notes), TextWrapping = TextWrapping.Wrap, Opacity = 0.7 });
-        return new ContentDialog { Title = "确认写入 " + review.Changes.Count + " 项修改", PrimaryButtonText = "确认保存", CloseButtonText = "返回调整",
-            DefaultButton = ContentDialogButton.Close, XamlRoot = Root.XamlRoot, Content = new ScrollViewer { MaxHeight = 420, Content = content } };
+        return content;
     }
 
     private async Task<bool> ResolveConnectionDraftAsync()

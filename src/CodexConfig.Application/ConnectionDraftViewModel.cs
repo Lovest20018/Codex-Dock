@@ -37,6 +37,7 @@ public sealed class ConnectionDraftViewModel(ConfigStore store) : WorkspaceObser
     public bool HasOfficialLogin => OfficialCredentials.HasLogin(snapshot?.Auth) || OfficialCredentials.HasLogin(stagedOfficialAuth);
     public bool HasCurrentOfficialLogin => OfficialCredentials.HasLogin(snapshot?.Auth);
     public bool HasStagedOfficialLogin => stagedOfficialAuth is not null;
+    public bool HasSavedApiConnection => baseline is { } saved && (saved.ApiKey.Length > 0 || saved.Mode == ConnectionMode.OfficialWithApi);
     public IReadOnlyDictionary<string, string?> Edits => new System.Collections.ObjectModel.ReadOnlyDictionary<string, string?>(edits);
     public IReadOnlyDictionary<string, string> FieldErrors => new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(errors);
     public IReadOnlyDictionary<string, string?> PendingFields => new System.Collections.ObjectModel.ReadOnlyDictionary<string, string?>(
@@ -59,7 +60,7 @@ public sealed class ConnectionDraftViewModel(ConfigStore store) : WorkspaceObser
         Mode == ConnectionMode.OfficialWithApi && GatewayHeaderTimeout != saved.Details.GatewayHeaderTimeoutSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
     public bool HasDraft => baseline is { } saved && (ConnectionChanged || Model != saved.Model || DetailsChanged || edits.Count > 0 || invalidInputs.Count > 0 || catalogSync);
 
-    public void Load(ConfigSnapshot? value)
+    public void Load(ConfigSnapshot? value, bool firstConnection = false)
     {
         loadGeneration++;
         ClearStagedAuthentication(); ClearServiceCatalog(); edits.Clear(); invalidInputs.Clear(); errors.Clear(); catalogSync = reviewChanged = false; catalogSource = null;
@@ -70,6 +71,11 @@ public sealed class ConnectionDraftViewModel(ConfigStore store) : WorkspaceObser
         {
             if (value is null) return;
             baseline = store.ReadSettings(value); snapshot = value;
+            if (firstConnection)
+            {
+                if (new TomlDocument(value.Config).String("model") is null) baseline = baseline with { Model = "" };
+                if (baseline.BaseUrl.Length == 0) baseline = baseline with { Kind = ConnectionKind.ResponsesApi };
+            }
             baseUrl = baseline.BaseUrl; apiKey = baseline.ApiKey; model = baseline.Model; name = baseline.Details.Name; note = baseline.Details.Note;
             httpOrigin = baseline.Details.HttpOrigin; kind = baseline.Kind; mode = baseline.Mode; proxy = baseline.UseSystemProxy;
             gatewayHeaderTimeout = baseline.Details.GatewayHeaderTimeoutSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);

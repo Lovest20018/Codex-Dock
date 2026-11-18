@@ -31,6 +31,7 @@ public interface IDesktopApplyRuntime
 {
     bool IsEnhancementRunning { get; }
     Task<IReadOnlyList<CodexDesktopTarget>> FindTargetsAsync(CancellationToken cancellation);
+    bool Activate(CodexDesktopTarget target) => false;
     Task<DesktopEnhancementPreparation> PrepareEnhancementsAsync(CodexDesktopTarget target, ConfigSnapshot saved, CancellationToken cancellation);
     Task PrepareGatewayAsync(ConfigSnapshot saved, CancellationToken cancellation);
     Task<CodexDesktopTarget> RestartAsync(CodexDesktopTarget target, ConfigSnapshot saved, Action validateSaved, int? port,

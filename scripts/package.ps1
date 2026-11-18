@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.19.4',
+    [string]$Version = '0.19.5',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
@@ -39,7 +39,7 @@ if (-not (Test-Path -LiteralPath $InnoCompiler)) { throw 'Inno Setup 6 compiler 
 Copy-Item -LiteralPath (Join-Path $taskRoot 'README.md'),(Join-Path $taskRoot 'LICENSE'),(Join-Path $taskRoot 'THIRD-PARTY-NOTICES.md') -Destination $taskRelease -Force
 foreach ($taskFolder in @('docs','third_party','brand')) { New-Item -ItemType Directory -Path (Join-Path $taskRelease $taskFolder) -Force | Out-Null }
 Copy-Item -LiteralPath (Join-Path $taskRoot "docs\release-$Version.md"),(Join-Path $taskRoot 'docs\schema-maintenance.md'),(Join-Path $taskRoot 'docs\codex-dock-delivery.md'),(Join-Path $taskRoot 'docs\ui-layout-review.md'),(Join-Path $taskRoot 'docs\process-rename-review.md'),(Join-Path $taskRoot 'docs\github-releases.md'),(Join-Path $taskRoot "docs\review-$Version.md") -Destination (Join-Path $taskRelease 'docs') -Force
-foreach ($taskDocument in @('winui-preview.md','winui-consolidation-2026-11-17.md','codexplusplus-reuse-implementation-2026-11-17.md','review-fixes-mobile-validation-2026-11-17.md','mobile-upstream-backport-2026-11-15.md','brand-refresh-2026-11-17.md','upstream-reuse-review-2026-11-18.md','upstream-update-plan-2026-11-18.md')) {
+foreach ($taskDocument in @('winui-preview.md','winui-consolidation-2026-11-17.md','codexplusplus-reuse-implementation-2026-11-17.md','review-fixes-mobile-validation-2026-11-17.md','mobile-upstream-backport-2026-11-15.md','brand-refresh-2026-11-17.md','upstream-reuse-review-2026-11-18.md','upstream-update-plan-2026-11-18.md','simple-workflows-and-upstream-plan-2026-11-18.md')) {
     Copy-Item -LiteralPath (Join-Path $taskRoot "docs\$taskDocument") -Destination (Join-Path $taskRelease 'docs') -Force
 }
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\configuration-implementation-2026-11-02.md'),(Join-Path $taskRoot 'docs\configuration-audit-2026-11-02.md'),(Join-Path $taskRoot 'docs\configuration-options-2026-11-02.md'),(Join-Path $taskRoot 'docs\runtime-settings-inventory-2026-11-02.md') -Destination (Join-Path $taskRelease 'docs') -Force
@@ -80,10 +80,10 @@ Copy-Item -LiteralPath $taskUiReport -Destination (Join-Path $taskRelease 'verif
     ''
     '运行 Setup EXE 安装；也可解压便携包并打开 CodexDock.exe。无需安装 .NET。'
     '覆盖安装到原目录时，安装器会请求 Dock 正常退出并停止该安装目录的网关。若出现未保存修改的提示，请在 Dock 中处理后再继续。'
-    '工作台、Codex 配置、运行与增强、手机访问、诊断与恢复在同一窗口。保存后明确应用到 Codex，再新建聊天核对。'
+    '日常从首页、连接与模型和手机连接进入。配置来源、网关和备份可从高级工具查找。'
     'Ctrl+S 查看并确认修改；Ctrl+F 搜索；Esc 返回调整。'
     '模型目录获取为可选操作，不会改变所选认证方式。'
-    '工作台可点“更换模型”，在同一个窗口选模型，再保存并打开或重启 Codex。选“仅保存”后可等当前任务结束，从工作台应用。'
+    '首页可点“更换模型”，或在首次使用时点“设置连接”。选“仅保存”后可等当前任务结束，从首页应用。'
     '选择模板或手动修改后，核对目标文件与修改明细，再点击确认写入。编辑方案只修改本机方案库。'
     '设置默认显示一句用途，点击“了解更多”查看说明。'
     '保存前自动加密备份，可在备份与恢复页恢复上次配置。'

@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "schema_version": "local-2026-11-11",
+  "schema_version": "local-2026-11-18",
   "categories": [
     {
       "id": "model",
@@ -2070,6 +2070,21 @@
       "deprecated_hint": false
     },
     {
+      "path": "features.catalog_apps_instructions",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "模型目录的应用说明",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "chinese": "从所选模型的目录记录读取 Apps 使用说明。",
+      "verified_since": "0.171.0-alpha.5",
+      "stage": "under_development",
+      "default": false
+    },
+    {
       "path": "features.chronicle",
       "kind": "boolean",
       "types": [
@@ -2287,13 +2302,14 @@
         "boolean"
       ],
       "name": "代码模式宿主 gRPC",
-      "chinese": "Codex 与自己启动的代码模式宿主进程之间改用基于标准输入输出的 gRPC 通信，替代默认的通信方式。开发中，默认关闭。",
+      "chinese": "原生 Code Mode 宿主通过 stdio 使用 gRPC。",
       "category": "features",
       "common": false,
       "platforms": [],
-      "stage": "under_development",
-      "default": false,
-      "deprecated_hint": false
+      "stage": "stable",
+      "default": true,
+      "deprecated_hint": false,
+      "updated_in": "0.171.0-alpha.5"
     },
     {
       "path": "features.code_mode_host_output_truncation",
@@ -2305,11 +2321,12 @@
       "category": "other",
       "common": false,
       "platforms": [],
-      "stage": "under_development",
-      "default": false,
+      "stage": "stable",
+      "default": true,
       "deprecated_hint": false,
-      "chinese": "依据源码推断，让 Codex 内置的独立代码模式宿主在将输出传回核心进程前执行截断，创建会话时使用服务端截断模式。开发中，默认关闭；外部注入的代码模式会话供应器自行决定其输出设置。",
-      "verified_since": "0.168.0-alpha.4"
+      "chinese": "在原生 Code Mode 宿主中截断过长的输出。",
+      "verified_since": "0.168.0-alpha.4",
+      "updated_in": "0.171.0-alpha.5"
     },
     {
       "path": "features.code_mode_interrupt",
@@ -2750,6 +2767,21 @@
       "deprecated_hint": false
     },
     {
+      "path": "features.daybreak_program_propagation",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "同步 Daybreak 选择",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "chinese": "让原生辅助程序及其后续轮次沿用已保存的 Daybreak 选择。",
+      "verified_since": "0.171.0-alpha.5",
+      "stage": "under_development",
+      "default": false
+    },
+    {
       "path": "features.default_mode_request_user_input",
       "kind": "boolean",
       "types": [
@@ -3021,6 +3053,21 @@
       "deprecated_hint": false
     },
     {
+      "path": "features.gateway_setup_wizard",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "终端登录的网关向导",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "chinese": "在 Codex 终端登录流程中提供自定义网关设置。",
+      "verified_since": "0.171.0-alpha.5",
+      "stage": "stable",
+      "default": false
+    },
+    {
       "path": "features.gcp_setup_wizard",
       "kind": "boolean",
       "types": [
@@ -3284,6 +3331,114 @@
       "category": "features",
       "common": false,
       "platforms": [],
+      "stage": "under_development"
+    },
+    {
+      "path": "features.guardianv2.async_elastic_budgeting",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "异步审核弹性配额",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "chinese": "允许异步 Guardian 审核在资料分区之间分配请求预算。",
+      "verified_since": "0.171.0-alpha.5",
+      "stage": "under_development"
+    },
+    {
+      "path": "features.guardianv2.async_elastic_sections",
+      "kind": "map",
+      "types": [
+        "object"
+      ],
+      "name": "异步审核分区配额",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "chinese": "开启异步弹性配额时，内核检查以下分区的额度配置。",
+      "verified_since": "0.171.0-alpha.5",
+      "stage": "under_development"
+    },
+    {
+      "path": "features.guardianv2.async_elastic_sections.<name>",
+      "kind": "table",
+      "types": [
+        "object"
+      ],
+      "name": "单个异步审核分区",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "chinese": "需同时提供最低分区配额和单条上限。",
+      "verified_since": "0.171.0-alpha.5",
+      "stage": "under_development",
+      "required_properties": [
+        "max_section_entry_tokens",
+        "min_total_section_tokens"
+      ]
+    },
+    {
+      "path": "features.guardianv2.async_elastic_sections.<name>.max_section_entry_tokens",
+      "kind": "integer",
+      "types": [
+        "integer"
+      ],
+      "name": "异步审核单条上限",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "chinese": "配置此分区单条审核资料允许的 token 数。",
+      "verified_since": "0.171.0-alpha.5",
+      "minimum": 0.0,
+      "stage": "under_development"
+    },
+    {
+      "path": "features.guardianv2.async_elastic_sections.<name>.max_total_section_tokens",
+      "kind": "integer",
+      "types": [
+        "integer"
+      ],
+      "name": "异步审核分区总上限",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "chinese": "省略时由该请求的总预算约束。",
+      "verified_since": "0.171.0-alpha.5",
+      "minimum": 0.0,
+      "stage": "under_development"
+    },
+    {
+      "path": "features.guardianv2.async_elastic_sections.<name>.min_total_section_tokens",
+      "kind": "integer",
+      "types": [
+        "integer"
+      ],
+      "name": "异步审核分区最低配额",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "chinese": "配置此分区预留的 token 数。",
+      "verified_since": "0.171.0-alpha.5",
+      "minimum": 0.0,
+      "stage": "under_development"
+    },
+    {
+      "path": "features.guardianv2.async_elastic_sections.<name>.nested_tool_names",
+      "kind": "array",
+      "types": [
+        "array"
+      ],
+      "name": "异步审核工具名称",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "chinese": "为 transcript_selected_exec_results 分区填写要收集的完整 Code Mode 工具名称。",
+      "verified_since": "0.171.0-alpha.5",
+      "item_types": [
+        "string"
+      ],
       "stage": "under_development"
     },
     {
@@ -3576,6 +3731,23 @@
       "chinese": "依据源码推断，为该分区预留按实际需求使用的最低 token 配额，剩余空间才参与弹性分配。必须大于零且不少于单条文本上限；所有分区的有效最低配额总和必须恰好为 128000 个 token。",
       "stage": "under_development",
       "verified_since": "0.168.0-alpha.4"
+    },
+    {
+      "path": "features.guardianv2.sync_elastic_sections.<name>.nested_tool_names",
+      "kind": "array",
+      "types": [
+        "array"
+      ],
+      "name": "同步审核工具名称",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "chinese": "为 transcript_selected_exec_results 分区填写要收集的完整 Code Mode 工具名称。",
+      "verified_since": "0.171.0-alpha.5",
+      "item_types": [
+        "string"
+      ],
+      "stage": "under_development"
     },
     {
       "path": "features.guardianv2.thread_context",
@@ -4010,6 +4182,36 @@
       "deprecated_hint": false
     },
     {
+      "path": "features.incremental_tools_legacy",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "Bedrock 增量工具声明",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "chinese": "控制普通 Amazon Bedrock Responses 请求中的增量工具声明。",
+      "verified_since": "0.171.0-alpha.5",
+      "stage": "stable",
+      "default": false
+    },
+    {
+      "path": "features.incremental_tools_legacy_gcp",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "GCP 增量工具声明",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "chinese": "控制普通 GCP Responses 请求中的增量工具声明。",
+      "verified_since": "0.171.0-alpha.5",
+      "stage": "stable",
+      "default": true
+    },
+    {
       "path": "features.instant_interrupt",
       "kind": "boolean",
       "types": [
@@ -4159,6 +4361,21 @@
       "stage": "under_development",
       "default": false,
       "deprecated_hint": false
+    },
+    {
+      "path": "features.mcp_lazy_stdio_startup",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "延迟启动可选的 stdio MCP",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "chinese": "已有可用工具目录时，推迟普通聊天中可选 stdio 服务的启动。",
+      "verified_since": "0.171.0-alpha.5",
+      "stage": "under_development",
+      "default": false
     },
     {
       "path": "features.mcp_oauth_refresh_coordination",
@@ -4659,6 +4876,21 @@
       "stage": "under_development",
       "default": false,
       "deprecated_hint": false
+    },
+    {
+      "path": "features.multi_environment_mcp",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "按执行环境区分 MCP",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "chinese": "分别识别不同执行端发现的同名 HTTP MCP 服务。",
+      "verified_since": "0.171.0-alpha.5",
+      "stage": "under_development",
+      "default": false
     },
     {
       "path": "features.network_proxy",
@@ -5166,13 +5398,14 @@
         "boolean"
       ],
       "name": "预取插件目录",
-      "chinese": "app-server 启动时在后台预先拉取插件目录、精选插件和推荐列表，旧式插件建议读取这份缓存。只使用已安装插件清单的宿主可以关闭它。0.166 起为稳定功能并默认开启。",
+      "chinese": "新版内核已移除此兼容开关。旧配置在目录中仍可查阅。",
       "category": "features",
       "common": false,
       "platforms": [],
-      "stage": "stable",
-      "default": true,
-      "deprecated_hint": false
+      "stage": "removed",
+      "default": false,
+      "deprecated_hint": false,
+      "updated_in": "0.171.0-alpha.5"
     },
     {
       "path": "features.plugin_hooks",
@@ -5703,6 +5936,21 @@
       "deprecated_hint": false
     },
     {
+      "path": "features.safe_image_decoder",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "输入图片标准化",
+      "category": "features",
+      "common": false,
+      "platforms": [],
+      "chinese": "用专用图片清理组件处理模型输入中的图片。",
+      "verified_since": "0.171.0-alpha.5",
+      "stage": "under_development",
+      "default": false
+    },
+    {
       "path": "features.search_tool",
       "kind": "boolean",
       "types": [
@@ -5724,13 +5972,14 @@
         "boolean"
       ],
       "name": "加密保存登录凭据",
-      "chinese": "登录凭据选择保存到系统钥匙串（keyring）时，改为把凭据加密保存在本地密钥文件中，只把该文件的密钥放进系统钥匙串。对以文件（`auth.json`）保存的凭据没有影响。Windows 上默认开启，其他平台默认关闭。",
+      "chinese": "当凭据存储选为 keyring 时，可使用本机加密凭据存储。参考内核在 Windows 默认开启此开关。",
       "category": "features",
       "common": false,
       "platforms": [],
       "stage": "stable",
       "default": true,
-      "deprecated_hint": false
+      "deprecated_hint": false,
+      "updated_in": "0.171.0-alpha.5"
     },
     {
       "path": "features.send_async_message",
@@ -6430,11 +6679,12 @@
       "category": "other",
       "common": false,
       "platforms": [],
-      "stage": "under_development",
-      "default": false,
+      "stage": "stable",
+      "default": true,
       "deprecated_hint": false,
-      "chinese": "依据源码推断，在由 Codex 管理的全屏终端界面中保留主会话和侧边会话的视图，支持窗格焦点切换、隐藏、分栏及宽度调整。开发中，默认关闭；普通终端滚动输出模式不启用这些工作区行为。",
-      "verified_since": "0.168.0-alpha.4"
+      "chinese": "在 Codex 全屏终端中提供工作区视图与侧边会话。",
+      "verified_since": "0.168.0-alpha.4",
+      "updated_in": "0.171.0-alpha.5"
     },
     {
       "path": "features.ultrafast_mode",
@@ -6564,13 +6814,14 @@
         "boolean"
       ],
       "name": "不可信上下文作为工具输出",
-      "chinese": "客户端随轮次附带的不可信上下文（additional context）改为以单独的具名工具输出交给模型，而不是作为普通消息插入。开发中，默认关闭。",
+      "chinese": "把客户端提供的不受信任上下文呈现为有名称的工具输出。",
       "category": "features",
       "common": false,
       "platforms": [],
-      "stage": "under_development",
-      "default": false,
-      "deprecated_hint": false
+      "stage": "stable",
+      "default": true,
+      "deprecated_hint": false,
+      "updated_in": "0.171.0-alpha.5"
     },
     {
       "path": "features.use_agent_identity",
@@ -7444,6 +7695,20 @@
       "category": "apps",
       "common": false,
       "platforms": []
+    },
+    {
+      "path": "marketplaces.<name>.auto_update",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "自动检查插件更新",
+      "category": "apps",
+      "common": false,
+      "platforms": [],
+      "chinese": "列出插件时检查已安装的 Git 插件在此市场是否有更新。",
+      "verified_since": "0.171.0-alpha.5",
+      "default": false
     },
     {
       "path": "marketplaces.<name>.last_revision",
@@ -9122,6 +9387,67 @@
       "platforms": []
     },
     {
+      "path": "model_providers.<name>.gateway_oauth.credential_export",
+      "kind": "table",
+      "types": [
+        "object"
+      ],
+      "name": "网关凭据导出命令",
+      "category": "provider",
+      "common": false,
+      "platforms": [],
+      "chinese": "一类由本机命令提供网关访问令牌的配置。",
+      "verified_since": "0.171.0-alpha.5",
+      "required_properties": [
+        "command"
+      ]
+    },
+    {
+      "path": "model_providers.<name>.gateway_oauth.credential_export.args",
+      "kind": "array",
+      "types": [
+        "array"
+      ],
+      "name": "网关凭据命令参数",
+      "category": "provider",
+      "common": false,
+      "platforms": [],
+      "chinese": "传给导出命令的参数数组。将秘密交给命令自身的凭据存储。",
+      "verified_since": "0.171.0-alpha.5",
+      "default": [],
+      "item_types": [
+        "string"
+      ]
+    },
+    {
+      "path": "model_providers.<name>.gateway_oauth.credential_export.command",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "网关凭据命令路径",
+      "category": "provider",
+      "common": false,
+      "platforms": [],
+      "chinese": "指定直接执行并输出访问令牌的程序。",
+      "verified_since": "0.171.0-alpha.5"
+    },
+    {
+      "path": "model_providers.<name>.gateway_oauth.credential_export.timeout_ms",
+      "kind": "integer",
+      "types": [
+        "integer"
+      ],
+      "name": "网关凭据命令超时",
+      "category": "provider",
+      "common": false,
+      "platforms": [],
+      "chinese": "最多等待导出命令完成的毫秒数。",
+      "verified_since": "0.171.0-alpha.5",
+      "minimum": 1.0,
+      "default": 30000
+    },
+    {
       "path": "model_providers.<name>.gateway_oauth.credentials_store",
       "kind": "enum",
       "types": [
@@ -9216,6 +9542,19 @@
       "category": "provider",
       "common": false,
       "platforms": []
+    },
+    {
+      "path": "model_providers.<name>.gateway_oauth.device_authorization_url",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "网关设备授权地址",
+      "category": "provider",
+      "common": false,
+      "platforms": [],
+      "chinese": "终端无法打开浏览器登录时可用的设备授权端点。",
+      "verified_since": "0.171.0-alpha.5"
     },
     {
       "path": "model_providers.<name>.gateway_oauth.redirect_port",
@@ -10150,6 +10489,33 @@
       "category": "telemetry",
       "common": false,
       "platforms": []
+    },
+    {
+      "path": "otel.headers_helper",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "遥测请求头命令",
+      "category": "telemetry",
+      "common": false,
+      "platforms": [],
+      "chinese": "由 CODEX_HOME 启动，输出用于显式 HTTP OTLP 导出器的 JSON 请求头。项目配置不能设置遥测选项。",
+      "verified_since": "0.171.0-alpha.5"
+    },
+    {
+      "path": "otel.headers_helper_refresh_interval_ms",
+      "kind": "integer",
+      "types": [
+        "integer"
+      ],
+      "name": "遥测请求头刷新间隔",
+      "category": "telemetry",
+      "common": false,
+      "platforms": [],
+      "chinese": "该命令的重复执行间隔，以毫秒计。此参考内核缺省为 29 分钟。",
+      "verified_since": "0.171.0-alpha.5",
+      "minimum": 1.0
     },
     {
       "path": "otel.log_agent_responses",
@@ -12504,6 +12870,20 @@
       "platforms": []
     },
     {
+      "path": "tui.collapse_turn_details",
+      "kind": "boolean",
+      "types": [
+        "boolean"
+      ],
+      "name": "折叠已完成轮次",
+      "category": "interface",
+      "common": false,
+      "platforms": [],
+      "chinese": "在全屏终端界面折叠已完成的轮次，并概括工具调用。",
+      "verified_since": "0.171.0-alpha.5",
+      "default": false
+    },
+    {
       "path": "tui.copy_on_select",
       "kind": "enum",
       "types": [
@@ -13739,6 +14119,20 @@
       ]
     },
     {
+      "path": "tui.keymap.global.close_sidebar_tab",
+      "kind": "union",
+      "types": [
+        "string",
+        "array"
+      ],
+      "name": "关闭当前侧栏标签",
+      "category": "interface",
+      "common": false,
+      "platforms": [],
+      "chinese": "配置终端界面关闭当前侧栏标签的快捷键。",
+      "verified_since": "0.171.0-alpha.5"
+    },
+    {
       "path": "tui.keymap.global.copy",
       "kind": "union",
       "types": [
@@ -13878,6 +14272,20 @@
       "item_types": [
         "string"
       ]
+    },
+    {
+      "path": "tui.keymap.global.focus_sidebar_tabs",
+      "kind": "union",
+      "types": [
+        "string",
+        "array"
+      ],
+      "name": "打开侧栏标签列表",
+      "category": "interface",
+      "common": false,
+      "platforms": [],
+      "chinese": "配置打开终端侧栏标签选择器的快捷键。",
+      "verified_since": "0.171.0-alpha.5"
     },
     {
       "path": "tui.keymap.global.hide_pane",
@@ -14089,6 +14497,34 @@
         "string"
       ],
       "updated_in": "0.168.0-alpha.4"
+    },
+    {
+      "path": "tui.keymap.global.sidebar_down",
+      "kind": "union",
+      "types": [
+        "string",
+        "array"
+      ],
+      "name": "切换下一个侧栏标签",
+      "category": "interface",
+      "common": false,
+      "platforms": [],
+      "chinese": "配置终端界面切换到下一个侧栏标签的快捷键。",
+      "verified_since": "0.171.0-alpha.5"
+    },
+    {
+      "path": "tui.keymap.global.sidebar_up",
+      "kind": "union",
+      "types": [
+        "string",
+        "array"
+      ],
+      "name": "切换上一个侧栏标签",
+      "category": "interface",
+      "common": false,
+      "platforms": [],
+      "chinese": "配置终端界面切换到上一个侧栏标签的快捷键。",
+      "verified_since": "0.171.0-alpha.5"
     },
     {
       "path": "tui.keymap.global.submit",
@@ -16262,6 +16698,56 @@
       ]
     },
     {
+      "path": "tui.status_line_provider",
+      "kind": "enum",
+      "types": [
+        "string",
+        "object"
+      ],
+      "name": "终端状态栏来源",
+      "category": "interface",
+      "common": false,
+      "platforms": [],
+      "chinese": "填写 \"default\" 使用内置状态栏，或同时配置 MCP 服务名和工具名。",
+      "verified_since": "0.171.0-alpha.5",
+      "required_properties": [
+        "server",
+        "tool"
+      ],
+      "enum_has_table_form": true,
+      "enum_values": [
+        {
+          "value": "default"
+        }
+      ]
+    },
+    {
+      "path": "tui.status_line_provider.server",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "终端状态栏 MCP 服务",
+      "category": "interface",
+      "common": false,
+      "platforms": [],
+      "chinese": "提供终端状态栏的 MCP 服务名称。",
+      "verified_since": "0.171.0-alpha.5"
+    },
+    {
+      "path": "tui.status_line_provider.tool",
+      "kind": "string",
+      "types": [
+        "string"
+      ],
+      "name": "终端状态栏 MCP 工具",
+      "category": "interface",
+      "common": false,
+      "platforms": [],
+      "chinese": "所选 MCP 服务声明的终端状态栏工具名称。",
+      "verified_since": "0.171.0-alpha.5"
+    },
+    {
       "path": "tui.status_line_use_colors",
       "kind": "boolean",
       "types": [
@@ -16416,10 +16902,10 @@
     }
   ],
   "provenance": {
-    "source": "https://raw.githubusercontent.com/openai/codex/c2d5399587b96f45585f3aeac08fc5050365bc7c/codex-rs/core/config.schema.json",
-    "retrieved_at": "2026-11-11",
-    "sha256": "2d976ab87170a0919335a2cb637b59f0b1af2d8c21b51d3564a83d25c2cd843f",
-    "verified_runtime": "codex-cli 0.168.0-alpha.4",
+    "source": "https://raw.githubusercontent.com/openai/codex/466da69cf6b72983f0d28c498c7cdb8d9bf2d114/codex-rs/core/config.schema.json",
+    "retrieved_at": "2026-11-18",
+    "sha256": "57e76facd1ca7070b5150c31eb2e3edfc37f0ed48e9f55307c35ceaacc946944",
+    "verified_runtime": "codex-cli 0.171.0-alpha.5",
     "defaults_scope": "Pinned runtime reference values; not effective session values. New catalog definitions mark verified_since; support on older runtimes is unconfirmed.",
     "community_sources": [
       {
@@ -16489,6 +16975,18 @@
       {
         "url": "https://raw.githubusercontent.com/krill-lab/superba/v0.1.1-alpha.15/catalog/overlay/features.toml",
         "sha256": "5e4cd59bb722307e4ab33e009f2b6364285b77eb1602fa93bda597f8410727b4"
+      },
+      {
+        "url": "https://raw.githubusercontent.com/krill-lab/superba/3e6ffccf3f4406cdf8485fb5a8e8b51839494610/catalog/dist/codex-0.171.0-alpha.5.json",
+        "sha256": "b8991025dc8348d27251463d2eb3717b89fd34d3377e32a42ca2fa32a89a06da"
+      }
+    ],
+    "previous_sources": [
+      {
+        "source": "https://raw.githubusercontent.com/openai/codex/c2d5399587b96f45585f3aeac08fc5050365bc7c/codex-rs/core/config.schema.json",
+        "retrieved_at": "2026-11-11",
+        "sha256": "2d976ab87170a0919335a2cb637b59f0b1af2d8c21b51d3564a83d25c2cd843f",
+        "verified_runtime": "codex-cli 0.168.0-alpha.4"
       }
     ]
   }

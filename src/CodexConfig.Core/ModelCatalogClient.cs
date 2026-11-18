@@ -30,7 +30,7 @@ public sealed class ModelCatalogClient : IDisposable
         var clock = Stopwatch.StartNew();
         var answer = await GetAsync(settings, settings.BaseUrl + "/models", cancellation)
             ?? throw new InvalidDataException("未收到模型目录。");
-        if (!answer.Ok) throw new HttpRequestException("获取模型失败：" + answer.Message);
+        if (!answer.Ok) throw new HttpRequestException("读取模型失败：" + answer.Message, null, answer.Status == 0 ? null : (HttpStatusCode)answer.Status);
         var models = new List<string>();
         if (answer.Json.ValueKind != JsonValueKind.Object ||
             !(answer.Json.TryGetProperty("models", out var entries) || answer.Json.TryGetProperty("data", out entries)) ||

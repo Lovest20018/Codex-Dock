@@ -19,7 +19,7 @@ public sealed partial class MainWindow
         var fixture = Path.Combine(output, "mobile-ui-home"); Directory.CreateDirectory(fixture);
         File.WriteAllText(Path.Combine(fixture, "config.toml"), "model='mobile-ui-fixture'\n");
         await SwitchHomeAsync(fixture); NavigateTo(MobileSettingsNav); await RefreshMobileAsync();
-        Check(MobilePanel.Visibility == Visibility.Visible && PageTitle.Text == "手机访问" && MobilePortInput.Text == "13090" && MobilePasswordInput.Password.Length == 0 &&
+        Check(MobilePanel.Visibility == Visibility.Visible && PageTitle.Text == "手机连接" && MobilePortInput.Text == "13090" && MobilePasswordInput.Password.Length == 0 &&
             !mobileDraft.HasDraft && runtime.Trace.Count == 0 && mobileDraft.Settings?.Configured == false,
             "Windows phone page reads isolated defaults without starting a worker or exposing a password");
         await CaptureAsync(output, "mobile-light.png");

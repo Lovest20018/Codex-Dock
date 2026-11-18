@@ -43,6 +43,7 @@ public sealed class WorkspaceShellViewModel : WorkspaceObservableObject
         ? uri.GetComponents(UriComponents.SchemeAndServer, UriFormat.Unescaped) : string.IsNullOrWhiteSpace(connection.BaseUrl) && setupGuide.Kind == WorkspaceSetupKind.ExistingConnection
             ? "使用 Codex 或供应商的默认服务" : "尚未设置服务地址";
     public string ModelLabel => connection?.Model is { Length: > 0 } model ? model : "跟随 Codex";
+    public string ProfileName => connection?.Details.Name is { Length: > 0 } name ? name : Path.GetFileName(Path.TrimEndingDirectorySeparator(Home));
     public string EnhancementSummary
     {
         get
@@ -142,6 +143,6 @@ public sealed class WorkspaceShellViewModel : WorkspaceObservableObject
     {
         foreach (var property in new[] { nameof(Home), nameof(IsBusy), nameof(ConfigurationAvailable), nameof(PreferencesAvailable), nameof(ConnectionRecoveryEnabled), nameof(SpeedCompatibilityEnabled),
             nameof(AutomaticReconnectEnabled), nameof(PreferencesChanged), nameof(Error), nameof(Status), nameof(ConnectionLabel), nameof(ServiceOrigin),
-            nameof(ModelLabel), nameof(EnhancementSummary), nameof(EnhancementStatus), nameof(SetupGuide), nameof(NeedsConnectionSetup), nameof(CanApplyConfiguration) }) Changed(property);
+            nameof(ModelLabel), nameof(ProfileName), nameof(EnhancementSummary), nameof(EnhancementStatus), nameof(SetupGuide), nameof(NeedsConnectionSetup), nameof(CanApplyConfiguration) }) Changed(property);
     }
 }

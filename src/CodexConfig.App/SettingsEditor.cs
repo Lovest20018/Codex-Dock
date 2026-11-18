@@ -414,7 +414,7 @@ public sealed partial class SettingsEditor : UserControl
             }
             loadInput = () => text.Text = OriginalValue(Path()) is { } value ? Sensitive(Path()) ? "已设置（已隐藏）" : entry.Kind is "table" or "map" or "recursive" ? "已设置（查看子项）" : ConfigSchema.Literal(value) : "未设置";
         }
-        else if (entry.Kind is "boolean" or "enum" or "bool_or_table" || entry.Path is "model_reasoning_effort" or "service_tier")
+        else if ((entry.Kind is "boolean" or "enum" or "bool_or_table") && !entry.EnumHasTableForm || entry.Path is "model_reasoning_effort" or "service_tier")
         {
             var choices = new List<ValueChoice> { new(preferences ? "跟随默认" : "跟随 Codex 配置（移除本地覆盖）", null) };
             if (entry.Kind is "boolean" or "bool_or_table") { choices.Add(new("开启", "true")); choices.Add(new("关闭", "false")); }

@@ -445,7 +445,7 @@ Test("Krill official lines and legacy origins produce current API key endpoints"
 Test("detailed catalog loads local schema, Chinese and lifecycle", () =>
 {
     var catalog = ConfigSchema.Instance;
-    Assert(catalog.Entries.Count == 1064 && catalog.SchemaVersion == "local-2026-11-11");
+    Assert(catalog.Entries.Count == 1096 && catalog.SchemaVersion == "local-2026-11-18");
     Assert(catalog.Find("model_reasoning_effort")!.Chinese.Contains("推理"));
     Assert(catalog.Find("features.fast_mode")!.ManagedConnection);
     Assert(catalog.Entries.Where(e => e.Stage == "removed").All(e => !e.CanEdit));

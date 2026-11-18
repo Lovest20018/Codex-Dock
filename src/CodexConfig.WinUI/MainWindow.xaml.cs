@@ -75,7 +75,8 @@ public sealed partial class MainWindow : Window
         InitializeModelBehavior();
         InitializeConfigurationCatalog();
         InitializeHelpTopics();
-        SourceExecutableInput.Text = output is null ? CodexExecutableLocator.Find() ?? "" : Path.Combine(output, "fake-codex.exe");
+        automaticSourceExecutable = output is null ? CodexExecutableLocator.Find() ?? "" : null;
+        SourceExecutableInput.Text = automaticSourceExecutable ?? Path.Combine(output!, "fake-codex.exe");
         SourceProjectInput.Text = output is null ? Environment.CurrentDirectory : output;
         profileDraft.PropertyChanged += (_, args) => { if (initialized && !loadingProfile && args.PropertyName == nameof(ProfileDraftViewModel.Revision)) RefreshView(); };
         automaticEnhancements = new(store, viewModel.EnhancementPreferences, output is null
@@ -127,6 +128,11 @@ public sealed partial class MainWindow : Window
                     var checks = new List<string>(); await RunQuickModelSmokeAsync(output, checks);
                     await WriteSmokeReportAsync(output, checks);
                 }
+                else if (filter == "connection-setup")
+                {
+                    var checks = new List<string>(); await RunWorkspaceReadinessSmokeAsync(output, checks);
+                    await WriteSmokeReportAsync(output, checks);
+                }
                 else if (filter == "review-fixes")
                 {
                     var checks = new List<string>(); await RunWorkspaceReviewFixesSmokeAsync(output, checks);
@@ -157,6 +163,7 @@ public sealed partial class MainWindow : Window
         }
         else
         {
+            await ObserveDesktopTargetsAsync();
             await StartGatewaysOnLaunchAsync();
             await RefreshGatewaysAsync();
             if (pendingEnhancedHome is not null || options.EnhancedLaunch)
@@ -240,13 +247,13 @@ public sealed partial class MainWindow : Window
             }
             HomeText.Text = viewModel.Home;
             WorkspaceDirectoryLabel.Text = "配置目录：" + (Path.GetFileName(Path.TrimEndingDirectorySeparator(viewModel.Home)) is { Length: > 0 } name ? name : viewModel.Home);
-            StatusText.Text = viewModel.Status;
+            StatusText.Text = viewModel.NeedsConnectionSetup ? viewModel.SetupGuide.Message : viewModel.Status;
             Progress.Visibility = ApplicationBusy ? Visibility.Visible : Visibility.Collapsed;
             ErrorBar.Title = viewModel.Error.Length > 0 ? "操作未完成" : shellErrorTitle;
             ErrorBar.Message = viewModel.Error.Length > 0 ? viewModel.Error : shellError;
             ErrorBar.IsOpen = ErrorBar.Message.Length > 0;
             ErrorBar.Visibility = ErrorBar.IsOpen ? Visibility.Visible : Visibility.Collapsed;
-            ConnectionText.Text = viewModel.ConnectionLabel; EndpointText.Text = viewModel.ServiceOrigin; ModelText.Text = "模型：" + viewModel.ModelLabel;
+            ConnectionText.Text = viewModel.ConnectionLabel; EndpointText.Text = viewModel.ServiceOrigin; ModelText.Text = "默认模型 " + viewModel.ModelLabel;
             ConnectionRecoveryToggle.IsOn = viewModel.ConnectionRecoveryEnabled;
             SpeedToggle.IsOn = viewModel.SpeedCompatibilityEnabled; AutomaticToggle.IsOn = viewModel.AutomaticReconnectEnabled;
             ConnectionRecoveryToggle.IsEnabled = SpeedToggle.IsEnabled = AutomaticToggle.IsEnabled = viewModel.PreferencesAvailable && !ManualApplicationBusy && !dialogOpen && !closing;

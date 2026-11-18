@@ -39,6 +39,7 @@ public sealed partial class MainWindow
     private async Task ReadFeaturesAsync()
     {
         if (ManualApplicationBusy || dialogOpen || closing) return;
+        RefreshAutomaticSourceExecutable();
         InvalidateFeatures(); readingFeatures = true; RefreshView();
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); featureCancellation = cancellation;
         try
@@ -54,7 +55,7 @@ public sealed partial class MainWindow
         }
         catch (OperationCanceledException) { if (!closing) featureMessage = "读取已取消、超时或条件已改变；实验功能状态未确认。"; }
         catch (NotSupportedException error) { if (!closing) featureMessage = error.Message; }
-        catch (Exception) { if (!closing) featureMessage = "无法读取所选执行端的实验功能。请核对路径、项目与 Profile；状态未确认，草稿保留。"; }
+        catch (Exception) { if (!closing) featureMessage = "无法读取实验功能。若已更新 Codex，可自动查找或重新选择执行端。也可核对项目与 Profile。"; }
         finally { featureCancellation = null; readingFeatures = false; renderedFeatureKey = ""; if (!closing) RefreshView(); }
     }
     private void FeatureSearchChanged(TextBox sender, TextBoxTextChangingEventArgs args)

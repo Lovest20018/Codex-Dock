@@ -16,9 +16,7 @@ public sealed record WorkspaceSetupGuide(WorkspaceSetupKind Kind, string Title, 
             return new(WorkspaceSetupKind.ExistingConnection, "已读取官方文件登录", "可保留现有官方登录和默认设置。登录有效期由 Codex 管理，尚未在线验证。");
         if (settings.ProviderId != "openai" || document.String("cli_auth_credentials_store") is not (null or "file"))
             return new(WorkspaceSetupKind.ExistingConnection, "使用客户端或供应商管理的认证", "保留现有认证方式；本窗口未执行外部认证命令，也未确认系统凭据与在线连接。");
-        return new(WorkspaceSetupKind.NeedsConnection, "先设置连接", snapshot.Config is null && snapshot.Auth is null
-            ? "此目录尚无连接文件。填写 API 服务地址、密钥和模型，查看差异后保存；若使用官方账号，可先在 Codex 登录同一目录，再重新读取。"
-            : "已读取本地设置，尚未发现可用的模型凭据。可在连接页填写 API 服务，或在 Codex 完成官方文件登录后重新读取。现有文件会保留。");
+        return new(WorkspaceSetupKind.NeedsConnection, "先设置连接", "用 ChatGPT 账号登录，或填写服务商提供的地址和密钥。");
     }
     public static WorkspaceSetupGuide Unreadable { get; } = new(WorkspaceSetupKind.Unreadable, "先处理配置读取问题",
         "当前目录未能完整读取，暂时不能编辑或应用。请核对目录、文件格式与当前 Windows 用户的加密数据；修复后重新读取，也可切换目录或查看已有恢复记录。原文件保持不变。");

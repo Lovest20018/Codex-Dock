@@ -24,13 +24,14 @@ public sealed class ConfigReadClient
         if (!string.IsNullOrWhiteSpace(profile)) { ProfileStore.ValidateName(profile); start.ArgumentList.Add("--profile"); start.ArgumentList.Add(profile); }
         start.ArgumentList.Add("app-server"); start.ArgumentList.Add("--listen"); start.ArgumentList.Add("stdio://");
         start.Environment["CODEX_HOME"] = Path.GetFullPath(home);
+        CodexLaunchProxy.Apply(start);
         return start;
     }
 
     public async Task<ConfigurationReadResult> ReadAsync(string executable, string home, string cwd, string? profile, byte[]? localConfig, CancellationToken cancellation = default)
     {
+        using var process = await CodexDesktopRuntime.StartAsync(StartInfo(executable, home, cwd, profile), cancellation);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation); timeout.CancelAfter(TimeSpan.FromSeconds(20));
-        using var process = Process.Start(StartInfo(executable, home, cwd, profile)) ?? throw new IOException("无法启动所选 Codex 执行端。");
         var stderr = Drain(process.StandardError);
         using var kill = timeout.Token.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch (InvalidOperationException) { } });
         try

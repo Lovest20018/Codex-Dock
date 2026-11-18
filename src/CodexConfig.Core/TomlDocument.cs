@@ -282,5 +282,6 @@ public sealed class TomlDocument
         part.Equals("token", StringComparison.OrdinalIgnoreCase) || part.Equals("tokens", StringComparison.OrdinalIgnoreCase) || part.EndsWith("_token", StringComparison.OrdinalIgnoreCase) ||
         part.Contains("secret", StringComparison.OrdinalIgnoreCase) || part.Contains("password", StringComparison.OrdinalIgnoreCase) ||
         part.Contains("api_key", StringComparison.OrdinalIgnoreCase) || part.Contains("authorization", StringComparison.OrdinalIgnoreCase) ||
-        part.Contains("http_headers", StringComparison.OrdinalIgnoreCase) || part.Equals("env", StringComparison.OrdinalIgnoreCase));
+        part.Contains("http_headers", StringComparison.OrdinalIgnoreCase) || part.Equals("env", StringComparison.OrdinalIgnoreCase) ||
+        part.Equals("credential_export", StringComparison.OrdinalIgnoreCase) || part.Equals("headers_helper", StringComparison.OrdinalIgnoreCase));
 }

@@ -1,9 +1,15 @@
-param([string]$Version = '0.19.4')
+param(
+    [string]$Version = '0.19.5',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$PreviousVersion
+)
 $ErrorActionPreference = 'Stop'
 $taskRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $taskArtifacts = Join-Path $taskRoot 'artifacts'
 $taskRelease = Join-Path $taskArtifacts "CodexDock-$Version-win-x64"
 $taskSetup = Join-Path $taskArtifacts "CodexDock-$Version-Setup-win-x64.exe"
+$taskFixtureVersion = if ($PreviousVersion) { $PreviousVersion } else { $Version }
+$taskFixtureRelease = Join-Path $taskArtifacts "CodexDock-$taskFixtureVersion-win-x64"
+if (-not (Test-Path -LiteralPath (Join-Path $taskFixtureRelease 'CodexDock.exe'))) { throw 'The running upgrade fixture payload is missing.' }
 $taskTestRoot = Join-Path $taskRoot ('.installer-check-' + [Guid]::NewGuid().ToString('N'))
 $taskInstall = Join-Path $taskTestRoot 'app'
 if (-not ([IO.Path]::GetFullPath($taskInstall).StartsWith($taskRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase))) { throw 'Verification path escapes workspace.' }
@@ -27,8 +33,8 @@ $taskUpgradeDock = $null; $taskOtherDock = $null
 $taskUpgradeModel = $null; $taskOtherModel = $null
 try {
     New-Item -ItemType Directory -Path $taskOtherInstall | Out-Null
-    Get-ChildItem -LiteralPath $taskRelease -Force | Copy-Item -Destination $taskInstall -Recurse
-    Get-ChildItem -LiteralPath $taskRelease -Force | Copy-Item -Destination $taskOtherInstall -Recurse
+    Get-ChildItem -LiteralPath $taskFixtureRelease -Force | Copy-Item -Destination $taskInstall -Recurse
+    Get-ChildItem -LiteralPath $taskFixtureRelease -Force | Copy-Item -Destination $taskOtherInstall -Recurse
     $taskUpgradeDock = Start-InstallerDockFixture $taskInstall (Join-Path $taskTestRoot 'target-dock')
     $taskOtherDock = Start-InstallerDockFixture $taskOtherInstall (Join-Path $taskTestRoot 'other-dock')
     $taskUpgradeModel = Start-InstallerModelFixture $taskInstall (Join-Path $taskTestRoot 'target model profile')
@@ -81,7 +87,7 @@ $taskRegistryAfter = if (Test-Path -LiteralPath $taskRegistry) { Get-ItemPropert
 if ($taskRegistryBefore -ne $taskRegistryAfter -or $taskUserEnv -ne [Environment]::GetEnvironmentVariable('CODEX_AUTHAPI_BASE_URL', 'User')) { throw 'Verification modified the real registration or user auth environment.' }
 if ($taskStartupBefore -ne (Get-ItemProperty -LiteralPath $taskStartupPath -Name CodexDock -ErrorAction SilentlyContinue).CodexDock) { throw 'Verification modified the real startup registration.' }
 $taskVerification = [ordered]@{ status='PASS'; version=$Version; installerSha256=(Get-FileHash -LiteralPath $taskSetup -Algorithm SHA256).Hash.ToLowerInvariant();
-    installerExit=0; runningDockUpgrade=$true; otherInstallationDockPreserved=$true; dockSettingsUnchanged=$true;
+    installerExit=0; upgradeFixtureVersion=$taskFixtureVersion; runningDockUpgrade=$true; otherInstallationDockPreserved=$true; dockSettingsUnchanged=$true;
     runningModelUpgrade=$true; otherInstallationModelPreserved=$true; modelSettingsUnchanged=$true;
     runningMobileUpgrade=$true; otherInstallationWorkerPreserved=$true; mobileSettingsUnchanged=$true;
     installedFilesCompared=$taskCompared; executableSha256=$taskExpectedHash.ToLowerInvariant(); installedUiChecks=$taskReport.tests.Count;

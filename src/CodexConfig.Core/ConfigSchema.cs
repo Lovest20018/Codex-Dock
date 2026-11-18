@@ -17,6 +17,7 @@ public sealed record CatalogEntry
     public string UpdatedIn { get; init; } = "";
     public bool Common { get; init; }
     public bool Deprecated { get; init; }
+    public bool EnumHasTableForm { get; init; }
     public string[] Platforms { get; init; } = [];
     public string[] Types { get; init; } = [];
     public string[] EnumValues { get; init; } = [];
@@ -79,6 +80,7 @@ public sealed class ConfigSchema
             Path = S("path"), Name = S("name"), Chinese = S("chinese"), Description = S("description"), Category = S("category"), Kind = S("kind"), Stage = S("stage"), VerifiedSince = S("verified_since"), UpdatedIn = S("updated_in"),
             Common = entry.TryGetProperty("common", out var common) && common.GetBoolean(),
             Deprecated = entry.TryGetProperty("deprecated_hint", out var deprecated) && deprecated.GetBoolean(),
+            EnumHasTableForm = entry.TryGetProperty("enum_has_table_form", out var structured) && structured.GetBoolean(),
             Platforms = entry.GetProperty("platforms").EnumerateArray().Select(x => x.GetString()!).ToArray(),
             Types = entry.TryGetProperty("types", out var types) ? types.EnumerateArray().Select(x => x.GetString()!).ToArray() : [],
             EnumValues = entry.TryGetProperty("enum_values", out var values) ? values.EnumerateArray().Select(x => x.GetProperty("value").GetString()!).ToArray() : [],
@@ -165,7 +167,8 @@ public sealed class ConfigSchema
         {
             "boolean" => value is bool,
             "string" => value is string,
-            "enum" => value is string choice && entry.EnumValues.Contains(choice, StringComparer.Ordinal) || entry.Path == "approval_policy" && value is TomlTable,
+            "enum" => value is string choice && entry.EnumValues.Contains(choice, StringComparer.Ordinal) ||
+                (entry.EnumHasTableForm || entry.Path == "approval_policy") && value is TomlTable,
             "integer" => value is long,
             "number" => value is long or double,
             "array" => value is TomlArray or TomlTableArray,

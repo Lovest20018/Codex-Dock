@@ -13,9 +13,9 @@
 
 ## 数据结构
 
-顶层为 `format`、`schema_version`、`categories`、`entries` 和 `provenance`。来源记录是核查快照，不能代表所有客户端版本或当前聊天的生效值。2026-11-11 目录共有 1064 条定义，相比 2026-11-02 的 1003 条新增 61 条结构路径；包括父表和动态模板，不等于 1064 个独立开关。
+顶层为 `format`、`schema_version`、`categories`、`entries` 和 `provenance`。2026-11-18 目录共有 1096 条定义，含父表和动态路径。此次增加 32 条，固定参考内核为 `0.171.0-alpha.5`。旧内核的可用字段、默认值和项目覆盖可在“高级工具 → 配置来源”核对。[官方 Schema](https://raw.githubusercontent.com/openai/codex/466da69cf6b72983f0d28c498c7cdb8d9bf2d114/codex-rs/core/config.schema.json)
 
-`verified_since` 表示本轮首次收录该定义时核对的内核版本，`updated_in` 表示本轮更新已有定义的资料版本。它们均不声明字段的最早支持版本；旧内核能否支持仍需核对。`provenance.community_sources` 保留实际复用的固定社区来源及散列，官方 schema 是类型与约束的核查基准。原有历史字段仍保留，不因新目录暂未收录就删除用户配置。
+`verified_since` 记录首次收录时核对的内核版本，`updated_in` 记录已收录定义最后核对的版本。“常用”筛选使用字段的 `common` 标记。`provenance.community_sources` 记录使用的固定社区来源和散列，类型与约束按官方 schema 核对。已写入本地文件的历史配置可在“已配置”查阅。
 
 ```json
 {

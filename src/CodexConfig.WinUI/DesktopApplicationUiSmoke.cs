@@ -17,11 +17,17 @@ public sealed partial class MainWindow
         public bool IsEnhancementRunning { get; private set; }
         public DesktopSpeedPlan? AppliedPlan { get; private set; }
         public bool RefuseExit, FailAttachment;
-        public int Restarts, Attachments;
+        public int Restarts, Attachments, Activations;
         public CodexDesktopTarget? LastTarget;
         public TaskCompletionSource? RestartGate;
         public bool LastForce;
         public Task<IReadOnlyList<CodexDesktopTarget>> FindTargetsAsync(CancellationToken cancellation) => Task.FromResult(Targets);
+        public bool Activate(CodexDesktopTarget target)
+        {
+            if (!Targets.Any(current => DesktopApplicationService.SameRoot(target, current))) return false;
+            Activations++;
+            return true;
+        }
         public Task<DesktopEnhancementPreparation> PrepareEnhancementsAsync(CodexDesktopTarget target, ConfigSnapshot saved, CancellationToken cancellation)
         {
             var selected = preferences.Load();
