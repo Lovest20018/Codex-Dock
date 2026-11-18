@@ -8,8 +8,11 @@ using CodexConfig.Core;
 // the automatic suite and never selects or closes an existing user's instance.
 internal static class InstalledDesktopAcceptance
 {
-    internal static async Task RunAsync(string root, bool inspect = false)
+    internal sealed record CompatibilityFixture(int DebugPort, int ProviderPort);
+    internal static async Task RunAsync(string root, bool inspect = false, CompatibilityFixture? compatibility = null)
     {
+        if (compatibility is not null && (compatibility.DebugPort is < 1024 or > 65535 || compatibility.ProviderPort is < 1024 or > 65535 || compatibility.DebugPort == compatibility.ProviderPort))
+            throw new ArgumentException("The compatibility fixture requires two distinct loopback ports.");
         root = Path.GetFullPath(root);
         var allowed = Path.GetFullPath("artifacts") + Path.DirectorySeparatorChar;
         if (!root.StartsWith(allowed, StringComparison.OrdinalIgnoreCase) || Directory.Exists(root))
@@ -17,8 +20,9 @@ internal static class InstalledDesktopAcceptance
         Directory.CreateDirectory(root);
         var home = Path.Combine(root, "codex-home"); var profile = Path.Combine(root, "electron-profile");
         Directory.CreateDirectory(home); Directory.CreateDirectory(profile);
-        File.WriteAllText(Path.Combine(home, "config.toml"), "# Isolated desktop fixture; all model traffic stays on loopback\nmodel='fixture-model'\nmodel_provider='desktop_fixture'\n[model_providers.desktop_fixture]\nname='Desktop acceptance fixture'\nbase_url='http://127.0.0.1:9/v1'\nwire_api='responses'\nrequires_openai_auth=true\n");
-        var auth = JsonSerializer.Serialize(new { OPENAI_API_KEY = "fixture-key-do-not-send" });
+        var port = compatibility?.ProviderPort ?? 9;
+        File.WriteAllText(Path.Combine(home, "config.toml"), $"# Isolated desktop fixture; all model traffic stays on loopback\nmodel='fixture-model'\nmodel_provider='desktop_fixture'\n[model_providers.desktop_fixture]\nname='Desktop acceptance fixture'\nbase_url='http://127.0.0.1:{port}/v1'\nwire_api='responses'\nrequires_openai_auth=true\n");
+        var auth = JsonSerializer.Serialize(new { auth_mode = "apikey", OPENAI_API_KEY = "fixture-key-do-not-send" });
         File.WriteAllText(Path.Combine(home, "auth.json"), auth);
         // A new profile otherwise stops in first-run onboarding, which has no
         // application menu. Seed only the flags observed after skipping it in
@@ -35,7 +39,7 @@ internal static class InstalledDesktopAcceptance
         }));
         var native = new WindowsCodexDesktopPlatform(); var before = native.Running();
         var executable = native.Installed().Single();
-        var platform = new ScopedPlatform(native, before, home, profile);
+        var platform = new ScopedPlatform(native, before, home, profile, compatibility);
         var desktop = new CodexDesktop(platform, startTimeout: TimeSpan.FromSeconds(30));
         var target = new CodexDesktopTarget(executable, []) { UserDataDirectory = profile, OtherProcesses = before, RequiresProfile = before.Count > 0 };
         var checks = new List<string>(); var openedIds = new List<int>();
@@ -50,14 +54,14 @@ internal static class InstalledDesktopAcceptance
         async Task InspectAsync(CodexDesktopProcess process, string stage)
         {
             if (!inspect) return;
-            File.WriteAllText(Path.Combine(root, "fixture" + stage + ".json"), JsonSerializer.Serialize(new { MainProcess = process, profile }));
+            File.WriteAllText(Path.Combine(root, "fixture" + stage + ".json"), JsonSerializer.Serialize(new { MainProcess = process, profile, debugPort = compatibility?.DebugPort }));
             var inspection = Stopwatch.StartNew();
             while (!File.Exists(Path.Combine(root, "continue" + stage)))
-            { if (inspection.Elapsed > TimeSpan.FromMinutes(15)) throw new TimeoutException("Isolated inspection timed out"); await Task.Delay(200); }
+            { if (inspection.Elapsed > TimeSpan.FromMinutes(compatibility is null ? 15 : 4)) throw new TimeoutException("Isolated inspection timed out"); await Task.Delay(200); }
         }
         try
         {
-            var first = await desktop.RestartAsync(target, home, null, Validate);
+            var first = await desktop.RestartAsync(target, home, null, Validate, speedDebugPort: compatibility?.DebugPort);
             openedIds.Add(first.MainProcess!.Id);
             Check(first.IsRunning && first.UserDataDirectory == profile && before.All(old => !CodexDesktop.SameProcess(old, first.MainProcess)),
                 "The installed Store application opens a separate explicit profile and a temporary Codex home");
@@ -69,7 +73,7 @@ internal static class InstalledDesktopAcceptance
             await InspectAsync(first.MainProcess, "");
             // Use a fresh inventory carrying the actual process identities.
             var selected = desktop.FindTargets().Single(candidate => candidate.UserDataDirectory == profile);
-            var next = await desktop.RestartAsync(selected, home, null, Validate);
+            var next = await desktop.RestartAsync(selected, home, null, Validate, speedDebugPort: compatibility?.DebugPort);
             openedIds.Add(next.MainProcess!.Id);
             Check(next.MainProcess.Id != first.MainProcess.Id && next.UserDataDirectory == profile && platform.Starts == 2 && platform.Forced == 0,
                 "Native Quit restarts the visible installed desktop in the same profile without ending its process");
@@ -85,7 +89,7 @@ internal static class InstalledDesktopAcceptance
             Check(true, "The isolated desktop remains running after its actual window closes to the tray");
             await InspectAsync(next.MainProcess, "-tray");
             selected = desktop.FindTargets().Single(candidate => candidate.UserDataDirectory == profile);
-            var fromTray = await desktop.RestartAsync(selected, home, null, Validate);
+            var fromTray = await desktop.RestartAsync(selected, home, null, Validate, speedDebugPort: compatibility?.DebugPort);
             openedIds.Add(fromTray.MainProcess!.Id);
             Check(fromTray.MainProcess.Id != next.MainProcess.Id && fromTray.UserDataDirectory == profile && platform.Starts == 3 && platform.Forced == 0,
                 "Native Quit restarts the tray-hidden installed desktop without force and without a duplicate profile");
@@ -114,7 +118,8 @@ internal static class InstalledDesktopAcceptance
         Check(platform.Forced == 0, "Normal restart and final cleanup never request the force-exit path");
         await File.WriteAllTextAsync(Path.Combine(root, "report.json"), JsonSerializer.Serialize(new
         {
-            status = "PASS", scope = "Installed desktop visible and tray-hidden normal Quit/restart in an isolated empty profile; no force-exit, login, task, message or enhancement injection",
+            status = "PASS", scope = compatibility is null ? "Installed desktop visible and tray-hidden normal Quit/restart in an isolated empty profile; no force-exit, login, task, message or enhancement injection" :
+                "Isolated pure API fixture with loopback model service, normal Quit/restart and loopback renderer observation",
             executable, home, profile, openedIds, tests = checks,
             forceExitRequests = platform.Forced,
             quitHelperSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "mobile", "runtime", "client-helpers", "codex-quit-helper.exe")))),
@@ -136,7 +141,8 @@ internal static class InstalledDesktopAcceptance
         Console.WriteLine("PASS cleanup of the exact empty acceptance profile only");
     }
 
-    private sealed class ScopedPlatform(WindowsCodexDesktopPlatform native, IReadOnlyList<CodexDesktopProcess> protectedProcesses, string home, string profile) : ICodexDesktopPlatform
+    private sealed class ScopedPlatform(WindowsCodexDesktopPlatform native, IReadOnlyList<CodexDesktopProcess> protectedProcesses, string home, string profile,
+        CompatibilityFixture? compatibility) : ICodexDesktopPlatform
     {
         internal int Starts, Forced;
         public IReadOnlyList<CodexDesktopProcess> Running() => native.Running();
@@ -162,14 +168,22 @@ internal static class InstalledDesktopAcceptance
         }
         public void Start(ProcessStartInfo start)
         {
-            if (start.Environment["CODEX_HOME"] != home || start.Environment["CODEX_ELECTRON_USER_DATA_PATH"] != profile ||
-                start.ArgumentList.Count != 1 || start.ArgumentList[0] != "--user-data-dir=" + profile)
+            string[] arguments = compatibility is null ? ["--user-data-dir=" + profile] :
+                ["--user-data-dir=" + profile, "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=" + compatibility.DebugPort];
+            if (start.Environment["CODEX_HOME"] != home || start.Environment["CODEX_ELECTRON_USER_DATA_PATH"] != profile || !start.ArgumentList.SequenceEqual(arguments))
                 throw new IOException("Refused a launch outside the isolated profile.");
             foreach (var name in start.Environment.Keys.Where(name => name.EndsWith("_KEY", StringComparison.OrdinalIgnoreCase) ||
                 name.EndsWith("_TOKEN", StringComparison.OrdinalIgnoreCase) ||
                 name.StartsWith("CODEX_", StringComparison.OrdinalIgnoreCase) && name is not "CODEX_HOME" and not "CODEX_ELECTRON_USER_DATA_PATH" ||
                 name is "OPENAI_BASE_URL" or "NODE_OPTIONS" or "ELECTRON_RUN_AS_NODE").ToArray())
                 start.Environment.Remove(name);
+            if (compatibility is not null)
+            {
+                start.ArgumentList.Add("--proxy-server=http://127.0.0.1:9");
+                start.ArgumentList.Add("--proxy-bypass-list=127.0.0.1;localhost");
+                start.Environment["HTTP_PROXY"] = start.Environment["HTTPS_PROXY"] = start.Environment["ALL_PROXY"] = "http://127.0.0.1:9";
+                start.Environment["NO_PROXY"] = "127.0.0.1,localhost,::1";
+            }
             native.Start(start); Starts++;
         }
     }

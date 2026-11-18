@@ -38,6 +38,46 @@ internal static class ModelGatewayDiagnosticsTests
             var text = JsonSerializer.Serialize(view); Assert(!text.Contains("fake-private") && !text.Contains("NaN") && !text.Contains("Infinity") &&
                 view.Latency.Contains("未测得") && view.Latency.Contains("无法识别") && view.Compaction.Contains("v2 未提供 次"));
         });
+        Test("SSE diagnostic proves the final response only after a complete event and scopes it to its own request", () =>
+        {
+            var monitor = new BridgeTelemetry();
+            using var first = monitor.Begin("http"); using var second = monitor.Begin("http");
+            first.Enter(); second.Enter(); first.HeaderMetadata(true, "req_one"); second.HeaderMetadata(true, "req_two");
+            using var one = monitor.Observe(false, "http", first); using var two = monitor.Observe(false, "http", second);
+            one.SetSse(true); two.SetSse(true);
+            var completed = "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_one\"}}";
+            one.Feed(Encoding.UTF8.GetBytes(completed + "\r")); one.Feed("\n\r"u8); one.Feed("\n"u8);
+            two.Feed(Encoding.UTF8.GetBytes(completed.Replace("resp_one", "resp_undelimited", StringComparison.Ordinal) + "\n"));
+            one.Finish(); first.End("client_disconnected");
+            Assert(monitor.Snapshot().LastTransfer is { RequestId: "req_one", FinalResponseId: "resp_one", Transport: "sse", Phase: "client_disconnected" });
+            two.Finish(); second.End("completed");
+            Assert(monitor.Snapshot().LastTransfer is { RequestId: "req_two", FinalResponseId: null, Phase: "incomplete" });
+            using var listing = monitor.Begin(); listing.End("completed");
+            Assert(monitor.Snapshot().LastTransfer?.RequestId == "req_two");
+        });
+        Test("WebSocket diagnostic separates consecutive responses and rejects failed or half-frame IDs", () =>
+        {
+            var monitor = new BridgeTelemetry(); using var transfer = monitor.Begin("websocket"); transfer.Enter(); transfer.HeaderMetadata(false, "req_upgrade");
+            using var socket = monitor.Observe(false, "websocket", transfer);
+            socket.Request("{\"type\":\"response.create\"}"u8.ToArray());
+            socket.Feed("{\"type\":\"response.completed\",\"response\":{\"id\":\"resp_ws1\"}}"u8); socket.Finish();
+            Assert(monitor.Snapshot().LastTransfer is { RequestId: "req_upgrade", FinalResponseId: "resp_ws1", Transport: "websocket", Phase: "completed" });
+            socket.Request("{\"type\":\"response.create\"}"u8.ToArray());
+            socket.Feed("{\"type\":\"response.failed\",\"response\":{\"id\":\"resp_failed\"}}"u8); socket.Finish();
+            Assert(monitor.Snapshot().LastTransfer is { FinalResponseId: null, Phase: "upstream_error" });
+            socket.Request("{\"type\":\"response.create\"}"u8.ToArray());
+            socket.Feed("{\"type\":\"response.completed\",\"response\":{\"id\":\"resp_unsent_boundary\"}}"u8);
+            transfer.End("peer_closed");
+            Assert(monitor.Snapshot().LastTransfer is { FinalResponseId: null, Phase: "peer_closed" });
+        });
+        Test("transfer summaries reject token-shaped or multiline values and label unknown response IDs", () =>
+        {
+            var summary = ModelGatewayDiagnostics.FromStatus(new(2, 0, 0, Metrics: Metrics() with
+            { LastTransfer = new(DateTimeOffset.UnixEpoch, "stream_idle_timeout", "http", "req_ok", "sk-fixture-token") }), null).TransferSummary;
+            Assert(summary is not null && summary.Contains("数据空闲超时") &&
+                summary.Contains("请求 ID req_ok") && summary.Contains("最终响应 ID 未收到") && !summary.Contains("fixture-token"));
+            Assert(BridgeTransferDiagnostic.SafeIdentifier("resp_line\nbody") is null && BridgeTransferDiagnostic.SafeIdentifier(new string('a', 151)) is null);
+        });
         Test("old gateway diagnostic payloads retain unknown values instead of synthesizing zero successes", () =>
         {
             var view = ModelGatewayDiagnostics.FromStatus(new(0, 0, 0), null);
@@ -73,7 +113,8 @@ internal static class ModelGatewayDiagnosticsTests
             var requests = 0; using var handler = new Handler(async request =>
             {
                 requests++; Assert((await request.Content!.ReadAsStringAsync()).Contains("fake-private-request"));
-                return new(HttpStatusCode.OK) { Content = new StringContent("{\"id\":\"diagnostic-response\",\"status\":\"completed\",\"output\":[{\"type\":\"compaction\",\"id\":\"c1\",\"encrypted_content\":\"fake-private-compaction\"}]}", Encoding.UTF8, "application/json") };
+                var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"id\":\"diagnostic-response\",\"status\":\"completed\",\"output\":[{\"type\":\"compaction\",\"id\":\"c1\",\"encrypted_content\":\"fake-private-compaction\"}]}", Encoding.UTF8, "application/json") };
+                response.Headers.Add("x-request-id", "req_diagnostic"); return response;
             });
             await using var bridge = new ModelBridge(() => connection, () => null, handler); await bridge.StartAsync();
             var native = new NativeGatewayManagementRuntime(store); var definition = await native.LoadAsync(GatewayKind.Model, home, CancellationToken.None);
@@ -85,7 +126,8 @@ internal static class ModelGatewayDiagnosticsTests
             GatewayProbe? probe = null;
             for (var i = 0; i < 50; i++) { probe = await native.ProbeAsync(definition, CancellationToken.None); if (probe.Diagnostics?.Latency.Contains("活跃 0") == true) break; await Task.Delay(20); }
             Assert(probe?.Running == true && probe.Diagnostics!.Compaction.Contains("v2 1 次") && probe.Diagnostics.Compaction.Contains("确认完成 1 次") && probe.Diagnostics.Latency.Contains("ms") && requests == 1);
-            Assert(!JsonSerializer.Serialize(probe!.Diagnostics).Contains("fake-private") && before.SameContents(store.Load(home)));
+            Assert(probe!.Diagnostics?.TransferSummary is { } summary && summary.Contains("请求 ID req_diagnostic") && summary.Contains("最终响应 ID diagnostic-response"));
+            Assert(!JsonSerializer.Serialize(probe.Diagnostics).Contains("fake-private") && before.SameContents(store.Load(home)));
             File.WriteAllText(config, File.ReadAllText(config).Replace("remote_compaction='v2'", "remote_compaction='unsupported'", StringComparison.Ordinal));
             await ThrowsAsync<IOException>(() => native.ProbeAsync(definition, CancellationToken.None));
         }));

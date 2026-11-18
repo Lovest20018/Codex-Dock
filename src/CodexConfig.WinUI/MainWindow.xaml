@@ -583,6 +583,9 @@
                                         <TextBlock x:Name="ModelGatewayCompactionMetrics" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                                         <TextBlock x:Name="ModelGatewayLatencyMetrics" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
                                         <TextBlock x:Name="ModelGatewayUpstreamMetrics" TextWrapping="Wrap" Opacity="0.75" />
+                                        <TextBlock x:Name="ModelGatewayTransferText" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                        <Button x:Name="CopyModelTransferButton" Content="复制连接诊断" Click="CopyModelTransferClicked" />
+                                        <TextBlock x:Name="ModelGatewayCopyStatus" TextWrapping="Wrap" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite" />
                                         <TextBlock x:Name="ModelGatewayMetricsScope" TextWrapping="Wrap" Opacity="0.65" />
                                     </StackPanel>
                                 </Expander>

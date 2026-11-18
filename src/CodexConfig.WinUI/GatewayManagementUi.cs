@@ -18,7 +18,7 @@ public sealed partial class MainWindow
     private void LoadGatewayPreferences()
     {
         if (gatewayHome != viewModel.Home)
-        { gatewayHome = viewModel.Home; gatewayResults.Clear(); gatewayManagement.ClearOverview(); gatewayPreferencesStatus = "自动启动默认关闭，按配置目录保存。"; }
+        { gatewayHome = viewModel.Home; gatewayResults.Clear(); gatewayManagement.ClearOverview(); ModelGatewayCopyStatus.Visibility = Visibility.Collapsed; gatewayPreferencesStatus = "自动启动默认关闭，按配置目录保存。"; }
         try { gatewayPreferences = gatewayManagement.LoadPreferences(viewModel.Home); gatewayPreferencesError = null; }
         catch (Exception error) { gatewayPreferences = new(); gatewayPreferencesError = error.Message; }
         RefreshView();
@@ -58,6 +58,9 @@ public sealed partial class MainWindow
             ModelGatewayCompactionMetrics.Text = diagnostics?.Compaction ?? "";
             ModelGatewayLatencyMetrics.Text = diagnostics?.Latency ?? "";
             ModelGatewayUpstreamMetrics.Text = diagnostics?.Upstream ?? "";
+            ModelGatewayTransferText.Text = diagnostics?.TransferSummary ?? (diagnostics is null ? "" : "尚无可关联的响应记录。");
+            CopyModelTransferButton.IsEnabled = editable && diagnostics?.TransferSummary is not null;
+            if (!CopyModelTransferButton.IsEnabled) ModelGatewayCopyStatus.Visibility = Visibility.Collapsed;
             ModelGatewayMetricsScope.Text = ModelGatewayDiagnostics.Scope;
             RefreshGatewaysButton.IsEnabled = StopGatewaysExitButton.IsEnabled = editable;
         }
@@ -88,6 +91,14 @@ public sealed partial class MainWindow
         if (!closing && viewModel.Home == home) RefreshView();
     }
     private async void RefreshGatewaysClicked(object sender, RoutedEventArgs args) { LoadGatewayPreferences(); await RefreshGatewaysAsync(); }
+    private void CopyModelTransferClicked(object sender, RoutedEventArgs args)
+    {
+        if (!CopyModelTransferButton.IsEnabled || gatewayManagement.Overview is not { } overview || overview.Home != viewModel.Home ||
+            overview.Model.Diagnostics?.TransferSummary is not { } summary) return;
+        try { CopyWorkspaceText(summary); ModelGatewayCopyStatus.Text = "已复制诊断。"; }
+        catch (Exception) { ModelGatewayCopyStatus.Text = "暂时无法复制，请选择上方文字。"; }
+        ModelGatewayCopyStatus.Visibility = Visibility.Visible;
+    }
     private void OpenGatewaysClicked(object sender, RoutedEventArgs args) => NavigateTo(GatewaysNav);
     private async void GatewayActionClicked(object sender, RoutedEventArgs args)
     {

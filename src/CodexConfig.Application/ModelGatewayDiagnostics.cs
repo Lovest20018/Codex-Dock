@@ -2,12 +2,12 @@ using CodexConfig.Core;
 
 namespace CodexConfig.Application;
 
-// Presentation is shared by both shells. Only counters and fixed labels leave
-// this projection; upstream error text, request IDs and response bodies do not.
+// Presentation is shared by both shells. Correlation comes from a single transfer record.
 public sealed record ModelGatewayDiagnostics(string Requests, string Configuration, string Compaction, string Latency, string Upstream)
 {
     public const string Scope = "仅统计经过此模型网关的本次进程流量，重启后重新累计；直连及其他进程不在统计范围内。不保存聊天或压缩正文。";
-    public string MetricsText => Configuration + "\n" + Compaction + "\n" + Latency + "\n" + Scope;
+    public string? TransferSummary { get; init; }
+    public string MetricsText => Configuration + "\n" + Compaction + "\n" + Latency + (TransferSummary is { } summary ? "\n" + summary : "") + "\n" + Scope;
     public static string? ReadPreference(byte[]? config)
     {
         var document = new TomlDocument(config); var provider = document.String("model_provider") ?? "openai";
@@ -37,9 +37,17 @@ public sealed record ModelGatewayDiagnostics(string Requests, string Configurati
         var latency = "连接：排队 " + Count(metrics.Waiting) + " · 活跃 " + Count(metrics.Active) +
             "\n最近一次：队列 " + Milliseconds(metrics.LastQueueMs) + " · 上游响应头 " + Milliseconds(metrics.LastHeadersMs) +
             "\n首数据 " + Milliseconds(metrics.LastFirstDataMs) + " · 总计 " + Milliseconds(metrics.LastDurationMs) +
-            "\n结束：" + (metrics.LastStreamEnd switch { "completed" => "完整转发", "upstream_error" => "上游错误", "client_disconnected" => "客户端断开", "timeout" => "等待超时",
-                "headers_timeout" => "响应头等待超时", "stream_idle_timeout" => "数据空闲超时",
-                "peer_closed" or "peer_close" => "连接关闭", "handshake_failed" => "握手失败", "transport_error" => "传输异常", _ => "未提供或无法识别" });
-        return new(requests, configuration, compaction, latency, upstream);
+            "\n结束：" + Phase(metrics.LastStreamEnd);
+        var summary = metrics.LastTransfer is { } transfer ? "记录时间 " + transfer.At.ToString("yyyy-MM-dd HH:mm:ss zzz") +
+            "\n阶段 " + (transfer.Phase == "completed" ? "收到完成事件" : Phase(transfer.Phase)) + " · " + Transport(transfer.Transport) +
+            "\n请求 ID " + (BridgeTransferDiagnostic.SafeIdentifier(transfer.RequestId) ?? "未提供") +
+            "\n最终响应 ID " + (BridgeTransferDiagnostic.SafeIdentifier(transfer.FinalResponseId) ?? "未收到") : null;
+        return new(requests, configuration, compaction, latency, upstream) { TransferSummary = summary };
     }
+    private static string Phase(string? value) => value switch
+    {
+        "completed" => "完整转发", "incomplete" => "未收到完整响应", "upstream_error" => "上游错误", "client_disconnected" => "客户端断开",
+        "timeout" => "等待超时", "headers_timeout" => "响应头等待超时", "stream_idle_timeout" => "数据空闲超时",
+        "peer_closed" or "peer_close" => "连接关闭", "handshake_failed" => "握手失败", "transport_error" => "传输异常", _ => "未提供或无法识别"
+    };
 }

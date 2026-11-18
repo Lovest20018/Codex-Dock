@@ -19,7 +19,7 @@ public sealed record BridgeStatus(long Requests, long FastRequests, long AutoRev
 // A narrow inference bridge. Account, plugin and login endpoints are intentionally absent.
 public sealed class ModelBridge : IAsyncDisposable
 {
-    public const int ProtocolVersion = 8;
+    public const int ProtocolVersion = 9;
     private readonly Func<MixedConnection> readConnection;
     private readonly Func<byte[]?> readAuth;
     private readonly HttpClient client;
@@ -108,7 +108,7 @@ public sealed class ModelBridge : IAsyncDisposable
             }
             activeRequests.TryAdd(context, 0);
             if (StopRequested) { context.Abort(); return; }
-            transfer = telemetry.Begin();
+            transfer = telemetry.Begin(path == "/models" ? null : context.WebSockets.IsWebSocketRequest ? "websocket" : "http");
             await slots.WaitAsync(context.RequestAborted);
             transfer.Enter();
             try
@@ -153,7 +153,8 @@ public sealed class ModelBridge : IAsyncDisposable
 
     private async Task ForwardHttpAsync(HttpContext context, string target, MixedConnection settings, BridgeTelemetry.Transfer transfer)
     {
-        using var observer = telemetry.Observe(context.Request.Path.Value?.EndsWith("/responses/compact", StringComparison.Ordinal) == true, "http");
+        using var observer = telemetry.Observe(context.Request.Path.Value?.EndsWith("/responses/compact", StringComparison.Ordinal) == true,
+            "http", transfer, id => SafeValue(id, settings));
         using var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), target);
         CopyRequestHeaders(context, (key, value) => request.Headers.TryAddWithoutValidation(key, value));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiKey);
@@ -186,8 +187,10 @@ public sealed class ModelBridge : IAsyncDisposable
         headerDeadline.Stop();
         using var timeout = new HttpDeadline(time, TimeSpan.FromMinutes(5), context.RequestAborted);
         transfer.Headers();
-        observer.SetSse(string.Equals(response.Content.Headers.ContentType?.MediaType, "text/event-stream", StringComparison.OrdinalIgnoreCase));
+        var sse = string.Equals(response.Content.Headers.ContentType?.MediaType, "text/event-stream", StringComparison.OrdinalIgnoreCase);
+        observer.SetSse(sse);
         var requestId = response.Headers.TryGetValues("x-request-id", out var ids) ? SafeValue(ids.FirstOrDefault(), settings) : null;
+        transfer.HeaderMetadata(sse, requestId);
         if (!response.IsSuccessStatusCode)
         {
             var status = (int)response.StatusCode;
@@ -248,7 +251,7 @@ public sealed class ModelBridge : IAsyncDisposable
 
     private async Task ForwardWebSocketAsync(HttpContext context, string target, MixedConnection settings, BridgeTelemetry.Transfer transfer)
     {
-        using var observer = telemetry.Observe(false, "websocket");
+        using var observer = telemetry.Observe(false, "websocket", transfer, id => SafeValue(id, settings));
         var uri = new UriBuilder(target) { Scheme = new Uri(target).Scheme == "https" ? "wss" : "ws" };
         using var upstream = new ClientWebSocket();
         upstream.Options.Proxy = HttpConnectionPolicy.CanUseProxy(settings.BaseUrl, settings.UseSystemProxy) ? proxy : null;
@@ -261,6 +264,7 @@ public sealed class ModelBridge : IAsyncDisposable
         try { await upstream.ConnectAsync(uri.Uri, lifetime.Token); }
         catch (WebSocketException)
         {
+            transfer.HeaderMetadata(false, SocketRequestId());
             transfer.End("handshake_failed");
             var status = (int)upstream.HttpStatusCode;
             // Preserve unsupported-handshake responses so the native client can choose HTTP before any output.
@@ -269,6 +273,7 @@ public sealed class ModelBridge : IAsyncDisposable
             return;
         }
         transfer.Headers();
+        transfer.HeaderMetadata(false, SocketRequestId());
         lifetime.CancelAfter(TimeSpan.FromMinutes(5));
         using var downstream = await context.WebSockets.AcceptWebSocketAsync();
         var route = new BridgeSocketRoute(BridgeSocketRoute.Fingerprint(settings), () =>
@@ -329,6 +334,9 @@ public sealed class ModelBridge : IAsyncDisposable
         lifetime.Cancel(); downstream.Abort(); upstream.Abort();
         try { await Task.WhenAll(send, receive, retire); } catch (Exception error) when (error is OperationCanceledException or WebSocketException) { }
         transfer.End(endReason);
+
+        string? SocketRequestId() => upstream.HttpResponseHeaders?.FirstOrDefault(header =>
+            header.Key.Equals("x-request-id", StringComparison.OrdinalIgnoreCase)).Value?.FirstOrDefault() is { } id ? SafeValue(id, settings) : null;
     }
 
     private async Task PumpAsync(WebSocket source, WebSocket destination, CancellationTokenSource lifetime, bool inspect, BridgeTelemetry.Observer observer, BridgeTelemetry.Transfer transfer, bool guardian = false, BridgeSocketRoute? route = null)

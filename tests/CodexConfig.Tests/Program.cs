@@ -24,6 +24,12 @@ if (args is ["--installed-desktop-acceptance", var installedDesktopRoot])
 { await InstalledDesktopAcceptance.RunAsync(installedDesktopRoot); return 0; }
 if (args is ["--installed-desktop-inspect", var inspectionRoot])
 { await InstalledDesktopAcceptance.RunAsync(inspectionRoot, inspect: true); return 0; }
+if (args is ["--installed-desktop-compatibility", var compatibilityRoot, var debugPort, var providerPort])
+{
+    await InstalledDesktopAcceptance.RunAsync(compatibilityRoot, inspect: true,
+        compatibility: new(int.Parse(debugPort), int.Parse(providerPort)));
+    return 0;
+}
 if (args is ["--cleanup-installed-desktop-acceptance", var installedCleanupRoot])
 { await InstalledDesktopAcceptance.CleanupAsync(installedCleanupRoot); return 0; }
 if (args is ["--model-bridge", var workerHome]) return await BridgeProcess.RunAsync(workerHome);

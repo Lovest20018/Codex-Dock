@@ -133,7 +133,8 @@ public sealed partial class MainWindow
         { if (!value) throw new InvalidOperationException(message); checks.Add(message); File.AppendAllText(Path.Combine(output, "progress.log"), "PASS " + message + Environment.NewLine); }
         var runtime = (SmokeGatewayRuntime)gatewayRuntime; var home = viewModel.Home; var before = store.Load(home);
         var configured = runtime.Configured.ToDictionary(); var running = runtime.Running.ToDictionary(); var trace = runtime.Trace.Count;
-        var metrics = new BridgeMetrics(3, 2, 4, 1, 0, 2, DateTimeOffset.UtcNow, null, null, null, 1, 2, 7, 21, 34, 55, "completed") { LastTriggerProtocol = "v2", LastTriggerTransport = "sse" };
+        var metrics = new BridgeMetrics(3, 2, 4, 1, 0, 2, DateTimeOffset.UtcNow, null, null, null, 1, 2, 7, 21, 34, 55, "completed")
+        { LastTriggerProtocol = "v2", LastTriggerTransport = "sse", LastTransfer = new(DateTimeOffset.UtcNow, "incomplete", "sse", "req_fixture", null) };
         try
         {
             runtime.Configured[GatewayKind.Model] = true; runtime.Running[GatewayKind.Model] = true;
@@ -145,6 +146,10 @@ public sealed partial class MainWindow
             Check(ModelGatewayCompactionMetrics.Text.Contains("v2 / SSE") && ModelGatewayCompactionMetrics.Text.Contains("计数可能不全") && ModelGatewayLatencyMetrics.Text.Contains("7 ms") &&
                 ModelGatewayLatencyMetrics.Text.Contains("55 ms") && ModelGatewayMetricsScope.Text.Contains("重启后重新累计"),
                 "Gateway details retain trigger transport incomplete inspection latency and the per-process measurement boundary");
+            CopyModelTransferClicked(CopyModelTransferButton, new());
+            Check(CopyModelTransferButton.IsEnabled && smokeCopiedTexts.LastOrDefault() == ModelGatewayTransferText.Text &&
+                ModelGatewayTransferText.Text.Contains("请求 ID req_fixture") && ModelGatewayTransferText.Text.Contains("最终响应 ID 未收到"),
+                "Copying a truncated gateway response retains the request ID and marks the final response ID as absent");
             PageScroll.ChangeView(null, 210, null, true); await CaptureAsync(output, "gateway-diagnostics-light.png");
             connectionDraft.Model = "unsaved-while-reading-metrics"; var revision = connectionDraft.Revision; await RefreshGatewaysAsync();
             Check(connectionDraft.HasDraft && connectionDraft.Revision == revision && before.SameContents(store.Load(home)) && runtime.Trace.Count == trace,
