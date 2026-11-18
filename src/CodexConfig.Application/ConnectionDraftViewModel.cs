@@ -86,12 +86,24 @@ public sealed class ConnectionDraftViewModel(ConfigStore store) : WorkspaceObser
         return baseline with { BaseUrl = BaseUrl, ApiKey = ApiKey, Model = Model, Kind = Kind, Mode = Mode, UseSystemProxy = UseSystemProxy,
             Details = new(Name, Note, httpOrigin) { GatewayHeaderTimeoutSeconds = headerTimeout }, PreservePreferenceValues = true };
     }
-    public ConfigurationPlanRequest Request()
+    public ConfigurationPlanRequest Request() => BuildRequest(Model);
+
+    public ConfigurationPlanRequest RequestForModel(string model, ModelCatalogResult? discovery, ConnectionSettings source)
+    {
+        var request = BuildRequest(model);
+        if (discovery?.NativeCatalog is not { } catalog || !CanUseServiceCatalog() ||
+            !ManagedModelCatalogStore.CanPinReviewer(catalog, model)) return request;
+
+        return request with { SynchronizeCatalog = true, ServiceCatalog = catalog.ToArray(),
+            ServiceCatalogFingerprint = RequireDiscoverySource(source) };
+    }
+
+    private ConfigurationPlanRequest BuildRequest(string model)
     {
         if (errors.Count > 0) throw new InvalidOperationException("有配置项尚未填写正确，请在全部配置中检查行内提示。当前草稿已保留。");
-        var settings = Settings();
+        var settings = Settings() with { Model = model };
         return new(snapshot!, settings, Edits: new Dictionary<string, string?>(edits), UpdateConnection: ConnectionChanged,
-            UpdateModel: Model != baseline!.Model, UpdateDetails: DetailsChanged, OfficialAuth: Mode == ConnectionMode.OfficialWithApi ? stagedOfficialAuth?.ToArray() : null,
+            UpdateModel: model != baseline!.Model, UpdateDetails: DetailsChanged, OfficialAuth: Mode == ConnectionMode.OfficialWithApi ? stagedOfficialAuth?.ToArray() : null,
             SynchronizeCatalog: catalogSync, ReviewPolicyChanged: reviewChanged, CatalogSource: catalogSource,
             ServiceCatalog: serviceCatalog?.ToArray(), ServiceCatalogFingerprint: serviceCatalogFingerprint);
     }
@@ -186,23 +198,28 @@ public sealed class ConnectionDraftViewModel(ConfigStore store) : WorkspaceObser
     }
     public bool AdoptDiscoveredCatalog(ModelCatalogResult result, ConnectionSettings source)
     {
-        if (snapshot is null) throw new InvalidOperationException("请先读取有效配置。");
-        var fingerprint = (source with { Model = "model-catalog" }).Fingerprint();
-        if (fingerprint != (Settings() with { Model = "model-catalog" }).Fingerprint())
-            throw new InvalidOperationException("连接设置已改变，请重新获取模型。");
+        var fingerprint = RequireDiscoverySource(source);
         var previousServiceDraft = serviceCatalog is not null;
         ClearServiceCatalog();
-        // Explicit file imports keep their chosen source. Ordinary discovery and
-        // user-review mode do not silently enable a managed reviewer.
-        var dedicated = reviewChanged || snapshot.Catalog?.Content is not null &&
-            ManagedModelCatalogStore.Inspect(snapshot).ReviewModel == "codex-auto-review";
-        if (catalogSource is not null || edits.ContainsKey("model_catalog_json") || !dedicated ||
-            Document().String("approvals_reviewer") != "auto_review" || result.NativeCatalog is null)
+        if (!CanUseServiceCatalog() || result.NativeCatalog is null)
         { if (previousServiceDraft) DraftChanged(); return false; }
         ManagedModelCatalogStore.ValidateNative(result.NativeCatalog);
         serviceCatalog = result.NativeCatalog.ToArray(); serviceCatalogFingerprint = fingerprint;
         catalogSync = true; DraftChanged(); return true;
     }
+    private string RequireDiscoverySource(ConnectionSettings source)
+    {
+        if (snapshot is null) throw new InvalidOperationException("请先读取有效配置。");
+        var fingerprint = (source with { Model = "model-catalog" }).Fingerprint();
+        if (fingerprint != (Settings() with { Model = "model-catalog" }).Fingerprint())
+            throw new InvalidOperationException("连接设置已改变，请重新获取模型。");
+        return fingerprint;
+    }
+    private bool CanUseServiceCatalog() =>
+        catalogSource is null && !edits.ContainsKey("model_catalog_json") &&
+        Document().String("approvals_reviewer") == "auto_review" &&
+        (reviewChanged || snapshot is { Catalog.Content: not null } saved &&
+            ManagedModelCatalogStore.Inspect(saved).ReviewModel == "codex-auto-review");
     private void ClearServiceCatalog()
     {
         if (serviceCatalog is not null) catalogSync = false;

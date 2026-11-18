@@ -100,6 +100,7 @@ public sealed partial class MainWindow
         await RunWorkspaceUsabilitySmokeAsync(output, checks);
         await RunWorkspaceConsolidationSmokeAsync(output, checks);
         await RunWorkspaceTaskFlowSmokeAsync(output, checks);
+        await RunQuickModelSmokeAsync(output, checks);
         await RunWorkspaceReviewFixesSmokeAsync(output, checks);
         await RunUpstreamReuseSmokeAsync(output, checks);
         await CaptureAsync(output, "workspace-compact.png");

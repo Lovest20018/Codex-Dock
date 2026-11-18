@@ -11,8 +11,8 @@ public sealed partial class MainWindow
     private bool savingConfiguration, loadingConnection;
     private ConfigurationSaveResult? configurationResult;
 
-    private void LoadWorkspace(string home) { viewModel.Load(home); LoadConnectionDraft(); LoadGatewayPreferences(); ResetMobileHome(); ResetProfileHome(); ResetDiagnosticHome(); }
-    private void LoadWorkspace(ConfigSnapshot saved) { viewModel.Load(saved); LoadConnectionDraft(); LoadGatewayPreferences(); ResetMobileHome(); ResetProfileHome(); ResetDiagnosticHome(); }
+    private void LoadWorkspace(string home) { quickModelAwaitingApply = false; viewModel.Load(home); LoadConnectionDraft(); LoadGatewayPreferences(); ResetMobileHome(); ResetProfileHome(); ResetDiagnosticHome(); }
+    private void LoadWorkspace(ConfigSnapshot saved) { quickModelAwaitingApply = false; viewModel.Load(saved); LoadConnectionDraft(); LoadGatewayPreferences(); ResetMobileHome(); ResetProfileHome(); ResetDiagnosticHome(); }
     private void LoadConnectionDraft()
     {
         InvalidateSavedPreview();
@@ -103,7 +103,7 @@ public sealed partial class MainWindow
         configurationResult = null; shellError = ""; LoadConnectionDraft(); viewModel.Session.MarkDraft(false); RefreshView();
     }
 
-    private async Task<bool> SaveConnectionAsync()
+    private async Task<bool> SaveConnectionAsync((ConfigurationSaveReview Review, long Revision)? inlineConfirmation = null)
     {
         if (ManualApplicationBusy || dialogOpen || closing || !connectionDraft.HasDraft || viewModel.Snapshot is not { } snapshot) return false;
         if (string.IsNullOrWhiteSpace(connectionDraft.Model))
@@ -112,15 +112,16 @@ public sealed partial class MainWindow
         try
         {
             await automaticEnhancements.CancelAndWaitAsync();
-            var revision = connectionDraft.Revision;
-            var review = configurationSave.PrepareReview(connectionDraft.Request());
-            if (review.HasChanges && await ShowDialogAsync(CreateConfigurationReviewDialog(review)) != ContentDialogResult.Primary) return false;
+            var revision = inlineConfirmation?.Revision ?? connectionDraft.Revision;
+            var review = inlineConfirmation?.Review ?? configurationSave.PrepareReview(connectionDraft.Request());
+            if (inlineConfirmation is null && review.HasChanges && await ShowDialogAsync(CreateConfigurationReviewDialog(review)) != ContentDialogResult.Primary) return false;
             configurationResult = configurationSave.Save(review, snapshot, () => viewModel.Home, () =>
             {
                 if (closing || connectionDraft.Revision != revision) throw new OperationCanceledException("草稿已改变，请重新查看修改。");
             }, lifetime.Token);
             if (!configurationResult.Succeeded || configurationResult.Saved is not { } saved)
             { SetShellError("保存未完成，修改已保留", configurationResult.Message); return false; }
+            if (configurationResult.WasWritten) quickModelAwaitingApply = inlineConfirmation is not null;
             desktopApplication.Reset(); lastApplication = null;
             viewModel.ConfigurationSaved(saved);
             loadingConnection = true;

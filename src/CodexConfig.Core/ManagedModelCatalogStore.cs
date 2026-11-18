@@ -14,6 +14,7 @@ public sealed record ManagedCatalogIndex(int Version, string Model, string Sourc
     string ConnectionId, DateTimeOffset UpdatedAt);
 public sealed record ManagedCatalogUpdate(byte[] Index, string Path, byte[] Content, string SourcePath, string SourceHash, bool EmbeddedSource = false);
 public sealed record ManagedCatalogInfo(string? ReviewModel, string SourcePath, int ModelCount, bool Managed, bool HasUpdate, DateTimeOffset? UpdatedAt);
+public sealed class ModelCatalogCoverageException(string message) : InvalidOperationException(message);
 
 // Native metadata is retained verbatim; policy projection only pins the reviewer.
 public static class ManagedModelCatalogStore
@@ -42,6 +43,17 @@ public static class ManagedModelCatalogStore
     public static ManagedCatalogIndex? Index(byte[]? bytes) => bytes is null ? null :
         JsonSerializer.Deserialize<ManagedCatalogIndex>(bytes) is { Version: 1 } index ? index : throw new InvalidDataException("模型目录管理记录无效。");
     public static void ValidateNative(byte[] bytes) => _ = Models(bytes);
+    public static IReadOnlyList<string> ModelNames(byte[] catalog) => Models(catalog).OfType<JsonObject>()
+        .Where(entry => entry["visibility"]?.ToString() is null or "list")
+        .Select(entry => entry["slug"]!.GetValue<string>())
+        .Where(model => model != "codex-auto-review").ToArray();
+    public static bool CanPinReviewer(byte[] catalog, string model)
+    {
+        var models = Models(catalog).OfType<JsonObject>();
+        return models.Any(entry => entry["slug"]!.GetValue<string>() == model) &&
+            models.Any(entry => entry["slug"]!.GetValue<string>() == "codex-auto-review" &&
+                entry["supported_in_api"] is JsonValue supported && supported.TryGetValue<bool>(out var enabled) && enabled);
+    }
     private static JsonArray Models(byte[] bytes)
     {
         if (bytes.Length > MaxBytes) throw new InvalidDataException("模型目录超过 1 MiB，请核对来源。");
@@ -121,7 +133,7 @@ public static class ManagedModelCatalogStore
         var models = Models(before.Catalog?.Content ?? throw new InvalidDataException("受管模型目录缺失，请恢复或重新同步。"));
         if (!models.OfType<JsonObject>().Any(model => model["slug"]!.GetValue<string>() == after.String("model") &&
             (model["slug"]!.GetValue<string>() == "codex-auto-review" || model["auto_review_model_override"]?.GetValue<string>() == "codex-auto-review")))
-            throw new InvalidOperationException("该主模型尚未包含专用审核配置，请先点击“获取服务模型”更新原生能力，或导入包含它的能力目录，再确认保存。");
+            throw new ModelCatalogCoverageException("该主模型尚未包含专用审核配置，请先点击“获取服务模型”更新原生能力，或导入包含它的能力目录，再确认保存。");
     }
     public static void EnsureSafeTarget(string home, string path, byte[] bytes)
     {

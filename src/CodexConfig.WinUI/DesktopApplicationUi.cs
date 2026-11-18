@@ -12,19 +12,20 @@ public sealed partial class MainWindow
     private DesktopApplyResult? lastApplication;
     private Func<ContentDialog, Task<ContentDialogResult>>? smokeDialog;
     private readonly DispatcherTimer runtimeTimer = new() { Interval = TimeSpan.FromSeconds(2) };
-    private bool ManualApplicationBusy => applying || savingConfiguration || restoringConfiguration || savingProfile || restoringNativeClipboard || readingSavedPreview || readingSource || readingFeatures || readingDiagnostics || installingUpdate || readingOfficialLogin || discoveringModels || mobileAction || gatewayAction || gatewayLaunch || gatewayExit || desktopApplication.IsBusy;
+    private bool ManualApplicationBusy => applying || savingConfiguration || restoringConfiguration || savingProfile || restoringNativeClipboard || readingSavedPreview || readingSource || readingFeatures || readingDiagnostics || installingUpdate || readingOfficialLogin || discoveringModels || quickModelRead is not null || mobileAction || gatewayAction || gatewayLaunch || gatewayExit || desktopApplication.IsBusy;
     private bool ApplicationBusy => ManualApplicationBusy || automaticEnhancements.IsBusy;
 
     private async void ApplyClicked(object sender, RoutedEventArgs e) => await ApplyDesktopAsync();
     private async void ForceExitClicked(object sender, RoutedEventArgs e) => await ApplyDesktopAsync(forceExit: true);
 
-    private async Task ApplyDesktopAsync(bool forceExit = false, bool enhancedLaunch = false)
+    private async Task ApplyDesktopAsync(bool forceExit = false, bool enhancedLaunch = false, QuickModelApplyChoice? modelChoice = null)
     {
         if (ApplicationBusy || dialogOpen || closing || HasPendingRecovery || connectionDraft.HasDraft || !viewModel.PreferencesAvailable || !viewModel.CanApplyConfiguration || viewModel.Snapshot is not { } saved) return;
         applying = true; ApplicationTargetDetails.Visibility = Visibility.Collapsed; RefreshView();
         try
         {
-            lastApplication = await desktopApplication.ApplyAsync(new(saved, ForceExit: forceExit, EnhancedLaunch: enhancedLaunch), new WinUiDesktopApplyInteraction(this), lifetime.Token);
+            lastApplication = await desktopApplication.ApplyAsync(new(saved, ForceExit: forceExit, EnhancedLaunch: enhancedLaunch), new WinUiDesktopApplyInteraction(this, modelChoice), lifetime.Token);
+            if (lastApplication.DesktopOpened) quickModelAwaitingApply = false;
             viewModel.ApplicationFinished(lastApplication);
             if (desktopEnhancements.AutomaticStatus is { } status) automaticStatus = status;
         }
@@ -177,14 +178,22 @@ public sealed partial class MainWindow
         completion.Task.WaitAsync(lifetime.Token).GetAwaiter().GetResult();
     }
 
-    private sealed class WinUiDesktopApplyInteraction(MainWindow window) : IDesktopApplyInteraction
+    private sealed class WinUiDesktopApplyInteraction(MainWindow window, QuickModelApplyChoice? modelChoice = null) : IDesktopApplyInteraction
     {
         public string ActiveHome => window.viewModel.Home;
         public void ValidateContext()
         { if (window.closing) throw new OperationCanceledException("窗口正在关闭。"); }
-        public Task<CodexDesktopTarget?> ChooseAsync(IReadOnlyList<CodexDesktopTarget> targets, CancellationToken cancellation) => window.ChooseDesktopAsync(targets, cancellation);
+        public Task<CodexDesktopTarget?> ChooseAsync(IReadOnlyList<CodexDesktopTarget> targets, CancellationToken cancellation)
+            => modelChoice is null ? window.ChooseDesktopAsync(targets, cancellation) :
+                Task.FromResult<CodexDesktopTarget?>(targets.SingleOrDefault(modelChoice.Matches) ?? throw new IOException("所选 Codex 实例已改变，请重新选择后应用。"));
         public Task<bool> ConfirmAsync(DesktopApplyConfirmation confirmation, CancellationToken cancellation)
-            => window.ConfirmDialogAsync(confirmation.Title, confirmation.Message, confirmation.ForceExit ? "结束所选实例并重开" : "确认并应用");
+        {
+            if (modelChoice is null)
+                return window.ConfirmDialogAsync(confirmation.Title, confirmation.Message, confirmation.ForceExit ? "结束所选实例并重开" : "确认并应用");
+            // The model dialog already confirmed a single target. Reuse that confirmation only for the same action.
+            modelChoice.Validate(confirmation, window.viewModel.EnhancementPreferences.Load());
+            return Task.FromResult(true);
+        }
         public void Report(DesktopApplyProgress progress)
         {
             window.ApplicationStage.Text = progress.Stage; window.ApplicationStatus.Text = progress.Message;

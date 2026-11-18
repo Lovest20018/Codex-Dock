@@ -43,6 +43,9 @@ public sealed class ConfigurationSaveService(ConfigStore store, WorkspaceApplyCo
             throw new InvalidOperationException("已有明确的能力目录来源草稿，请保留一种来源后重新确认。");
         if (request.ServiceCatalog is not null && request.ServiceCatalogFingerprint != (request.Settings with { Model = "model-catalog" }).Fingerprint())
             throw new InvalidOperationException("连接设置已改变，请重新获取当前服务的模型能力。");
+        if (request.ServiceCatalog is not null && !request.UpdateConnection &&
+            ManagedModelCatalogStore.ConnectionId(doc, plan.Bridge) != ManagedModelCatalogStore.ConnectionId(new TomlDocument(request.Before.Config), request.Before.Bridge))
+            throw new InvalidOperationException("本次修改包含新的模型服务，请先核对连接，再读取该服务的模型资料。");
         if (request.SynchronizeCatalog || request.ReviewPolicyChanged && doc.String("approvals_reviewer") == "auto_review")
             return ManagedModelCatalogStore.Prepare(plan, new(), request.CatalogSource, request.ServiceCatalog);
         if (request.Before.CatalogIndex is not null && ManagedModelCatalogStore.Inspect(request.Before).Managed && doc.String("approvals_reviewer") == "auto_review")

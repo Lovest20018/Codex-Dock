@@ -93,7 +93,13 @@
                             <StackPanel Spacing="10">
                                 <TextBlock x:Name="WorkspaceNextTitle" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
                                 <TextBlock x:Name="StatusText" TextWrapping="Wrap" Opacity="0.75" />
-                                <Button x:Name="WorkspaceNextButton" Content="设置连接" Click="WorkspaceNextClicked" Style="{StaticResource AccentButtonStyle}" />
+                                <local:ActionWrapPanel>
+                                    <Button x:Name="WorkspaceNextButton" Content="设置连接" Click="WorkspaceNextClicked" Style="{StaticResource AccentButtonStyle}" />
+                                    <Button x:Name="QuickModelButton" Content="更换模型" Click="QuickModelClicked" />
+                                    <Button x:Name="CancelQuickModelReadButton" Content="取消读取" Click="CancelQuickModelReadClicked" Visibility="Collapsed" />
+                                    <Button x:Name="QuickModelApplyDetailsButton" Content="查看应用详情" Click="OpenEnhancementsClicked" Visibility="Collapsed" />
+                                </local:ActionWrapPanel>
+                                <TextBlock x:Name="QuickModelHint" TextWrapping="Wrap" Opacity="0.75" />
                             </StackPanel>
                         </Border>
                         <Grid ColumnSpacing="16">

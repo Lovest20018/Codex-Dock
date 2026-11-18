@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.19.2',
+    [string]$Version = '0.19.3',
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
@@ -82,6 +82,7 @@ Copy-Item -LiteralPath $taskUiReport -Destination (Join-Path $taskRelease 'verif
     '工作台、Codex 配置、运行与增强、手机访问、诊断与恢复在同一窗口。保存后明确应用到 Codex，再新建聊天核对。'
     'Ctrl+S 查看并确认修改；Ctrl+F 搜索；Esc 返回调整。'
     '模型目录获取为可选操作，不会改变所选认证方式。'
+    '工作台可点“更换模型”，在同一个窗口选模型，再保存并打开或重启 Codex。选“仅保存”后可等当前任务结束，从工作台应用。'
     '选择模板或手动修改后，核对目标文件与修改明细，再点击确认写入。编辑方案只修改本机方案库。'
     '设置默认显示一句用途，点击“了解更多”查看说明。'
     '保存前自动加密备份，可在备份与恢复页恢复上次配置。'

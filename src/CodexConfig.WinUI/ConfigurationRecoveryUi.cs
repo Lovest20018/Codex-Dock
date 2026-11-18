@@ -57,6 +57,7 @@ public sealed partial class MainWindow
             { if (closing || connectionDraft.Revision != revision || connectionDraft.HasDraft) throw new OperationCanceledException("工作区或草稿已改变，请重新查看恢复差异。"); }, lifetime.Token);
             if (!configurationResult.Succeeded || configurationResult.Saved is not { } saved)
             { SetShellError("恢复未完成", configurationResult.Message); return false; }
+            quickModelAwaitingApply = false;
             desktopApplication.Reset(); lastApplication = null;
             viewModel.ConfigurationSaved(saved); InvalidateSavedPreview(); InvalidateSource();
             loadingConnection = true;

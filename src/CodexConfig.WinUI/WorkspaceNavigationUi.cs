@@ -51,6 +51,7 @@ public sealed partial class MainWindow
     private void NavigateTo(DockPage page, bool revealStart = false)
     {
         var changed = currentPage != page;
+        if (changed && currentPage == WorkspaceNav) quickModelRead?.Cancel();
         if (changed) pageScrollOffsets[currentPage.Tag] = PageScroll.VerticalOffset;
         currentPage = page; sectionHistory[page.Section] = page;
         synchronizingNavigation = true;
@@ -158,6 +159,7 @@ public sealed partial class MainWindow
         var next = WorkspaceNextStep();
         WorkspaceNextTitle.Text = next.Title; WorkspaceNextButton.Content = next.Action;
         WorkspaceNextButton.IsEnabled = editable;
+        RefreshQuickModelEntry(editable);
         var overview = gatewayManagement.Overview?.Home == viewModel.Home ? gatewayManagement.Overview : null;
         WorkspaceRuntimeSummary.Text = "客户端增强：" + (applicationRuntime.IsEnhancementRunning ? "已接入" : "当前未接入") +
             "\n模型网关：" + (overview?.Model.Status ?? "尚未确认") + "　手机服务：" + (overview?.Mobile.Status ?? "尚未确认") +
@@ -173,6 +175,14 @@ public sealed partial class MainWindow
         if (!viewModel.CanApplyConfiguration) return new("先完成连接设置", "设置连接", ConnectionNav);
         if (lastApplication?.Outcome == DesktopApplyOutcome.Conflict) return new("配置已变化，需要核对", "核对配置来源", SourcesNav);
         if (desktopApplication.PendingRetry is not null) return new("客户端增强可重试", "重试增强", EnhancementsNav, true);
+        if (quickModelAwaitingApply)
+        {
+            if (lastApplication?.Outcome == DesktopApplyOutcome.ExitBlocked)
+                return new("模型已保存，等待 Codex 退出", "重试应用", WorkspaceNav, true);
+            if (lastApplication?.Outcome == DesktopApplyOutcome.Failed)
+                return new("模型已保存，Codex 尚待应用", "重新核对并应用", WorkspaceNav, true);
+            return new("模型已保存，等待应用", "在 Codex 使用新模型", WorkspaceNav, true);
+        }
         if (lastApplication?.Outcome == DesktopApplyOutcome.ExitBlocked) return new("所选 Codex 尚未退出", "查看应用结果", EnhancementsNav);
         if (lastApplication?.Outcome == DesktopApplyOutcome.Failed) return new("本次应用未完成", "查看应用结果", EnhancementsNav);
         if (configurationResult?.Outcome == ConfigurationSaveOutcome.Saved && lastApplication?.Outcome is null or DesktopApplyOutcome.Cancelled)
@@ -184,6 +194,8 @@ public sealed partial class MainWindow
             ? new("本次应用已完成", "运行与增强", EnhancementsNav) : new("当前配置已读取", "运行与增强", EnhancementsNav);
     }
     private async void WorkspaceNextClicked(object sender, RoutedEventArgs args)
+        => await RunWorkspaceNextAsync();
+    private async Task RunWorkspaceNextAsync()
     {
         if (ApplicationBusy || dialogOpen || closing) return;
         var next = WorkspaceNextStep(); NavigateTo(next.Page, revealStart: true);

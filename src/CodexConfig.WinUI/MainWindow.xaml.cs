@@ -122,6 +122,11 @@ public sealed partial class MainWindow : Window
                     var checks = new List<string>(); await RunWorkspaceTaskFlowSmokeAsync(output, checks);
                     await WriteSmokeReportAsync(output, checks);
                 }
+                else if (filter == "quick-model")
+                {
+                    var checks = new List<string>(); await RunQuickModelSmokeAsync(output, checks);
+                    await WriteSmokeReportAsync(output, checks);
+                }
                 else if (filter == "review-fixes")
                 {
                     var checks = new List<string>(); await RunWorkspaceReviewFixesSmokeAsync(output, checks);
