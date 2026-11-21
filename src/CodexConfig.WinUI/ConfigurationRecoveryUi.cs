@@ -1,4 +1,4 @@
-﻿using CodexConfig.Application;
+using CodexConfig.Application;
 using CodexConfig.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -7,7 +7,6 @@ namespace CodexConfig.WinUI;
 
 public sealed partial class MainWindow
 {
-    private bool restoringConfiguration;
     private ConfigurationRecoveryStatus? recoveryStatus;
     private string recoveryStatusError = "";
     private bool HasPendingRecovery => recoveryStatus?.Interrupted == true;
@@ -18,25 +17,23 @@ public sealed partial class MainWindow
     }
     private void RefreshRecoveryControls()
     {
-        if (RestoreConfigurationButton is null) return;
-        PendingRecoveryBar.IsOpen = HasPendingRecovery;
-        PendingRecoveryBar.Visibility = HasPendingRecovery ? Visibility.Visible : Visibility.Collapsed;
-        RecoveryStatusText.Text = recoveryStatusError.Length > 0 ? "恢复记录无法读取：" + recoveryStatusError :
+        if (RecoveryPanel.RestoreConfigurationButton is null) return;
+        RecoveryPanel.RecoveryStatusText.Text = recoveryStatusError.Length > 0 ? "恢复记录无法读取：" + recoveryStatusError :
             HasPendingRecovery ? "发现未完成的保存。请先查看恢复差异，恢复后再编辑或应用。" :
             recoveryStatus?.BackupPath is { } source ? "找到本目录的加密备份。恢复前会核对当前配置与备份的保存后状态。\n" + source :
             "本目录尚无备份。确认保存配置后会自动创建加密备份。";
-        RestoreConfigurationButton.Content = HasPendingRecovery ? "查看未完成保存的恢复差异" : "查看上次保存的恢复差异";
-        RestoreConfigurationButton.IsEnabled = recoveryStatus?.Available == true && !ManualApplicationBusy && !dialogOpen && !closing;
-        RefreshRecoveryButton.IsEnabled = !ManualApplicationBusy && !dialogOpen && !closing;
+        RecoveryPanel.RestoreConfigurationButton.Content = HasPendingRecovery ? "查看未完成保存的恢复差异" : "查看上次保存的恢复差异";
+        RecoveryPanel.RestoreConfigurationButton.IsEnabled = recoveryStatus?.Available == true && !ManualApplicationBusy && !dialogOpen && !closing;
+        RecoveryPanel.RefreshRecoveryButton.IsEnabled = !ManualApplicationBusy && !dialogOpen && !closing;
     }
     private void OpenRecoveryClicked(object sender, RoutedEventArgs args) => NavigateTo(RecoveryNav);
-    private void RefreshRecoveryClicked(object sender, RoutedEventArgs args) { ReadRecoveryStatus(); RefreshView(); }
-    private async void RestoreConfigurationClicked(object sender, RoutedEventArgs args) => await RestoreConfigurationAsync();
+    internal void RefreshRecoveryClicked(object sender, RoutedEventArgs args) { ReadRecoveryStatus(); RefreshView(); }
+    internal async void RestoreConfigurationClicked(object sender, RoutedEventArgs args) => await RestoreConfigurationAsync();
     private async Task<bool> RestoreConfigurationAsync()
     {
         if (ManualApplicationBusy || dialogOpen || closing || !await ResolveConnectionDraftAsync()) return false;
         var home = viewModel.Home; var revision = connectionDraft.Revision;
-        restoringConfiguration = true; shellError = ""; RefreshView();
+        using var operation = busy.Begin(WindowOperation.RestoreConfiguration, "正在恢复配置…"); shellError = ""; RefreshView();
         try
         {
             await automaticEnhancements.CancelAndWaitAsync();
@@ -67,6 +64,6 @@ public sealed partial class MainWindow
             return true;
         }
         catch (Exception error) { SetShellError("恢复未完成，请核对恢复记录", error.Message); return false; }
-        finally { restoringConfiguration = false; ReadRecoveryStatus(); RefreshView(); }
+        finally { operation.Dispose(); ReadRecoveryStatus(); RefreshView(); }
     }
 }

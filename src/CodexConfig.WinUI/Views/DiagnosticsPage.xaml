@@ -1,0 +1,20 @@
+<UserControl x:Class="CodexConfig.WinUI.Views.DiagnosticsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CodexConfig.WinUI"
+             IsTabStop="False">
+    <StackPanel Spacing="16">
+        <TextBlock Text="读取当前目录中明确选中的聊天，只显示客户端记录的参数元数据。实际服务档位与费用请对照服务后台。" Style="{StaticResource DockHintTextStyle}" />
+        <ComboBox x:Name="DiagnosticFilesInput" x:FieldModifier="internal" Header="选择要核对的聊天" PlaceholderText="先刷新列表，再选择记录" DisplayMemberPath="Name" HorizontalAlignment="Stretch" SelectionChanged="DiagnosticSelectionChanged" />
+        <local:ActionWrapPanel>
+            <Button x:Name="RefreshDiagnosticsButton" x:FieldModifier="internal" Content="刷新列表" Click="RefreshDiagnosticsClicked" />
+            <Button x:Name="ReadDiagnosticButton" x:FieldModifier="internal" Content="读取所选聊天" Click="ReadDiagnosticClicked" />
+            <Button x:Name="CancelDiagnosticButton" x:FieldModifier="internal" Content="取消读取" Visibility="Collapsed" Click="CancelDiagnosticClicked" />
+        </local:ActionWrapPanel>
+        <TextBlock x:Name="DiagnosticStatusText" x:FieldModifier="internal" Text="尚未读取。刷新后请选择明确对应本次操作的聊天记录。" Style="{StaticResource DockHintTextStyle}" />
+        <Border Style="{StaticResource DockCardStyle}">
+            <TextBlock x:Name="DiagnosticResultText" x:FieldModifier="internal" Text="尚未读取所选聊天。" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+        </Border>
+        <HyperlinkButton Content="查看配置文件与执行端来源" Click="OpenSourcesClicked" Padding="0" HorizontalAlignment="Left" />
+    </StackPanel>
+</UserControl>

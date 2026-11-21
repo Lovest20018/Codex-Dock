@@ -1,4 +1,4 @@
-﻿using CodexConfig.Application;
+using CodexConfig.Application;
 using CodexConfig.Core;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -8,20 +8,32 @@ namespace CodexConfig.WinUI;
 
 public sealed partial class MainWindow
 {
-    private bool applying, dialogOpen, closing, closePrompt, allowClose;
+    private bool dialogOpen, closing, closePrompt, allowClose;
+    private bool applying => busy.IsActive(WindowOperation.ApplyDesktop);
     private DesktopApplyResult? lastApplication;
+    private string applicationStage = "准备应用";
+#if CODEX_DOCK_WINUI_SMOKE
     private Func<ContentDialog, Task<ContentDialogResult>>? smokeDialog;
+#endif
     private readonly DispatcherTimer runtimeTimer = new() { Interval = TimeSpan.FromSeconds(2) };
-    private bool ManualApplicationBusy => applying || openingDesktop || reviewingConnection || savingConfiguration || restoringConfiguration || savingProfile || restoringNativeClipboard || readingSavedPreview || readingSource || readingFeatures || readingDiagnostics || installingUpdate || readingOfficialLogin || discoveringModels || quickModelRead is not null || mobileAction || gatewayAction || gatewayLaunch || gatewayExit || desktopApplication.IsBusy;
+    private readonly OperationTracker busy = new();
+    private bool ManualApplicationBusy => busy.IsBusy;
     private bool ApplicationBusy => ManualApplicationBusy || automaticEnhancements.IsBusy;
 
     private async void ApplyClicked(object sender, RoutedEventArgs e) => await ApplyDesktopAsync();
-    private async void ForceExitClicked(object sender, RoutedEventArgs e) => await ApplyDesktopAsync(forceExit: true);
+    private async void ForceExitClicked(object sender, RoutedEventArgs e)
+    {
+        ApplicationDetailsButton.Flyout.Hide();
+        await ApplyDesktopAsync(forceExit: true);
+    }
 
     private async Task ApplyDesktopAsync(bool forceExit = false, bool enhancedLaunch = false, ReviewedDesktopChoice? modelChoice = null)
     {
         if (ApplicationBusy || dialogOpen || closing || HasPendingRecovery || connectionDraft.HasDraft || !viewModel.PreferencesAvailable || !viewModel.CanApplyConfiguration || viewModel.Snapshot is not { } saved) return;
-        applying = true; ApplicationTargetDetails.Visibility = Visibility.Collapsed; RefreshView();
+        using var operation = busy.Begin(WindowOperation.ApplyDesktop, "正在应用到 Codex…");
+        ApplicationTarget.Visibility = Visibility.Collapsed;
+        SetApplicationProgress(new("准备应用", "正在核对配置和本机 Codex 实例…"));
+        RefreshView();
         try
         {
             lastApplication = await desktopApplication.ApplyAsync(new(saved, ForceExit: forceExit, EnhancedLaunch: enhancedLaunch), new WinUiDesktopApplyInteraction(this, modelChoice), lifetime.Token);
@@ -29,7 +41,7 @@ public sealed partial class MainWindow
             viewModel.ApplicationFinished(lastApplication);
             if (desktopEnhancements.AutomaticStatus is { } status) automaticStatus = status;
         }
-        finally { applying = false; RefreshView(); }
+        finally { operation.Dispose(); RefreshView(); }
     }
 
     private async Task ReloadWorkspaceAsync()
@@ -56,31 +68,50 @@ public sealed partial class MainWindow
     private void RefreshApplicationActions()
     {
         if (ApplyButton is null) return;
-        ChooseHomeButton.IsEnabled = ReloadButton.IsEnabled = !ApplicationBusy && !dialogOpen && !closing;
+        ChooseHomeButton.IsEnabled = WorkspacePanel.ReloadButton.IsEnabled = !ApplicationBusy && !dialogOpen && !closing;
         ApplyButton.IsEnabled = viewModel.PreferencesAvailable && viewModel.CanApplyConfiguration && !HasPendingRecovery && !connectionDraft.HasDraft && !ApplicationBusy && !dialogOpen && !closing;
-        ApplyButton.Content = automaticEnhancements.IsBusy ? "正在自动接回…" : ApplicationBusy ? "正在应用…" : desktopApplication.PendingRetry is not null ? "重试客户端增强" : "打开或重启 Codex 并应用";
+        ApplyButton.Content = automaticEnhancements.IsBusy ? "正在自动接回…" : applying ? "正在应用…" : desktopApplication.PendingRetry is not null ? "重试客户端增强" : "打开或重启 Codex 并应用";
         ForceExitButton.Visibility = !ApplicationBusy && lastApplication?.Outcome == DesktopApplyOutcome.ExitBlocked && desktopApplication.BlockedExit is not null
             ? Visibility.Visible : Visibility.Collapsed;
+        ApplicationDetailsButton.Content = ForceExitButton.Visibility == Visibility.Visible ? "详情与重试" : "详情";
         ForceExitButton.IsEnabled = !ApplicationBusy && !connectionDraft.HasDraft && !dialogOpen && !closing && viewModel.PreferencesAvailable && viewModel.CanApplyConfiguration;
         if (lastApplication is null && !ApplicationBusy)
         {
-            ApplicationStage.Text = connectionDraft.HasDraft ? "有未保存的配置修改" : !viewModel.CanApplyConfiguration ? viewModel.SetupGuide.Title : configurationResult?.Outcome == ConfigurationSaveOutcome.Saved ? "配置已保存，等待应用" : "准备应用";
-            ApplicationStatus.Text = connectionDraft.HasDraft ? "请先查看并确认修改，再应用到 Codex。" : !viewModel.CanApplyConfiguration ? "完成连接设置或修复后重新读取，再核对实例并应用。" : configurationResult?.Succeeded == true ? configurationResult.Message : "先核对当前目录，应用时会再次确认目标实例。";
-            ApplicationError.IsOpen = false; ApplicationStatus.Visibility = Visibility.Visible;
+            var stage = connectionDraft.HasDraft ? "有未保存的配置修改" : !viewModel.CanApplyConfiguration ? viewModel.SetupGuide.Title :
+                configurationResult?.Outcome == ConfigurationSaveOutcome.Saved ? "配置已保存，等待应用" : "准备应用";
+            var message = connectionDraft.HasDraft ? "请先查看并确认修改，再应用到 Codex。" :
+                !viewModel.CanApplyConfiguration ? "完成连接设置或修复后重新读取，再核对实例并应用。" :
+                configurationResult?.Succeeded == true ? configurationResult.Message : "先核对当前目录，应用时会再次确认目标实例。";
+            SetApplicationProgress(new(stage, message));
+            ApplicationTarget.Visibility = Visibility.Collapsed;
         }
+        ApplicationStage.Text = CurrentOperationName ?? applicationStage;
+        ApplicationError.Visibility = ApplicationError.IsOpen && (currentPage == WorkspaceNav || currentPage == EnhancementsNav || currentPage.EditsConfiguration)
+            ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    private void SetApplicationProgress(DesktopApplyProgress progress)
+    {
+        applicationStage = progress.Stage;
+        ApplicationStage.Text = CurrentOperationName ?? applicationStage;
+        ApplicationStatus.Text = progress.Message;
+        ApplicationError.Title = progress.Stage;
+        ApplicationError.Message = progress.Message;
+        ApplicationError.IsOpen = progress.IsError;
+    }
+
+    private string? CurrentOperationName => applying ? applicationStage :
+        busy.CurrentName ?? (automaticEnhancements.IsBusy ? "正在自动接回…" : null);
 
     private void StartRuntimeObservation()
     {
-        if (options.SmokeOutput is not null) return;
+        if (options.IsolatedDataDirectory is not null) return;
         runtimeTimer.Tick += async (_, _) =>
         {
             if (ApplicationBusy || dialogOpen || closing) return;
-            if (desktopEnhancements.Session is { } session && (!session.IsRunning || !session.IsApplied))
+            if (!ApplicationError.IsOpen && desktopEnhancements.Session is { } session && (!session.IsRunning || !session.IsApplied))
             {
-                ApplicationStage.Text = "客户端增强需要重新核对";
-                ApplicationStatus.Text = session.Status;
-                ApplicationStatus.Visibility = Visibility.Visible;
+                SetApplicationProgress(new("客户端增强需要重新核对", session.Status));
             }
             if (currentPage == WorkspaceNav) await ObserveDesktopTargetsAsync();
             await TryAutomaticEnhancementsAsync();
@@ -97,7 +128,11 @@ public sealed partial class MainWindow
         if (await ShowDialogAsync(dialog) != ContentDialogResult.Primary || choices.SelectedIndex < 0) return null;
         var target = targets[choices.SelectedIndex];
         var others = targets.Where(candidate => !ReferenceEquals(candidate, target)).ToArray();
-        return exitOthers.IsChecked != true ? target : options.SmokeOutput is not null ? target with { AlsoExit = others } : target.WithOtherInstancesToExit(others);
+        if (exitOthers.IsChecked != true) return target;
+#if CODEX_DOCK_WINUI_SMOKE
+        if (options.SmokeOutput is not null) return target with { AlsoExit = others };
+#endif
+        return target.WithOtherInstancesToExit(others);
     }
 
     private (ContentDialog Dialog, ListBox Choices, CheckBox ExitOthers) CreateTargetPicker(IReadOnlyList<CodexDesktopTarget> targets)
@@ -129,8 +164,10 @@ public sealed partial class MainWindow
         dialogOpen = true;
         try
         {
+#if CODEX_DOCK_WINUI_SMOKE
             if (options.SmokeOutput is not null && !nativeAcceptanceInteractive)
                 return smokeDialog is not null ? await smokeDialog(dialog) : throw new InvalidOperationException("隔离检查没有提供确认操作，未操作真实桌面。");
+#endif
             return await dialog.ShowAsync();
         }
         finally { dialogOpen = false; }
@@ -145,18 +182,23 @@ public sealed partial class MainWindow
             ApplicationStatus.Text = "请先完成或取消当前确认与应用，再关闭窗口。";
             return;
         }
-        if (!exitRequested && TryHideToTray()) return;
-        await ExitWindowAsync();
+        if (TryHideToTray()) return;
+#if CODEX_DOCK_WINUI_SMOKE
+        if (options.InteractivePreview) { await ExitWindowAsync(); return; }
+#endif
+        await RequestWindowExitAsync();
     }
 
-    private async Task<bool> StopBeforeCloseAsync()
+    private async Task<bool> StopBeforeCloseAsync(bool confirmed = false, bool stopGateways = false)
     {
         if (ManualApplicationBusy || dialogOpen || closePrompt || closing) return false;
         closePrompt = true;
         try
         {
             if (!await ResolveProfileDraftAsync() || !await ResolveTemplateEditAsync() || !await ResolveConnectionDraftAsync() || !await ResolveMobileDraftAsync()) return false;
-            if (applicationRuntime.IsEnhancementRunning && !await ConfirmDialogAsync("退出 Codex Dock", "退出后，本窗口提供的客户端增强将停止。Codex 和已启动的模型网关继续运行。", "退出程序")) return false;
+            if (!confirmed && applicationRuntime.IsEnhancementRunning &&
+                !await ConfirmDialogAsync("退出 Codex Dock", "退出后，本窗口提供的客户端增强将停止。Codex 和已启动的两个网关继续运行。", "仅退出 Dock")) return false;
+            if (stopGateways && !await StopGatewaysForExitAsync()) return false;
             closing = true;
             await automaticEnhancements.CancelAndWaitAsync();
             await applicationRuntime.StopEnhancementsAsync();
@@ -197,15 +239,15 @@ public sealed partial class MainWindow
         }
         public void Report(DesktopApplyProgress progress)
         {
-            window.ApplicationStage.Text = progress.Stage; window.ApplicationStatus.Text = progress.Message;
-            window.ApplicationError.Message = progress.Message; window.ApplicationError.IsOpen = progress.IsError;
-            window.ApplicationStatus.Visibility = progress.IsError ? Visibility.Collapsed : Visibility.Visible;
+            window.SetApplicationProgress(progress);
             window.RefreshView();
+            if (window.ApplicationError.Visibility == Visibility.Visible)
+                window.ApplicationError.StartBringIntoView();
         }
         public void TargetSelected(CodexDesktopTarget target, ConfigSnapshot saved)
         {
-            window.ApplicationTarget.Text = DesktopApplicationService.DescribeTarget(target) + "\n配置目录：" + saved.Home;
-            window.ApplicationTargetDetails.Visibility = Visibility.Visible;
+            window.ApplicationTarget.Text = "本次目标\n" + DesktopApplicationService.DescribeTarget(target) + "\n配置目录：" + saved.Home;
+            window.ApplicationTarget.Visibility = Visibility.Visible;
         }
         public void DesktopOpened(CodexDesktopTarget target, ConfigSnapshot saved)
             => window.RecordOpenedDesktop(target, saved.Home);

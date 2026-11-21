@@ -86,12 +86,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Core test build failed.' }
           & ./tests/CodexConfig.Tests/bin/Release/net8.0-windows/CodexConfig.Tests.exe
           if ($LASTEXITCODE -ne 0) { throw 'Core tests failed.' }
+          dotnet test tests/CodexConfig.UnitTests/CodexConfig.UnitTests.csproj -c Release --logger 'trx;LogFileName=unit.trx' --results-directory artifacts/test-runs/release-unit
+          if ($LASTEXITCODE -ne 0) { throw 'xUnit tests failed.' }
           python -B -m unittest discover -s tests/mobile -p 'test_*.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Gateway tests failed.' }
           node --test tests/mobile/dock-drafts.test.cjs tests/mobile/client-status.test.cjs tests/mobile/backports.test.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Web state tests failed.' }
           node --test tests/desktop-connections.test.cjs
           if ($LASTEXITCODE -ne 0) { throw 'Desktop connection recovery tests failed.' }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: windows-release-unit-tests
+          if-no-files-found: ignore
+          path: artifacts/test-runs/release-unit/*.trx
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-release
@@ -111,10 +119,10 @@ jobs:
           if-no-files-found: ignore
           include-hidden-files: true
           path: |
-            .ui-test-*/failure.txt
-            .ui-test-*/report.json
-            .installer-check-*/install.log
-            .installer-check-*/ui/failure.txt
+            artifacts/test-runs/ui-release-*/failure.txt
+            artifacts/test-runs/ui-release-*/report.json
+            artifacts/test-runs/installer-*/install.log
+            artifacts/test-runs/installer-*/ui/failure.txt
 
   android:
     needs: versions

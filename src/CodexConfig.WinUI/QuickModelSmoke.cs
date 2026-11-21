@@ -68,7 +68,7 @@ public sealed partial class MainWindow
                 serviceAddress = settings.BaseUrl;
                 return Task.FromResult(new ModelCatalogResult([oldModel, otherModel, newModel, reviewModel], 1, Catalog(oldModel, otherModel, newModel, reviewModel)));
             });
-            Check(QuickModelButton.IsEnabled && serviceReads == 0 && ModelText.Text.Contains(oldModel), "The saved model and the quick action are visible without contacting any service");
+            Check(WorkspacePanel.QuickModelButton.IsEnabled && serviceReads == 0 && WorkspacePanel.ModelText.Text.Contains(oldModel), "The saved model and the quick action are visible without contacting any service");
 
             smokeDialog = dialog =>
             {
@@ -81,7 +81,7 @@ public sealed partial class MainWindow
                 return Task.FromResult(ContentDialogResult.None);
             };
             await OpenQuickModelAsync();
-            Check(connectionDraft.Model == newModel && QuickModelButton.Content.ToString() == "继续更换模型" &&
+            Check(connectionDraft.Model == newModel && WorkspacePanel.QuickModelButton.Content.ToString() == "继续更换模型" &&
                 serviceReads == 1 && serviceAddress == "https://quick-model.invalid/v1" &&
                 initial.SameContents(store.Load(home)), "Closing the model picker keeps the draft and reads only the chosen service once");
             smokeDialog = dialog =>
@@ -129,7 +129,7 @@ public sealed partial class MainWindow
             };
             await OpenQuickModelAsync();
             Check(Model(store.Load(home)) == otherModel && quickModelAwaitingApply && runtime.Restarts == restartCount &&
-                WorkspaceNextTitle.Text == "模型已保存，等待应用" && currentPage == WorkspaceNav,
+                WorkspacePanel.WorkspaceNextTitle.Text == "模型已保存，等待应用" && currentPage == WorkspaceNav,
                 "Save only returns to the workbench with a clear pending application and never restarts Codex");
             smokeDialog = dialog =>
             {
@@ -149,7 +149,7 @@ public sealed partial class MainWindow
             };
             await OpenQuickModelAsync();
             Check(Model(store.Load(home)) == newModel && quickModelAwaitingApply && lastApplication?.Outcome == DesktopApplyOutcome.ExitBlocked &&
-                QuickModelApplyDetailsButton.Visibility == Visibility.Visible && WorkspaceNextButton.Content.ToString() == "重试应用" &&
+                WorkspacePanel.QuickModelApplyDetailsButton.Visibility == Visibility.Visible && WorkspacePanel.WorkspaceNextButton.Content.ToString() == "重试应用" &&
                 runtime.Restarts == restartCount + 1 && !runtime.LastForce, "An exit failure keeps the new model saved and offers a normal retry and application details");
             runtime.RefuseExit = false;
             smokeDialog = _ => Task.FromResult(ContentDialogResult.Primary);
@@ -215,10 +215,10 @@ public sealed partial class MainWindow
             smokeDialog = _ => throw new InvalidOperationException("A cancelled read cannot open a picker.");
             var pending = OpenQuickModelAsync();
             await readStarted.Task;
-            Check(CancelQuickModelReadButton.Visibility == Visibility.Visible && !QuickModelButton.IsEnabled, "The workbench offers cancellation while the model list is loading");
-            CancelQuickModelReadClicked(CancelQuickModelReadButton, new());
+            Check(WorkspacePanel.CancelQuickModelReadButton.Visibility == Visibility.Visible && !WorkspacePanel.QuickModelButton.IsEnabled, "The workbench offers cancellation while the model list is loading");
+            CancelQuickModelReadClicked(WorkspacePanel.CancelQuickModelReadButton, new());
             await pending;
-            Check(quickModelRead is null && QuickModelButton.IsEnabled && !connectionDraft.HasDraft, "Cancelling model discovery restores the workbench without a draft or a dialog");
+            Check(quickModelRead is null && WorkspacePanel.QuickModelButton.IsEnabled && !connectionDraft.HasDraft, "Cancelling model discovery restores the workbench without a draft or a dialog");
             connectionDraft.BaseUrl = "https://unsaved-address.invalid/v1";
             await OpenQuickModelAsync();
             Check(currentPage == ConnectionNav && connectionDraft.HasDraft, "Changing the connection directs the user to its editor before contacting an unsaved address");

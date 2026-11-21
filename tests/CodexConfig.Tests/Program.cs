@@ -445,7 +445,7 @@ Test("Krill official lines and legacy origins produce current API key endpoints"
         }
     Assert(KrillLines.Cdn.Origin == "https://api.kbsfdxc.com");
     Assert(KrillLines.Find("https://api.kbsfdxc.com.attacker.example") is null);
-    Assert(KrillLines.Find("https://user@api.kbsfdxc.com") is null);
+    Assert(KrillLines.Find(new UriBuilder(KrillLines.Cdn.Origin) { UserName = "fixture-user" }.Uri.AbsoluteUri) is null);
     Assert((Settings("https://api.cdn-krill-ai.com/v1") with { Kind = ConnectionKind.ResponsesApi }).Normalize().BaseUrl == "https://api.cdn-krill-ai.com/v1");
 });
 Test("detailed catalog loads local schema, Chinese and lifecycle", () =>
@@ -758,7 +758,6 @@ CodexDiscoveryTests.Register(tests, runRoot);
 OfficialLoginTests.Register(tests, runRoot);
 DetailsAndStartupTests.Register(tests, runRoot);
 GatewayStartupTests.Register(tests, runRoot);
-UpdateTests.Register(tests, runRoot);
 CodexConfig.Tests.MobileGatewayTests.Register(tests, runRoot);
 LocalStateTests.Register(tests, runRoot);
 ApiKeyMigrationTests.Register(tests, runRoot);

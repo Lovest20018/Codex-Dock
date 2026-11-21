@@ -52,7 +52,7 @@ $env:CODEX_CONFIG_TEST_CLI = 'C:\path\to\codex.exe'
 dotnet run --project tests/CodexConfig.Tests/CodexConfig.Tests.csproj -c Release
 Remove-Item Env:CODEX_CONFIG_TEST_CLI
 
-dotnet run --project src/CodexConfig.App/CodexConfig.App.csproj -c Release -- --smoke-test .ui-test-mixed-final
+dotnet run --project src/CodexConfig.App/CodexConfig.App.csproj -c Release -- --smoke-test artifacts/test-runs/ui-wpf-mixed-final
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify-mixed-bridge.ps1
 ```
 

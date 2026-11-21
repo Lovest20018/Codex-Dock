@@ -1,4 +1,4 @@
-﻿using CodexConfig.Application;
+using CodexConfig.Application;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
@@ -69,16 +69,12 @@ public sealed partial class MainWindow
         var changed = currentPage != page;
         if (changed && currentPage == WorkspaceNav) quickModelRead?.Cancel();
         if (changed && currentPage == ConnectionNav) ClearConnectionReview(refresh: false);
-        if (changed) pageScrollOffsets[currentPage.Tag] = PageScroll.VerticalOffset;
-        currentPage = page; sectionHistory[page.Section] = page;
-        var modelHost = page == ConnectionNav ? ConnectionModelEditorHost : AdvancedModelEditorHost;
-        if (!modelHost.Children.Contains(BehaviorModelInput))
+        if (changed)
         {
-            var previousHost = page == ConnectionNav ? AdvancedModelEditorHost : ConnectionModelEditorHost;
-            previousHost.Children.Remove(BehaviorModelInput);
-            modelHost.Children.Add(BehaviorModelInput);
-            BehaviorModelInput.Header = page == ConnectionNav ? "手动填写模型 ID" : "模型 ID";
+            pageScrollOffsets[currentPage.Tag] = PageScroll.VerticalOffset;
+            ProfileFooter.Visibility = TemplateEditFooter.Visibility = MobileFooter.Visibility = Visibility.Collapsed;
         }
+        currentPage = page; sectionHistory[page.Section] = page;
         synchronizingNavigation = true;
         try
         {
@@ -101,21 +97,26 @@ public sealed partial class MainWindow
             ResourceTypeInput.Visibility = page.Tab == "resources" ? Visibility.Visible : Visibility.Collapsed;
             ResourceTypeInput.SelectedIndex = page == ProfilesNav ? 1 : 0;
             if (page.Tab == "resources") sectionHistory["resources"] = page;
-            SectionNavigation.Visibility = page.Section is "workspace" or "help" or "tools" ? Visibility.Collapsed : Visibility.Visible;
-            BackToAdvancedButton.Visibility = NavigationSection(page) == "tools" && page != AdvancedNav ? Visibility.Visible : Visibility.Collapsed;
+            SectionNavigation.Visibility = page.Section is "workspace" or "help" or "tools" || page == CatalogNav ? Visibility.Collapsed : Visibility.Visible;
         }
         finally { synchronizingNavigation = false; }
 
-        PageTitle.Text = SectionTitle(page.Section); PageDescription.Text = page.Description;
+        var tool = AdvancedTools.FirstOrDefault(item => item.Page == page);
+        var advancedChild = NavigationSection(page) == AdvancedNav.Section && page != AdvancedNav;
+        AdvancedBreadcrumb.Visibility = advancedChild ? Visibility.Visible : Visibility.Collapsed;
+        if (advancedChild && (changed || AdvancedBreadcrumb.ItemsSource is null))
+            AdvancedBreadcrumb.ItemsSource = new[] { AdvancedNav.Title, tool.Group, tool.Label };
+        PageTitle.Text = advancedChild ? tool.Label : SectionTitle(page.Section);
+        PageDescription.Text = page.Description;
+        UpdateShellLayout(Root.ActualWidth, Root.ActualHeight);
         foreach (var (panel, route) in new (FrameworkElement, DockPage)[] { (WorkspacePanel, WorkspaceNav), (ConnectionPanel, ConnectionNav), (ModelsPanel, ModelsNav),
             (AdvancedPanel, AdvancedNav), (CatalogPanel, CatalogNav), (TemplatesPanel, TemplatesNav), (ProfilesPanel, ProfilesNav), (EnhancementsPanel, EnhancementsNav), (GatewaysPanel, GatewaysNav),
             (FilePreviewPanel, FilePreviewNav), (SourcesPanel, SourcesNav), (DiagnosticsPanel, DiagnosticsNav), (RecoveryPanel, RecoveryNav), (SettingsPanel, SettingsNav),
             (UpdatesPanel, UpdatesNav), (AboutPanel, AboutNav), (HelpPanel, HelpNav) }) panel.Visibility = page == route ? Visibility.Visible : Visibility.Collapsed;
         MobilePanel.Visibility = IsPhonePage ? Visibility.Visible : Visibility.Collapsed;
-        MobileSettingsCard.Visibility = MobileServiceCard.Visibility = page == MobileSettingsNav ? Visibility.Visible : Visibility.Collapsed;
-        MobileStatusCard.Visibility = MobilePairCard.Visibility = page == MobileNav ? Visibility.Visible : Visibility.Collapsed;
-        MobileDevicesCard.Visibility = page == MobileDevicesNav ? Visibility.Visible : Visibility.Collapsed;
-        MobileNotificationHint.Visibility = page == MobileNav ? Visibility.Visible : Visibility.Collapsed;
+        MobilePanel.MobileSettingsCard.Visibility = MobilePanel.MobileServiceCard.Visibility = page == MobileSettingsNav ? Visibility.Visible : Visibility.Collapsed;
+        MobilePanel.MobileDevicesCard.Visibility = page == MobileDevicesNav ? Visibility.Visible : Visibility.Collapsed;
+        MobilePanel.MobileNotificationHint.Visibility = page == MobileNav ? Visibility.Visible : Visibility.Collapsed;
         var scrollOffset = revealStart ? 0 : changed ? pageScrollOffsets.GetValueOrDefault(page.Tag) : PageScroll.VerticalOffset;
         var navigationRevision = ++pageNavigationRevision;
         if (changed || revealStart) DispatcherQueue.TryEnqueue(() =>
@@ -132,7 +133,7 @@ public sealed partial class MainWindow
     {
         try
         {
-            if ((page == GatewaysNav || page.Section == "phone") && options.SmokeOutput is null) await RefreshGatewaysAsync();
+            if ((page == GatewaysNav || page.Section == "phone") && options.IsolatedDataDirectory is null) await RefreshGatewaysAsync();
             if (page.Section == "phone") await RefreshMobileAsync();
             if (page == CatalogNav) RenderConfigurationCatalog();
             if (page == AdvancedNav) RenderAdvancedTools();
@@ -140,9 +141,9 @@ public sealed partial class MainWindow
             if (page == RecoveryNav) ReadRecoveryStatus();
             if (page == ProfilesNav) ReadProfileNames();
             if (page == SettingsNav) ReadStartupSettings();
-            if (page == FilePreviewNav) await ReadSavedConfigurationPreviewAsync();
-            if (page == WorkspaceNav && options.SmokeOutput is null) await ObserveDesktopTargetsAsync();
-            if (!closing) RefreshView();
+            if (page == FilePreviewNav) await FilePreviewPanel.ReadAsync();
+            if (page == WorkspaceNav && options.IsolatedDataDirectory is null) await ObserveDesktopTargetsAsync();
+            if (!closing && (page == CatalogNav || page == RecoveryNav || page == ProfilesNav || page == SettingsNav)) RefreshView();
         }
         catch (Exception error) { if (!closing) SetShellError("页面读取未完成", error.Message); }
     }
@@ -151,18 +152,29 @@ public sealed partial class MainWindow
     { if (!synchronizingNavigation && CompactSectionInput.SelectedItem is DockPage page) NavigateTo(page.Tab == "resources" ? sectionHistory.GetValueOrDefault("resources") ?? page : page); }
     private void ResourceSelectionChanged(object sender, SelectionChangedEventArgs args)
     { if (!synchronizingNavigation && initialized) NavigateTo(ResourceTypeInput.SelectedIndex == 1 ? ProfilesNav : TemplatesNav); }
-    private void OpenModelsClicked(object sender, RoutedEventArgs args)
-    { NavigateTo(ModelsNav); FocusSearch(BehaviorModelInput); }
-    private void OpenMobileSettingsClicked(object sender, RoutedEventArgs args) => NavigateTo(MobileSettingsNav);
+    internal void OpenModelsClicked(object sender, RoutedEventArgs args)
+    { NavigateTo(ModelsNav); FocusSearch(ModelsPanel.BehaviorModelInput); }
+    internal void OpenMobileSettingsClicked(object sender, RoutedEventArgs args) => NavigateTo(MobileSettingsNav);
 
-    private void OpenAdvancedClicked(object sender, RoutedEventArgs args) => NavigateTo(AdvancedNav, revealStart: true);
-    private void AdvancedSearchChanged(TextBox sender, TextBoxTextChangingEventArgs args) { if (initialized) RenderAdvancedTools(); }
+    private void AdvancedBreadcrumbClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
+    {
+        if (args.Index >= 2) return;
+        NavigateTo(AdvancedNav, revealStart: true);
+        AdvancedPanel.AdvancedSearchInput.Text = "";
+        if (args.Index != 1) return;
+        var group = AdvancedPanel.AdvancedToolsList.Children.OfType<Border>().FirstOrDefault(card => Equals(card.Tag, args.Item));
+        if (group is null) return;
+        pageNavigationRevision++;
+        Root.UpdateLayout();
+        group.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+    }
+    internal void AdvancedSearchChanged(TextBox sender, TextBoxTextChangingEventArgs args) { if (initialized) RenderAdvancedTools(); }
 
     private void RenderAdvancedTools()
     {
-        var search = AdvancedSearchInput.Text.Trim();
+        var search = AdvancedPanel.AdvancedSearchInput.Text.Trim();
         var resources = Microsoft.UI.Xaml.Application.Current.Resources;
-        AdvancedToolsList.Children.Clear();
+        AdvancedPanel.AdvancedToolsList.Children.Clear();
         var matches = AdvancedTools.Where(tool => $"{tool.Group} {tool.Label} {tool.Keywords}".Contains(search, StringComparison.OrdinalIgnoreCase));
         foreach (var group in matches.GroupBy(tool => tool.Group))
         {
@@ -177,16 +189,16 @@ public sealed partial class MainWindow
                 button.Click += (_, _) => NavigateTo(page, revealStart: true);
                 section.Children.Add(button);
             }
-            AdvancedToolsList.Children.Add(new Border { Style = (Style)resources["DockCardStyle"], Padding = new(14), Child = section });
+            AdvancedPanel.AdvancedToolsList.Children.Add(new Border { Tag = group.Key, Style = (Style)resources["DockCardStyle"], Padding = new(14), Child = section });
         }
-        ArrangeAdvancedTools(AdvancedToolsList.ActualWidth);
-        var hasMatches = AdvancedToolsList.Children.Count > 0;
-        AdvancedToolsList.Visibility = hasMatches ? Visibility.Visible : Visibility.Collapsed;
-        AdvancedNoResults.Visibility = hasMatches ? Visibility.Collapsed : Visibility.Visible;
-        AdvancedFieldSearchButton.Visibility = search.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ArrangeAdvancedTools(AdvancedPanel.AdvancedToolsList.ActualWidth);
+        var hasMatches = AdvancedPanel.AdvancedToolsList.Children.Count > 0;
+        AdvancedPanel.AdvancedToolsList.Visibility = hasMatches ? Visibility.Visible : Visibility.Collapsed;
+        AdvancedPanel.AdvancedNoResults.Visibility = hasMatches ? Visibility.Collapsed : Visibility.Visible;
+        AdvancedPanel.AdvancedFieldSearchButton.Visibility = search.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void AdvancedToolsSizeChanged(object sender, SizeChangedEventArgs args)
+    internal void AdvancedToolsSizeChanged(object sender, SizeChangedEventArgs args)
     {
         if (ToolColumns(args.PreviousSize.Width) != ToolColumns(args.NewSize.Width))
             ArrangeAdvancedTools(args.NewSize.Width);
@@ -197,15 +209,15 @@ public sealed partial class MainWindow
     private void ArrangeAdvancedTools(double width)
     {
         var columns = ToolColumns(width);
-        AdvancedToolsList.ColumnDefinitions.Clear();
+        AdvancedPanel.AdvancedToolsList.ColumnDefinitions.Clear();
         for (var column = 0; column < columns; column++)
-            AdvancedToolsList.ColumnDefinitions.Add(new());
+            AdvancedPanel.AdvancedToolsList.ColumnDefinitions.Add(new());
 
-        AdvancedToolsList.RowDefinitions.Clear();
-        for (var index = 0; index < AdvancedToolsList.Children.Count; index++)
+        AdvancedPanel.AdvancedToolsList.RowDefinitions.Clear();
+        for (var index = 0; index < AdvancedPanel.AdvancedToolsList.Children.Count; index++)
         {
-            if (index % columns == 0) AdvancedToolsList.RowDefinitions.Add(new() { Height = GridLength.Auto });
-            var card = (Border)AdvancedToolsList.Children[index];
+            if (index % columns == 0) AdvancedPanel.AdvancedToolsList.RowDefinitions.Add(new() { Height = GridLength.Auto });
+            var card = (Border)AdvancedPanel.AdvancedToolsList.Children[index];
             Grid.SetColumn(card, index % columns);
             Grid.SetRow(card, index / columns);
         }
@@ -232,6 +244,11 @@ public sealed partial class MainWindow
         Grid.SetRow(PageHeaderActions, compact ? 1 : 0);
         Grid.SetColumn(PageHeaderActions, compact ? 0 : 1);
         Grid.SetColumnSpan(PageHeaderActions, compact ? 2 : 1);
+        var wrapApplyActions = width < 448;
+        Grid.SetRow(ApplyFooterButtons, wrapApplyActions ? 1 : 0);
+        Grid.SetColumn(ApplyFooterButtons, wrapApplyActions ? 0 : 1);
+        Grid.SetColumnSpan(ApplyFooterButtons, wrapApplyActions ? 2 : 1);
+        Grid.SetColumnSpan(ApplicationStage, wrapApplyActions ? 2 : 1);
         PageHeading.ColumnSpacing = compact ? 0 : 16;
         PageHeading.RowSpacing = compact ? 8 : 0;
         PageHeader.Padding = new(inset, headerTop, inset, 12);
@@ -240,17 +257,29 @@ public sealed partial class MainWindow
             footer.Padding = new(inset, footerInset, inset, footerInset);
     }
 
+    private void ShellSizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        if (closing) return;
+        if ((args.PreviousSize.Width < 900) != (args.NewSize.Width < 900) ||
+            (args.PreviousSize.Height < 600) != (args.NewSize.Height < 600))
+            UpdateShellLayout(args.NewSize.Width, args.NewSize.Height);
+    }
+
+    private void UpdateShellLayout(double width, double height)
+    {
+        // Switch to a compact selector before tabs need to compete with the form.
+        var compact = width < 900;
+        PageTitle.FontSize = compact ? 24 : 28;
+        PageDescription.Visibility = height < 600 || currentPage.Description.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+        SectionTabs.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        CompactSectionInput.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void RefreshConsolidatedShell()
     {
         var editable = !ApplicationBusy && !dialogOpen && !closing;
         WorkspaceDirectoryButton.IsEnabled = PendingChangesButton.IsEnabled = editable;
         Navigation.IsEnabled = !dialogOpen && !closing;
-        // Switch to a compact selector before tabs need to compete with the form.
-        var compact = Root.ActualWidth < 900;
-        PageTitle.FontSize = compact ? 24 : 28;
-        PageDescription.Visibility = Root.ActualHeight < 600 || currentPage.Description.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        SectionTabs.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        CompactSectionInput.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
         var pending = new List<(string Label, DockPage Page)>();
         if (connectionDraft.HasDraft) pending.Add(("主配置 · 未保存", CatalogNav));
         if (profileDraft.HasDraft) pending.Add(("Profile：" + profileDraft.Snapshot?.Name + " · 未保存", ProfilesNav));
@@ -269,14 +298,23 @@ public sealed partial class MainWindow
             }
             renderedPendingChanges = key;
         }
-        ConnectionModelSummary.Text = "默认模型：" + (string.IsNullOrWhiteSpace(connectionDraft.Model) ? "尚未选择" : connectionDraft.Model);
+    }
+
+    private void RefreshWorkspaceHomeControls()
+    {
+        var editable = !ApplicationBusy && !dialogOpen && !closing;
+        WorkspacePanel.StatusText.Text = viewModel.NeedsConnectionSetup && viewModel.PreferenceError is null ? viewModel.SetupGuide.Message : viewModel.Status;
+        WorkspacePanel.ConnectionText.Text = viewModel.ConnectionLabel;
+        WorkspacePanel.EndpointText.Text = viewModel.ServiceOrigin;
+        WorkspacePanel.ModelText.Text = viewModel.ModelLabel;
+        WorkspacePanel.EnhancementSummary.Text = viewModel.EnhancementSummary;
         var next = WorkspaceNextStep();
-        WorkspaceNextTitle.Text = next.Title; WorkspaceNextButton.Content = next.Action;
-        WorkspaceNextButton.IsEnabled = editable;
+        WorkspacePanel.WorkspaceNextTitle.Text = next.Title; WorkspacePanel.WorkspaceNextButton.Content = next.Action;
+        WorkspacePanel.WorkspaceNextButton.IsEnabled = editable;
         RefreshQuickModelEntry(editable);
-        WorkspaceConnectionCard.Visibility = viewModel.SetupGuide.Kind == WorkspaceSetupKind.ExistingConnection ? Visibility.Visible : Visibility.Collapsed;
-        WorkspaceProfileName.Text = viewModel.ProfileName.Length > 0 ? viewModel.ProfileName : viewModel.Home;
-        WorkspaceDesktopStatus.Text = runningDesktopCount switch
+        WorkspacePanel.WorkspaceConnectionCard.Visibility = viewModel.SetupGuide.Kind == WorkspaceSetupKind.ExistingConnection ? Visibility.Visible : Visibility.Collapsed;
+        WorkspacePanel.WorkspaceProfileName.Text = viewModel.ProfileName.Length > 0 ? viewModel.ProfileName : viewModel.Home;
+        WorkspacePanel.WorkspaceDesktopStatus.Text = runningDesktopCount switch
         { null => "待确认", 0 => "未运行", 1 => "正在运行", _ => runningDesktopCount + " 个窗口正在运行" };
     }
 
@@ -284,7 +322,8 @@ public sealed partial class MainWindow
     private WorkspaceStep WorkspaceNextStep()
     {
         if (HasPendingRecovery) return new("配置需要恢复", "查看恢复记录", RecoveryNav);
-        if (viewModel.Error.Length > 0) return new("配置需要处理", "查看恢复记录", RecoveryNav);
+        if (viewModel.ConfigurationError is not null) return new("配置需要处理", "查看恢复记录", RecoveryNav);
+        if (viewModel.PreferenceError is not null) return new("增强偏好需要处理", "查看增强偏好", EnhancementsNav);
         if (connectionDraft.HasDraft) return new("主配置有未保存修改", "继续编辑",
             connectionDraft.Edits.Count > 0 || connectionDraft.FieldErrors.Count > 0 ? CatalogNav : connectionDraft.ConnectionChanged || connectionDraft.DetailsChanged ? ConnectionNav : ModelsNav);
         if (!viewModel.CanApplyConfiguration) return new("先完成连接设置", "设置连接", ConnectionNav);
@@ -307,7 +346,7 @@ public sealed partial class MainWindow
         return new(lastApplication?.DesktopOpened == true ? "Codex 已打开" : "本机设置已读取",
             runningDesktopCount is > 0 ? "回到 Codex" : "打开 Codex", WorkspaceNav, Open: true);
     }
-    private async void WorkspaceNextClicked(object sender, RoutedEventArgs args)
+    internal async void WorkspaceNextClicked(object sender, RoutedEventArgs args)
         => await RunWorkspaceNextAsync();
     private async Task RunWorkspaceNextAsync()
     {

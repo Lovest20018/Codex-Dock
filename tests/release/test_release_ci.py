@@ -1,4 +1,5 @@
 import contextlib
+import hashlib
 import io
 import importlib.util
 import json
@@ -27,13 +28,28 @@ class ReleasePipelineTests(unittest.TestCase):
         w, a = self.windows, self.android
         (self.out / f'CodexDock-{w}-Setup-win-x64.exe').write_bytes(b'fixture installer')
         (self.out / f'CodexDock-{w}-source.zip').write_bytes(b'fixture source')
+        binaries = {'CodexDock.exe': b'executable', 'CodexDock.dll': b'assembly', 'CodexConfig.Application.dll': b'shared'}
+        exe = hashlib.sha256(binaries['CodexDock.exe']).hexdigest()
+        hashes = {'executableSha256': exe, 'applicationAssemblySha256': hashlib.sha256(binaries['CodexDock.dll']).hexdigest()}
         with zipfile.ZipFile(self.out / f'CodexDock-{w}-win-x64.zip', 'w') as archive:
-            archive.writestr(f'CodexDock-{w}-win-x64/manifest.json', json.dumps({'sourceCommit': 'a' * 40, 'version': w, 'uiFramework': 'WinUI 3'}))
-            archive.writestr(f'CodexDock-{w}-win-x64/verification/ui-report.json', '{"status":"PASS","uiFramework":"WinUI 3"}')
+            prefix = f'CodexDock-{w}-win-x64/'
+            for name, content in binaries.items():
+                archive.writestr(prefix + name, content)
+            archive.writestr(prefix + 'manifest.json', json.dumps({
+                'sourceCommit': 'a' * 40, 'version': w, 'uiFramework': 'WinUI 3', 'startupVerificationProtocol': 1, **hashes}))
+            archive.writestr(prefix + 'verification/ui-report.json', json.dumps({
+                'status': 'PASS', 'kind': 'production-startup', 'uiFramework': 'WinUI 3', 'applicationVersion': w,
+                'tests': ['startup', 'tray', 'exit', 'files'], **hashes}))
+            archive.writestr(prefix + 'verification/ui-smoke-report.json', json.dumps({
+                'status': 'PASS', 'uiFramework': 'WinUI 3', 'applicationVersion': w, 'executableName': 'CodexDock.WinUI.exe',
+                'tests': ['fixture'], 'sharedApplicationAssemblySha256': hashlib.sha256(binaries['CodexConfig.Application.dll']).hexdigest()}))
         windows_names = [f'CodexDock-{w}-Setup-win-x64.exe', f'CodexDock-{w}-source.zip', f'CodexDock-{w}-win-x64.zip']
         (self.out / f'SHA256SUMS-{w}.txt').write_text(''.join(f'{release.sha(self.out / name)}  {name}\n' for name in windows_names))
         (self.out / f'installer-verification-{w}.json').write_text(json.dumps({'status': 'PASS', 'installerSha256': release.sha(self.out / windows_names[0]),
-            'runningMobileUpgrade': True, 'otherInstallationWorkerPreserved': True, 'mobileSettingsUnchanged': True}))
+            'runningMobileUpgrade': True, 'otherInstallationWorkerPreserved': True, 'mobileSettingsUnchanged': True,
+            'runningDockUpgrade': True, 'otherInstallationDockPreserved': True, 'dockSettingsUnchanged': True,
+            'executableSha256': exe, 'installedStartupChecks': 4,
+            'evidenceDirectory': 'artifacts/test-runs/installer-' + 'a' * 32}))
         (self.out / f'LovestCode-Android-{a}.apk').write_bytes(b'fixture APK')
         (self.out / f'LovestCode-Android-{a}-source.zip').write_bytes(b'fixture Android source')
         self.android_manifest = self.out / f'LovestCode-Android-{a}.manifest.json'
@@ -86,6 +102,14 @@ class ReleasePipelineTests(unittest.TestCase):
     def test_failed_installer_verification_is_rejected(self):
         (self.out / f'installer-verification-{self.windows}.json').write_text('{"status":"FAIL"}')
         with self.assertRaisesRegex(ValueError, 'installer verification'):
+            release.release_files(self.out, 'windows')
+
+    def test_installer_report_with_absolute_path_is_rejected(self):
+        report = self.out / f'installer-verification-{self.windows}.json'
+        values = json.loads(report.read_text())
+        values['evidenceDirectory'] = 'D:/example/test-runs/installer-' + 'a' * 32
+        report.write_text(json.dumps(values))
+        with self.assertRaisesRegex(ValueError, 'relative workspace location'):
             release.release_files(self.out, 'windows')
 
     def test_tag_version_mismatch_fails_before_build(self):

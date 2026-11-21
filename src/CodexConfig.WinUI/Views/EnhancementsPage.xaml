@@ -1,0 +1,48 @@
+<UserControl x:Class="CodexConfig.WinUI.Views.EnhancementsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CodexConfig.WinUI"
+             IsTabStop="False">
+    <StackPanel Spacing="14">
+        <TextBlock Text="更改开关立即保存偏好；接入运行中的 Codex 仍需单独应用。" Style="{StaticResource DockHintTextStyle}" />
+        <Border Style="{StaticResource DockCardStyle}">
+            <Grid ColumnSpacing="24">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel Spacing="6">
+                    <TextBlock Text="继续使用旧聊天" FontWeight="SemiBold" />
+                    <TextBlock Text="切换服务后，在聊天空闲时重新连接，保留历史与模型参数。" Style="{StaticResource DockHintTextStyle}" />
+                </StackPanel>
+                <ToggleSwitch x:Name="ConnectionRecoveryToggle" x:FieldModifier="internal" Grid.Column="1" OnContent="开启" OffContent="关闭"
+                              Toggled="ConnectionRecoveryChanged" AutomationProperties.Name="继续使用旧聊天" />
+            </Grid>
+        </Border>
+        <Border Style="{StaticResource DockCardStyle}">
+            <Grid ColumnSpacing="24">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel Spacing="6">
+                    <TextBlock Text="速度兼容" FontWeight="SemiBold" />
+                    <TextBlock Text="为受支持的 API Key 直连显示速度选项，可用档位取决于服务和模型。" Style="{StaticResource DockHintTextStyle}" />
+                </StackPanel>
+                <ToggleSwitch x:Name="SpeedToggle" x:FieldModifier="internal" Grid.Column="1" OnContent="开启" OffContent="关闭"
+                              Toggled="SpeedChanged" AutomationProperties.Name="速度兼容" />
+            </Grid>
+        </Border>
+        <Border Style="{StaticResource DockCardStyle}">
+            <Grid ColumnSpacing="24">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel Spacing="6">
+                    <TextBlock Text="自动接回" FontWeight="SemiBold" />
+                    <TextBlock Text="成功应用一次后，自动核对并接回原实例，保持 Codex 页面不变。" Style="{StaticResource DockHintTextStyle}" />
+                    <TextBlock x:Name="AutomaticStatus" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+                    <Button x:Name="CreateEnhancedShortcutButton" x:FieldModifier="internal" Content="创建增强启动快捷方式" Click="CreateEnhancedShortcutClicked" Margin="0,6,0,0" />
+                </StackPanel>
+                <ToggleSwitch x:Name="AutomaticToggle" x:FieldModifier="internal" Grid.Column="1" OnContent="开启" OffContent="关闭"
+                              Toggled="AutomaticChanged" AutomationProperties.Name="自动接回" />
+            </Grid>
+        </Border>
+        <TextBlock x:Name="BackgroundStatus" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+        <InfoBar x:Name="PendingBar" x:FieldModifier="internal" IsOpen="False" IsClosable="False" Severity="Informational" Title="偏好已保存，等待应用"
+                 Message="通过下方按钮核对目标实例，再应用已保存的选择。" />
+        <TextBlock x:Name="EnhancementStatus" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+    </StackPanel>
+</UserControl>

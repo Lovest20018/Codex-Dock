@@ -3,7 +3,7 @@
 const assert=require('node:assert/strict'),path=require('node:path'),{spawn}=require('node:child_process');
 const root=path.resolve(__dirname,'../..'),{chromium}=require('playwright-core');
 (async()=>{
-  const child=spawn(process.env.CODEX_DOCK_TEST_PYTHON||'C:/Users/com/AppData/Local/Python/pythoncore-3.12-64/python.exe',['-B','tests/mobile/upstream_browser_fixture.py','--port','0'],{cwd:root,windowsHide:true});
+  const child=spawn(process.env.CODEX_DOCK_TEST_PYTHON||(process.platform === 'win32' ? 'python' : 'python3'),['-B','tests/mobile/upstream_browser_fixture.py','--port','0'],{cwd:root,windowsHide:true});
   let browser;
   try{
     const url=await new Promise((resolve,reject)=>{let data='';child.stdout.on('data',chunk=>{data+=chunk;if(data.includes('\n'))resolve(data.split('\n')[0].trim());});child.once('exit',code=>reject(Error('Fixture exited '+code)));});

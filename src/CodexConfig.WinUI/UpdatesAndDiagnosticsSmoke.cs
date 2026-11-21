@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using CodexConfig.Application;
 using CodexConfig.Core;
 using Microsoft.UI.Xaml;
@@ -56,62 +56,62 @@ public sealed partial class MainWindow
             {"type":"event_msg","payload":{"type":"auto_approval_review_completed","status":"approved"}}
             """);
         File.WriteAllText(Path.Combine(sessions, "rollout-other.jsonl"), "{\"type\":\"turn_context\",\"payload\":{\"model\":\"other-recorded-model\"}}\n");
-        var previous = viewModel.Home; var originalDiagnostics = sessionDiagnostics;
-        var diagnosticRuntime = new SmokeDiagnosticRuntime(new NativeSessionDiagnosticRuntime()); sessionDiagnostics = new(diagnosticRuntime);
+        var previous = viewModel.Home; var originalDiagnostics = DiagnosticsPanel.Service;
+        var diagnosticRuntime = new SmokeDiagnosticRuntime(new NativeSessionDiagnosticRuntime()); DiagnosticsPanel.Service = new(diagnosticRuntime);
         try
         {
             await SwitchHomeAsync(home); var before = store.Load(home); NavigateTo(DiagnosticsNav);
-            Check(DiagnosticsPanel.Visibility == Visibility.Visible && DiagnosticFilesInput.SelectedItem is null && !ReadDiagnosticButton.IsEnabled && diagnosticRuntime.Reads == 0,
+            Check(DiagnosticsPanel.Visibility == Visibility.Visible && DiagnosticsPanel.DiagnosticFilesInput.SelectedItem is null && !DiagnosticsPanel.ReadDiagnosticButton.IsEnabled && diagnosticRuntime.Reads == 0,
                 "Diagnostic navigation never selects or reads a chat automatically");
-            await RefreshDiagnosticsAsync(); Check(diagnosticListing?.Files.Count == 2 && DiagnosticFilesInput.SelectedItem is null && diagnosticRuntime.Reads == 0,
+            await DiagnosticsPanel.ReadListAsync(); Check(DiagnosticsPanel.Listing?.Files.Count == 2 && DiagnosticsPanel.DiagnosticFilesInput.SelectedItem is null && diagnosticRuntime.Reads == 0,
                 "Diagnostic refresh lists only current-home files and still requires explicit selection");
-            DiagnosticFilesInput.SelectedItem = diagnosticListing!.Files.Single(file => file.Path == selected); await ReadDiagnosticAsync();
-            Check(DiagnosticResultText.Text.Contains("recorded-chat-model") && DiagnosticResultText.Text.Contains("high") && DiagnosticResultText.Text.Contains("approved") &&
-                DiagnosticResultText.Text.Contains("本记录未提供") && !DiagnosticResultText.Text.Contains("fake-private-conversation") && !DiagnosticResultText.Text.Contains("diagnostic-config-model"),
+            DiagnosticsPanel.DiagnosticFilesInput.SelectedItem = DiagnosticsPanel.Listing!.Files.Single(file => file.Path == selected); await DiagnosticsPanel.ReadSelectionAsync();
+            Check(DiagnosticsPanel.DiagnosticResultText.Text.Contains("recorded-chat-model") && DiagnosticsPanel.DiagnosticResultText.Text.Contains("high") && DiagnosticsPanel.DiagnosticResultText.Text.Contains("approved") &&
+                DiagnosticsPanel.DiagnosticResultText.Text.Contains("本记录未提供") && !DiagnosticsPanel.DiagnosticResultText.Text.Contains("fake-private-conversation") && !DiagnosticsPanel.DiagnosticResultText.Text.Contains("diagnostic-config-model"),
                 "Selected chat diagnostics show whitelisted observed parameters and review status without prompts or inferred review models");
             await CaptureAsync(output, "chat-parameters-light.png");
             connectionDraft.Model = "unsaved-diagnostic-model"; NavigateTo(UpdatesNav); NavigateTo(DiagnosticsNav);
             Check(connectionDraft.HasDraft && connectionDraft.Model == "unsaved-diagnostic-model" && before.SameContents(store.Load(home)),
                 "Diagnostic navigation and reads preserve independent configuration drafts and saved files");
-            diagnosticRuntime.Gate = new(TaskCreationOptions.RunContinuationsAsynchronously); var read = ReadDiagnosticAsync();
-            Check(readingDiagnostics && !ChooseHomeButton.IsEnabled && !ApplyButton.IsEnabled && CancelDiagnosticButton.IsEnabled,
+            diagnosticRuntime.Gate = new(TaskCreationOptions.RunContinuationsAsynchronously); var read = DiagnosticsPanel.ReadSelectionAsync();
+            Check(DiagnosticsPanel.IsReading && !ChooseHomeButton.IsEnabled && !ApplyButton.IsEnabled && DiagnosticsPanel.CancelDiagnosticButton.IsEnabled,
                 "Pending diagnostic reads expose cancellation and block conflicting home and apply actions");
-            CancelDiagnosticClicked(CancelDiagnosticButton, new()); await read;
-            Check(!readingDiagnostics && DiagnosticResultText.Text.Contains("取消") && !DiagnosticResultText.Text.Contains("recorded-chat-model"),
+            DiagnosticsPanel.CancelDiagnosticClicked(DiagnosticsPanel.CancelDiagnosticButton, new()); await read;
+            Check(!DiagnosticsPanel.IsReading && DiagnosticsPanel.DiagnosticResultText.Text.Contains("取消") && !DiagnosticsPanel.DiagnosticResultText.Text.Contains("recorded-chat-model"),
                 "Cancelled diagnostic reads remove old observations and restore controls");
-            diagnosticRuntime.Gate = new(TaskCreationOptions.RunContinuationsAsynchronously); read = ReadDiagnosticAsync();
-            DiagnosticFilesInput.SelectedItem = diagnosticListing!.Files.Single(file => file.Path != selected); await read;
-            Check(!DiagnosticResultText.Text.Contains("recorded-chat-model") && !readingDiagnostics, "Changing the diagnostic selection rejects a delayed old result");
-            diagnosticRuntime.Gate = null; await ReadDiagnosticAsync();
+            diagnosticRuntime.Gate = new(TaskCreationOptions.RunContinuationsAsynchronously); read = DiagnosticsPanel.ReadSelectionAsync();
+            DiagnosticsPanel.DiagnosticFilesInput.SelectedItem = DiagnosticsPanel.Listing!.Files.Single(file => file.Path != selected); await read;
+            Check(!DiagnosticsPanel.DiagnosticResultText.Text.Contains("recorded-chat-model") && !DiagnosticsPanel.IsReading, "Changing the diagnostic selection rejects a delayed old result");
+            diagnosticRuntime.Gate = null; await DiagnosticsPanel.ReadSelectionAsync();
             Root.RequestedTheme = ElementTheme.Dark; AppWindow.Resize(new(900, 760));
             await CaptureAsync(output, "chat-parameters-compact-dark.png");
-            Check(DiagnosticFilesInput.TransformToVisual(Root).TransformPoint(new()).X + DiagnosticFilesInput.ActualWidth <= Root.ActualWidth,
+            Check(DiagnosticsPanel.DiagnosticFilesInput.TransformToVisual(Root).TransformPoint(new()).X + DiagnosticsPanel.DiagnosticFilesInput.ActualWidth <= Root.ActualWidth,
                 "Diagnostic selector remains within the compact dark window");
             Root.RequestedTheme = ElementTheme.Light; LoadConnectionDraft();
-            await SwitchHomeAsync(previous); Check(diagnosticListing is null && !DiagnosticResultText.Text.Contains("other-recorded-model"), "Changing homes clears prior diagnostic files and observations");
+            await SwitchHomeAsync(previous); Check(DiagnosticsPanel.Listing is null && !DiagnosticsPanel.DiagnosticResultText.Text.Contains("other-recorded-model"), "Changing homes clears prior diagnostic files and observations");
 
             NavigateTo(UpdatesNav);
             var updateRuntime = new SmokeUpdateRuntime(output) { NewRelease = false }; updateDownloads = new(updateRuntime);
-            await CheckForUpdatesAsync(); Check(availableUpdate is null && InstallUpdateButton.Visibility == Visibility.Collapsed && CheckUpdateButton.IsEnabled,
+            await CheckForUpdatesAsync(); Check(availableUpdate is null && UpdatesPanel.InstallUpdateButton.Visibility == Visibility.Collapsed && UpdatesPanel.CheckUpdateButton.IsEnabled,
                 "Software update handles no newer stable release without network access");
             updateRuntime.NewRelease = true; await CheckForUpdatesAsync();
-            Check(availableUpdate?.Version == new Version(99, 0, 0) && DownloadUpdateButton.Visibility == Visibility.Visible && downloadedInstaller is null,
+            Check(availableUpdate?.Version == new Version(99, 0, 0) && UpdatesPanel.DownloadUpdateButton.Visibility == Visibility.Visible && downloadedInstaller is null,
                 "A newer formal release offers download and keeps preview installation scope explicit");
             updateRuntime.FailCheck = true; await CheckForUpdatesAsync();
-            Check(availableUpdate is null && updateMessage.Contains("无法完成") && InstallUpdateButton.Visibility == Visibility.Collapsed,
+            Check(availableUpdate is null && updateMessage.Contains("无法完成") && UpdatesPanel.InstallUpdateButton.Visibility == Visibility.Collapsed,
                 "Failed update checks clear an earlier release and never leave a stale install action");
             updateRuntime.FailCheck = false; await CheckForUpdatesAsync();
             updateRuntime.Gate = new(TaskCreationOptions.RunContinuationsAsynchronously); var download = DownloadUpdateAsync();
-            Check(downloadingUpdate && !CheckUpdateButton.IsEnabled && CancelUpdateButton.IsEnabled && downloadedInstaller is null,
+            Check(downloadingUpdate && !UpdatesPanel.CheckUpdateButton.IsEnabled && UpdatesPanel.CancelUpdateButton.IsEnabled && downloadedInstaller is null,
                 "Pending installer download has one active request and a working cancel action");
-            CancelUpdateClicked(CancelUpdateButton, new()); await download;
-            Check(downloadedInstaller is null && !downloadingUpdate && updateMessage.Contains("取消") && CheckUpdateButton.IsEnabled,
+            CancelUpdateClicked(UpdatesPanel.CancelUpdateButton, new()); await download;
+            Check(downloadedInstaller is null && !downloadingUpdate && updateMessage.Contains("取消") && UpdatesPanel.CheckUpdateButton.IsEnabled,
                 "Cancelled downloads cannot expose an installer and allow a retry");
             updateRuntime.Gate = null; updateRuntime.FailDownload = true; await DownloadUpdateAsync();
-            Check(downloadedInstaller is null && InstallUpdateButton.Visibility == Visibility.Collapsed && updateMessage.Contains("校验失败"),
+            Check(downloadedInstaller is null && UpdatesPanel.InstallUpdateButton.Visibility == Visibility.Collapsed && updateMessage.Contains("校验失败"),
                 "Failed installer verification never enables install");
             updateRuntime.FailDownload = false; await DownloadUpdateAsync();
-            Check(downloadedInstaller is not null && InstallUpdateButton.Visibility == Visibility.Visible && DownloadUpdateButton.Visibility == Visibility.Collapsed,
+            Check(downloadedInstaller is not null && UpdatesPanel.InstallUpdateButton.Visibility == Visibility.Visible && UpdatesPanel.DownloadUpdateButton.Visibility == Visibility.Collapsed,
                 "Completed verified download exposes the explicit install-and-exit action");
             await CaptureAsync(output, "software-update-light.png");
             connectionDraft.Model = "unsaved-update-model"; var launched = 0; smokeInstallerLaunch = _ => launched++;
@@ -140,19 +140,19 @@ public sealed partial class MainWindow
             }
             finally { gateways.FailStop = null; foreach (var pair in oldConfigured) gateways.Configured[pair.Key] = pair.Value; foreach (var pair in oldRunning) gateways.Running[pair.Key] = pair.Value; }
             Root.RequestedTheme = ElementTheme.Dark; await CaptureAsync(output, "software-update-compact-dark.png"); Root.RequestedTheme = ElementTheme.Light;
-            Check(InstallUpdateButton.TransformToVisual(Root).TransformPoint(new()).X + InstallUpdateButton.ActualWidth <= Root.ActualWidth,
+            Check(UpdatesPanel.InstallUpdateButton.TransformToVisual(Root).TransformPoint(new()).X + UpdatesPanel.InstallUpdateButton.ActualWidth <= Root.ActualWidth,
                 "Installer action remains within the compact update page");
             await RunUpdateExitSmokeAsync(output, installer, Check);
         }
         finally
         {
-            smokeDialog = null; smokeInstallerLaunch = null; sessionDiagnostics = originalDiagnostics; updateDownloads = new(new SmokeUpdateRuntime(output));
+            smokeDialog = null; smokeInstallerLaunch = null; DiagnosticsPanel.Service = originalDiagnostics; updateDownloads = new(new SmokeUpdateRuntime(output));
             availableUpdate = null; downloadedInstaller = null; await SwitchHomeAsync(previous); NavigateTo(WorkspaceNav);
         }
     }
     private async Task RunUpdateExitSmokeAsync(string output, VerifiedInstaller installer, Action<bool, string> check)
     {
-        var fixture = new MainWindow(new(options.Home, output)); fixture.Root.Loaded -= fixture.RootLoaded;
+        var fixture = new MainWindow(new(options.Home) { SmokeOutput = output }); fixture.Root.Loaded -= fixture.RootLoaded;
         fixture.initialized = true; fixture.LoadWorkspace(options.Home); fixture.NavigateTo(UpdatesNav);
         fixture.downloadedInstaller = installer; fixture.smokeDialog = _ => Task.FromResult(ContentDialogResult.Primary);
         var gateways = (SmokeGatewayRuntime)fixture.gatewayRuntime; gateways.Configured[GatewayKind.Model] = gateways.Configured[GatewayKind.Mobile] = true;

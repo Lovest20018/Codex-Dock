@@ -1,0 +1,81 @@
+name: Regression checks
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'config/**'
+      - 'assets/brand/**'
+      - 'Directory.Build.props'
+      - '.github/workflows/regression.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'config/**'
+      - 'assets/brand/**'
+      - 'Directory.Build.props'
+      - '.github/workflows/regression.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-ui:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Run xUnit cases
+        run: dotnet test tests/CodexConfig.UnitTests/CodexConfig.UnitTests.csproj -c Release --logger 'trx;LogFileName=unit.trx' --results-directory artifacts/test-runs/ci-unit
+      - name: Build the mobile worker used by both UIs
+        run: ./scripts/build-mobile.ps1 -InstallBuildTools
+      - name: Verify WinUI and WPF against the same shared code
+        run: ./scripts/test-windows-ui.ps1 -OutputDirectory artifacts/test-runs/ci-windows-ui
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: windows-test-reports
+          if-no-files-found: ignore
+          path: |
+            artifacts/test-runs/ci-unit/*.trx
+            artifacts/test-runs/ci-windows-ui/winui/*.json
+            artifacts/test-runs/ci-windows-ui/winui/*.log
+            artifacts/test-runs/ci-windows-ui/winui/*.png
+            artifacts/test-runs/ci-windows-ui/winui/failure.txt
+            artifacts/test-runs/ci-windows-ui/wpf/*.json
+            artifacts/test-runs/ci-windows-ui/wpf/*.log
+            artifacts/test-runs/ci-windows-ui/wpf/failure.txt
+
+  mobile-web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install locked browser dependencies
+        working-directory: tests/mobile
+        run: |
+          npm ci
+          npx --no-install playwright-core install --with-deps chromium
+      - name: Verify the upstream source and the Dock browser contract
+        run: |
+          python3 -B scripts/verify-mobile-upstream.py
+          node --test tests/mobile/upstream-contract.browser.cjs

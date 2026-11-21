@@ -1,4 +1,4 @@
-﻿using CodexConfig.Application;
+using CodexConfig.Application;
 using CodexConfig.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -9,12 +9,12 @@ public sealed partial class MainWindow
 {
     private readonly ProfileApplicationService profileManagement;
     private readonly ProfileDraftViewModel profileDraft = new();
-    private bool savingProfile, loadingProfile;
+    private bool loadingProfile;
     private string profileMessage = "选择名称并读取，或新建独立 Profile。";
     private void ResetProfileHome()
     {
         loadingProfile = true;
-        try { profileDraft.Load(null); ProfileDocumentInput.Text = ""; ProfileNameInput.Text = ""; InvalidateSource(); ReadProfileNames(); ReadStartupSettings(); }
+        try { profileDraft.Load(null); ProfilesPanel.ProfileDocumentInput.Text = ""; ProfilesPanel.ProfileNameInput.Text = ""; InvalidateSource(); ReadProfileNames(); ReadStartupSettings(); }
         finally { loadingProfile = false; }
     }
     private void ReadProfileNames()
@@ -22,48 +22,48 @@ public sealed partial class MainWindow
         try
         {
             var previous = loadingProfile; loadingProfile = true;
-            try { ProfileNamesInput.ItemsSource = profileManagement.List(viewModel.Home); ProfileNamesInput.SelectedItem = profileDraft.Snapshot?.Name; }
+            try { ProfilesPanel.ProfileNamesInput.ItemsSource = profileManagement.List(viewModel.Home); ProfilesPanel.ProfileNamesInput.SelectedItem = profileDraft.Snapshot?.Name; }
             finally { loadingProfile = previous; }
         }
-        catch (Exception) { ProfileNamesInput.ItemsSource = Array.Empty<string>(); profileMessage = "无法读取此目录的 Profile 列表，请检查权限和文件名。"; }
+        catch (Exception) { ProfilesPanel.ProfileNamesInput.ItemsSource = Array.Empty<string>(); profileMessage = "无法读取此目录的 Profile 列表，请检查权限和文件名。"; }
     }
     private void RefreshProfileControls()
     {
-        if (ProfileDocumentInput is null) return;
+        if (ProfilesPanel.ProfileDocumentInput is null) return;
         var editable = !ManualApplicationBusy && !dialogOpen && !closing;
-        ProfileNamesInput.IsEnabled = ProfileNameInput.IsEnabled = OpenProfileButton.IsEnabled = RefreshProfilesButton.IsEnabled = editable;
-        ProfileDocumentInput.IsEnabled = editable && profileDraft.Snapshot is not null && !HasPendingRecovery;
-        if (!loadingProfile && ProfileDocumentInput.Text != profileDraft.Text) ProfileDocumentInput.Text = profileDraft.Text;
+        ProfilesPanel.ProfileNamesInput.IsEnabled = ProfilesPanel.ProfileNameInput.IsEnabled = ProfilesPanel.OpenProfileButton.IsEnabled = ProfilesPanel.RefreshProfilesButton.IsEnabled = editable;
+        ProfilesPanel.ProfileDocumentInput.IsEnabled = editable && profileDraft.Snapshot is not null && !HasPendingRecovery;
+        if (!loadingProfile && ProfilesPanel.ProfileDocumentInput.Text != profileDraft.Text) ProfilesPanel.ProfileDocumentInput.Text = profileDraft.Text;
         SaveProfileButton.IsEnabled = editable && !HasPendingRecovery && profileDraft.HasDraft;
         DiscardProfileButton.IsEnabled = editable && profileDraft.HasDraft;
         RestoreProfileButton.IsEnabled = false;
         try { if (profileDraft.Snapshot is { } snapshot) RestoreProfileButton.IsEnabled = editable && !HasPendingRecovery && profileManagement.CanRestore(snapshot.Home, snapshot.Name); }
         catch (Exception) { profileMessage = "无法读取此 Profile 的备份状态。"; }
-        ProfileStatusText.Text = profileMessage;
-        ProfilePathText.Text = profileDraft.Snapshot is { } value ? ProfileStore.FilePath(value.Home, value.Name) + "\n使用：codex --profile " + value.Name + "；主配置与现有聊天未切换。" +
+        ProfilesPanel.ProfileStatusText.Text = profileMessage;
+        ProfilesPanel.ProfilePathText.Text = profileDraft.Snapshot is { } value ? ProfileStore.FilePath(value.Home, value.Name) + "\n使用：codex --profile " + value.Name + "；主配置与现有聊天未切换。" +
             (profileDraft.PreservedFields > 0 ? "\n另有 " + profileDraft.PreservedFields + " 项连接、权限或不可编辑字段保留在文件中，编辑区不展示其内容。" : "") : "尚未读取 Profile。新建前先填写名称。";
         ProfileFooter.Visibility = ReferenceEquals(currentPage, ProfilesNav) ? Visibility.Visible : Visibility.Collapsed;
         ProfileDraftStatus.Text = profileDraft.HasDraft ? "Profile 有未保存修改，查看差异后单独保存。" : "Profile 独立保存，不切换主配置或当前聊天。";
         ProfileMainDraftButton.Visibility = connectionDraft.HasDraft ? Visibility.Visible : Visibility.Collapsed;
     }
-    private void ProfileSelectionChanged(object sender, SelectionChangedEventArgs args) { if (!updatingControls && !loadingProfile && ProfileNamesInput.SelectedItem is string name) ProfileNameInput.Text = name; }
-    private void ProfileDocumentChanged(TextBox sender, TextBoxTextChangingEventArgs args)
+    internal void ProfileSelectionChanged(object sender, SelectionChangedEventArgs args) { if (!updatingControls && !loadingProfile && ProfilesPanel.ProfileNamesInput.SelectedItem is string name) ProfilesPanel.ProfileNameInput.Text = name; }
+    internal void ProfileDocumentChanged(TextBox sender, TextBoxTextChangingEventArgs args)
     { if (initialized && !updatingControls && !loadingProfile && !ManualApplicationBusy && !dialogOpen && !closing) profileDraft.Text = sender.Text; }
-    private async void OpenProfileClicked(object sender, RoutedEventArgs args) => await LoadProfileAsync(ProfileNameInput.Text.Trim());
+    internal async void OpenProfileClicked(object sender, RoutedEventArgs args) => await LoadProfileAsync(ProfilesPanel.ProfileNameInput.Text.Trim());
     private async Task<bool> LoadProfileAsync(string name)
     {
         if (ManualApplicationBusy || dialogOpen || closing || !await ResolveProfileDraftAsync()) return false;
         try
         {
             var snapshot = profileManagement.Read(viewModel.Home, name);
-            loadingProfile = true; try { profileDraft.Load(snapshot); ProfileDocumentInput.Text = profileDraft.Text; ProfileNameInput.Text = name; } finally { loadingProfile = false; }
+            loadingProfile = true; try { profileDraft.Load(snapshot); ProfilesPanel.ProfileDocumentInput.Text = profileDraft.Text; ProfilesPanel.ProfileNameInput.Text = name; } finally { loadingProfile = false; }
             ReadProfileNames();
             profileMessage = snapshot.Config is null ? "已创建内存草稿；确认保存前不会创建 Profile 文件。" : "已读取已保存 Profile。编辑区仅包含普通模型与行为设置。";
             RefreshView(); return true;
         }
         catch (Exception error) { profileMessage = error is ArgumentException ? error.Message : "Profile 无法读取；原文件及当前草稿已保留。"; RefreshView(); return false; }
     }
-    private void RefreshProfilesClicked(object sender, RoutedEventArgs args) { ReadProfileNames(); RefreshView(); }
+    internal void RefreshProfilesClicked(object sender, RoutedEventArgs args) { ReadProfileNames(); RefreshView(); }
     private async void SaveProfileClicked(object sender, RoutedEventArgs args) => await SaveProfileAsync(false);
     private async void RestoreProfileClicked(object sender, RoutedEventArgs args) { if (await ResolveProfileDraftAsync()) await SaveProfileAsync(true); }
     private void DiscardProfileClicked(object sender, RoutedEventArgs args)
@@ -71,7 +71,7 @@ public sealed partial class MainWindow
     private async Task<bool> SaveProfileAsync(bool restore)
     {
         if (ManualApplicationBusy || dialogOpen || closing || HasPendingRecovery || profileDraft.Snapshot is not { } before) return false;
-        savingProfile = true; RefreshView(); var revision = profileDraft.Revision;
+        using var operation = busy.Begin(WindowOperation.SaveProfile, "正在保存独立配置…"); RefreshView(); var revision = profileDraft.Revision;
         try
         {
             await automaticEnhancements.CancelAndWaitAsync();
@@ -91,7 +91,7 @@ public sealed partial class MainWindow
             ReadProfileNames(); InvalidateSource(); return true;
         }
         catch (Exception error) { profileMessage = error is ArgumentException or InvalidDataException ? "Profile 输入未通过校验，请检查 TOML 写法和普通字段范围。" : error.Message; return false; }
-        finally { savingProfile = false; RefreshView(); }
+        finally { operation.Dispose(); RefreshView(); }
     }
     private async Task<bool> ResolveProfileDraftAsync()
     {

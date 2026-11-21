@@ -31,12 +31,12 @@
 
 本次从本机现有模型缓存生成独立的原生目录快照，保留全部 8 个模型；对其中 7 个非审核模型设置上述覆盖值，审核模型自身的元数据不变。逐字段比较确认其他模型属性均保持原值，包括 Max、Ultra、Fast、工具能力与推理档位更新支持。没有虚构新的审核模型条目；现有源目录已包含 `codex-auto-review` 且声明支持 API。
 
-本机 `config.toml` 已通过现有 ConfigStore 的冲突检测、加密备份和原子保存流程写入以下三项。原生目录路径为 `C:/Users/com/.codex/codex-dock-model-catalog-aa6b6662d8654d48.json`：
+本机 `config.toml` 已通过现有 ConfigStore 的冲突检测、加密备份和原子保存流程写入以下三项。原生目录路径为 `<Codex 配置目录>/codex-dock-model-catalog-<摘要>.json`：
 
 ```toml
 approval_policy = "on-request"
 approvals_reviewer = "auto_review"
-model_catalog_json = "C:/Users/com/.codex/codex-dock-model-catalog-aa6b6662d8654d48.json"
+model_catalog_json = "<Codex 配置目录>/codex-dock-model-catalog-<摘要>.json"
 ```
 
 实际保存时保留原文件的排版与其余内容；上面的正斜杠用于展示路径。认证文件、连接入口和推理设置未改动。已创建恢复备份：

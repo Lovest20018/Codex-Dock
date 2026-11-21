@@ -5,6 +5,11 @@ $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $taskSecrets = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 $taskPrivateHashes = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 $taskHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE '.codex' }
+$taskLocalPaths = foreach ($path in @($taskRoot, $env:USERPROFILE)) {
+    if ($path) { $path; $path.Replace('\','/'); $path.Replace('\','\\') }
+}
+$taskLocalProfilePattern = '(?i)\b[a-z]:[/\\]+Users[/\\]+[^/\\\s"''<>]+[/\\]+(?:AppData|\.codex|\.ssh)[/\\]'
+$taskCredentialPattern = '(?x)(?<![\w-])(?:github_pat_[a-zA-Z0-9_]{30,}|gh[pousr]_[a-zA-Z0-9]{29,}|sk-(?:proj-|live-|svcacct-|ant-)?[a-zA-Z0-9_-]{25,}|(?:AKIA|ASIA)[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|eyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{18,}\.[A-Za-z0-9_-]{18,}|-----BEGIN[ ](?:OPENSSH[ ]|RSA[ ]|DSA[ ]|EC[ ]|ENCRYPTED[ ])?PRIVATE[ ]KEY-----)'
 function Read-PrivateValues($Object) {
     if ($null -eq $Object) { return }
     foreach ($taskProperty in $Object.PSObject.Properties) {
@@ -28,12 +33,25 @@ foreach ($taskName in @('config.toml','auth.json','codex-config-connection.dat',
         finally { [Security.Cryptography.CryptographicOperations]::ZeroMemory($taskPlain) }
     }
 }
-function Check-Bytes([string]$Name, [byte[]]$Bytes) {
-    if ($Name.Replace('\','/') -match '(^|/)(auth\.json|config\.toml|codex-config-connection\.dat|codex-dock-details\.dat|codex-dock-catalog\.json|codex-dock-models|codex-dock-thread-backups|codex-dock-model-catalog-[^/]+\.json|mobile-settings\.dat|auth-sessions\.json|operations\.json|worker\.lock|manager\.lock|codex-config-backups|\.env(?:\..*)?|[^/]+\.backup)(/|$)') { throw "Private configuration path in release input: $Name" }
+function Check-Bytes([string]$Name, [byte[]]$Bytes, [switch]$Historical) {
+    $relativeName = $Name.Replace('\','/')
+    if ($relativeName -match '(^|/)(auth\.json|config\.toml|codex-config-connection\.dat|codex-dock-details\.dat|codex-dock-catalog\.json|codex-dock-models|codex-dock-thread-backups|codex-dock-model-catalog-[^/]+\.json|mobile-settings\.dat|auth-sessions\.json|operations\.json|worker\.lock|manager\.lock|codex-config-backups|\.env(?:\..*)?|store-password\.txt|[^/]+\.(?:backup|jks|p12|pfx))(/|$)') { throw "Private configuration or signing file in release input: $Name" }
     if ($Bytes.Length -gt 0 -and $taskPrivateHashes.Contains([Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($Bytes)))) { throw "Personal configuration bytes found: $Name" }
     $taskUtf8 = [Text.Encoding]::UTF8.GetString($Bytes); $taskUnicode = [Text.Encoding]::Unicode.GetString($Bytes)
     foreach ($taskSecret in $taskSecrets) {
         if ($taskUtf8.Contains($taskSecret) -or $taskUnicode.Contains($taskSecret)) { throw "Personal credential found in release input: $Name (value hidden)" }
+    }
+    if ($Historical -or $relativeName -match '(^|/)(src/CodexMobile/upstream|third_party)/') { return }
+    foreach ($taskPath in $taskLocalPaths) {
+        if ($taskUtf8.Contains($taskPath, [StringComparison]::OrdinalIgnoreCase) -or $taskUnicode.Contains($taskPath, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Local build or user directory found in release input: $Name (value hidden)"
+        }
+    }
+    if ($taskUtf8 -match $taskLocalProfilePattern -or $taskUnicode -match $taskLocalProfilePattern) {
+        throw "Absolute user profile path found in release input: $Name (value hidden)"
+    }
+    if ($taskUtf8 -cmatch $taskCredentialPattern -or $taskUnicode -cmatch $taskCredentialPattern) {
+        throw "Credential pattern found in release input: $Name (value hidden)"
     }
 }
 $taskFiles = git -C $taskRoot -c core.quotepath=false ls-files --cached --others --exclude-standard
@@ -47,11 +65,16 @@ if ($History) {
         $taskId = $Matches[1]; $taskName = $Matches[2]
         if ($taskName -match '\.(cs|json|md|ps1|iss|xaml|toml|txt|props|csproj)$' -or $taskName -match '(auth\.json|config\.toml|\.dat|\.backup)$') {
             $taskContents = (git -C $taskRoot cat-file blob $taskId) -join "`n"
-            Check-Bytes $taskName ([Text.Encoding]::UTF8.GetBytes($taskContents))
+            Check-Bytes $taskName ([Text.Encoding]::UTF8.GetBytes($taskContents)) -Historical
         }
     }
 }
-if ($PayloadDir) { Get-ChildItem -LiteralPath $PayloadDir -Recurse -File | ForEach-Object { Check-Bytes $_.FullName ([IO.File]::ReadAllBytes($_.FullName)) } }
+if ($PayloadDir) {
+    $taskPayloadRoot = [IO.Path]::GetFullPath($PayloadDir)
+    Get-ChildItem -LiteralPath $taskPayloadRoot -Recurse -File | ForEach-Object {
+        Check-Bytes ([IO.Path]::GetRelativePath($taskPayloadRoot, $_.FullName)) ([IO.File]::ReadAllBytes($_.FullName))
+    }
+}
 if ($SourceArchive) {
     $taskZip = [IO.Compression.ZipFile]::OpenRead([IO.Path]::GetFullPath($SourceArchive))
     try {
@@ -62,4 +85,4 @@ if ($SourceArchive) {
         }
     } finally { $taskZip.Dispose() }
 }
-Write-Output 'PASS privacy scan: personal credentials and configuration files excluded (values never printed).'
+Write-Output 'PASS privacy scan: credentials, private configuration and local paths excluded (values never printed).'

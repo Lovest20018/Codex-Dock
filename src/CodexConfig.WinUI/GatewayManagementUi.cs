@@ -1,4 +1,4 @@
-﻿using CodexConfig.Application;
+using CodexConfig.Application;
 using CodexConfig.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -7,7 +7,9 @@ namespace CodexConfig.WinUI;
 
 public sealed partial class MainWindow
 {
-    private bool gatewayAction, gatewayLaunch, gatewayExit, updatingGatewayPreferences;
+    private bool updatingGatewayPreferences;
+    private bool gatewayLaunch => busy.IsActive(WindowOperation.StartGateways);
+    private bool gatewayAction => busy.IsActive(WindowOperation.OperateGateway);
     private int gatewayTicks;
     private string? gatewayHome, gatewayPreferencesError;
     private GatewayStartupSettings gatewayPreferences = new();
@@ -18,7 +20,7 @@ public sealed partial class MainWindow
     private void LoadGatewayPreferences()
     {
         if (gatewayHome != viewModel.Home)
-        { gatewayHome = viewModel.Home; gatewayResults.Clear(); gatewayManagement.ClearOverview(); ModelGatewayCopyStatus.Visibility = Visibility.Collapsed; gatewayPreferencesStatus = "自动启动默认关闭，按配置目录保存。"; }
+        { gatewayHome = viewModel.Home; gatewayResults.Clear(); gatewayManagement.ClearOverview(); GatewaysPanel.ModelGatewayCopyStatus.Visibility = Visibility.Collapsed; gatewayPreferencesStatus = "自动启动默认关闭，按配置目录保存。"; }
         try { gatewayPreferences = gatewayManagement.LoadPreferences(viewModel.Home); gatewayPreferencesError = null; }
         catch (Exception error) { gatewayPreferences = new(); gatewayPreferencesError = error.Message; }
         RefreshView();
@@ -31,12 +33,6 @@ public sealed partial class MainWindow
         try
         {
             var editable = !ManualApplicationBusy && !dialogOpen && !closing;
-            ModelGatewayAutomaticInput.IsOn = gatewayPreferences.ModelOnDockStart;
-            MobileGatewayAutomaticInput.IsOn = gatewayPreferences.MobileOnDockStart;
-            ModelGatewayAutomaticInput.IsEnabled = MobileGatewayAutomaticInput.IsEnabled = editable && gatewayPreferencesError is null;
-            GatewayPreferencesError.IsOpen = gatewayPreferencesError is not null; GatewayPreferencesError.Message = gatewayPreferencesError ?? "";
-            GatewayPreferencesStatus.Text = MobileGatewayPreferencesStatus.Text = gatewayPreferencesStatus;
-            MobileGatewayPreferencesError.IsOpen = gatewayPreferencesError is not null; MobileGatewayPreferencesError.Message = gatewayPreferencesError ?? "";
             void Paint(GatewayState? state, TextBlock status, TextBlock description, TextBlock detail, Button start, Button restart, Button stop, InfoBar result, GatewayKind kind)
             {
                 status.Text = gatewayAction && activeGateway == kind ? "正在处理…" : state?.Status ?? "尚未检查";
@@ -48,33 +44,49 @@ public sealed partial class MainWindow
                 result.IsOpen = gatewayResults.TryGetValue(kind, out var outcome);
                 if (outcome is not null) { result.Message = outcome.Message; result.Severity = outcome.Succeeded ? InfoBarSeverity.Success : InfoBarSeverity.Error; }
             }
+            void PaintPreferences(ToggleSwitch toggle, bool automatic, InfoBar error, TextBlock status)
+            {
+                toggle.IsOn = automatic;
+                toggle.IsEnabled = editable && gatewayPreferencesError is null;
+                error.IsOpen = gatewayPreferencesError is not null;
+                error.Message = gatewayPreferencesError ?? "";
+                status.Text = gatewayPreferencesStatus;
+            }
             var overview = gatewayManagement.Overview?.Home == viewModel.Home ? gatewayManagement.Overview : null;
-            Paint(overview?.Model, ModelGatewayStateText, ModelGatewayDescription, ModelGatewayDetail, ModelGatewayStartButton, ModelGatewayRestartButton, ModelGatewayStopButton, ModelGatewayOperation, GatewayKind.Model);
-            Paint(overview?.Mobile, MobileGatewayStateText, MobileGatewayDescription, MobileGatewayDetail, MobileGatewayStartButton, MobileGatewayRestartButton, MobileGatewayStopButton, MobileGatewayOperation, GatewayKind.Mobile);
+            if (currentPage == MobileSettingsNav)
+            {
+                PaintPreferences(MobilePanel.MobileGatewayAutomaticInput, gatewayPreferences.MobileOnDockStart, MobilePanel.MobileGatewayPreferencesError, MobilePanel.MobileGatewayPreferencesStatus);
+                Paint(overview?.Mobile, MobilePanel.MobileGatewayStateText, MobilePanel.MobileGatewayDescription, MobilePanel.MobileGatewayDetail, MobilePanel.MobileGatewayStartButton, MobilePanel.MobileGatewayRestartButton, MobilePanel.MobileGatewayStopButton, MobilePanel.MobileGatewayOperation, GatewayKind.Mobile);
+                return;
+            }
+
+            PaintPreferences(GatewaysPanel.ModelGatewayAutomaticInput, gatewayPreferences.ModelOnDockStart, GatewaysPanel.GatewayPreferencesError, GatewaysPanel.GatewayPreferencesStatus);
+            Paint(overview?.Model, GatewaysPanel.ModelGatewayStateText, GatewaysPanel.ModelGatewayDescription, GatewaysPanel.ModelGatewayDetail, GatewaysPanel.ModelGatewayStartButton, GatewaysPanel.ModelGatewayRestartButton, GatewaysPanel.ModelGatewayStopButton, GatewaysPanel.ModelGatewayOperation, GatewayKind.Model);
             var diagnostics = overview?.Model.Diagnostics;
-            ModelGatewayDiagnosticsStatus.Text = diagnostics is not null ? "当前运行网关的进程内统计" : overview?.Model.Error is not null ? "读取失败，当前统计未确认。" :
+            GatewaysPanel.ModelGatewayDiagnosticsStatus.Text = diagnostics is not null ? "当前运行网关的进程内统计" : overview?.Model.Error is not null ? "读取失败，当前统计未确认。" :
                 overview?.Model.Running == false ? "当前模型网关未运行，没有运行中的进程统计。" : "尚未确认当前网关统计，请刷新状态。";
-            ModelGatewayCompactionConfiguration.Text = diagnostics?.Configuration ?? "";
-            ModelGatewayCompactionMetrics.Text = diagnostics?.Compaction ?? "";
-            ModelGatewayLatencyMetrics.Text = diagnostics?.Latency ?? "";
-            ModelGatewayUpstreamMetrics.Text = diagnostics?.Upstream ?? "";
-            ModelGatewayTransferText.Text = diagnostics?.TransferSummary ?? (diagnostics is null ? "" : "尚无可关联的响应记录。");
-            CopyModelTransferButton.IsEnabled = editable && diagnostics?.TransferSummary is not null;
-            if (!CopyModelTransferButton.IsEnabled) ModelGatewayCopyStatus.Visibility = Visibility.Collapsed;
-            ModelGatewayMetricsScope.Text = ModelGatewayDiagnostics.Scope;
-            RefreshGatewaysButton.IsEnabled = StopGatewaysExitButton.IsEnabled = editable;
+            GatewaysPanel.ModelGatewayCompactionConfiguration.Text = diagnostics?.Configuration ?? "";
+            GatewaysPanel.ModelGatewayCompactionMetrics.Text = diagnostics?.Compaction ?? "";
+            GatewaysPanel.ModelGatewayLatencyMetrics.Text = diagnostics?.Latency ?? "";
+            GatewaysPanel.ModelGatewayUpstreamMetrics.Text = diagnostics?.Upstream ?? "";
+            GatewaysPanel.ModelGatewayTransferText.Text = diagnostics?.TransferSummary ?? (diagnostics is null ? "" : "尚无可关联的响应记录。");
+            GatewaysPanel.CopyModelTransferButton.IsEnabled = editable && diagnostics?.TransferSummary is not null;
+            if (!GatewaysPanel.CopyModelTransferButton.IsEnabled) GatewaysPanel.ModelGatewayCopyStatus.Visibility = Visibility.Collapsed;
+            GatewaysPanel.ModelGatewayMetricsScope.Text = ModelGatewayDiagnostics.Scope;
+            GatewaysPanel.RefreshGatewaysButton.IsEnabled = editable;
+            GatewaysPanel.GatewayExitButton.IsEnabled = CanRequestExit;
         }
         finally { updatingGatewayPreferences = false; }
     }
 
-    private void GatewayAutomaticChanged(object sender, RoutedEventArgs args)
+    internal void GatewayAutomaticChanged(object sender, RoutedEventArgs args)
     {
         if (updatingGatewayPreferences || !initialized || ManualApplicationBusy || dialogOpen || closing) return;
         try
         {
-            var model = ReferenceEquals(sender, ModelGatewayAutomaticInput);
+            var model = ReferenceEquals(sender, GatewaysPanel.ModelGatewayAutomaticInput);
             gatewayManagement.SetAutomaticStart(viewModel.Home, model ? GatewayKind.Model : GatewayKind.Mobile,
-                model ? ModelGatewayAutomaticInput.IsOn : MobileGatewayAutomaticInput.IsOn);
+                model ? GatewaysPanel.ModelGatewayAutomaticInput.IsOn : MobilePanel.MobileGatewayAutomaticInput.IsOn);
             gatewayPreferencesStatus = "已保存，下次打开 Dock 时生效。需要立即启停时，请使用对应按钮。";
         }
         catch (Exception error) { gatewayPreferencesStatus = "自动启动设置未保存：" + error.Message; }
@@ -90,17 +102,17 @@ public sealed partial class MainWindow
         catch (Exception error) { if (!closing && viewModel.Home == home) gatewayPreferencesStatus = error.Message; }
         if (!closing && viewModel.Home == home) RefreshView();
     }
-    private async void RefreshGatewaysClicked(object sender, RoutedEventArgs args) { LoadGatewayPreferences(); await RefreshGatewaysAsync(); }
-    private void CopyModelTransferClicked(object sender, RoutedEventArgs args)
+    internal async void RefreshGatewaysClicked(object sender, RoutedEventArgs args) { LoadGatewayPreferences(); await RefreshGatewaysAsync(); }
+    internal void CopyModelTransferClicked(object sender, RoutedEventArgs args)
     {
-        if (!CopyModelTransferButton.IsEnabled || gatewayManagement.Overview is not { } overview || overview.Home != viewModel.Home ||
+        if (!GatewaysPanel.CopyModelTransferButton.IsEnabled || gatewayManagement.Overview is not { } overview || overview.Home != viewModel.Home ||
             overview.Model.Diagnostics?.TransferSummary is not { } summary) return;
-        try { CopyWorkspaceText(summary); ModelGatewayCopyStatus.Text = "已复制诊断。"; }
-        catch (Exception) { ModelGatewayCopyStatus.Text = "暂时无法复制，请选择上方文字。"; }
-        ModelGatewayCopyStatus.Visibility = Visibility.Visible;
+        try { CopyWorkspaceText(summary); GatewaysPanel.ModelGatewayCopyStatus.Text = "已复制诊断。"; }
+        catch (Exception) { GatewaysPanel.ModelGatewayCopyStatus.Text = "暂时无法复制，请选择上方文字。"; }
+        GatewaysPanel.ModelGatewayCopyStatus.Visibility = Visibility.Visible;
     }
     private void OpenGatewaysClicked(object sender, RoutedEventArgs args) => NavigateTo(GatewaysNav);
-    private async void GatewayActionClicked(object sender, RoutedEventArgs args)
+    internal async void GatewayActionClicked(object sender, RoutedEventArgs args)
     {
         var parts = ((Button)sender).Tag?.ToString()?.Split(':');
         if (parts is [var kind, var command] && Enum.TryParse<GatewayKind>(kind, out var selected) && Enum.TryParse<GatewayCommand>(command, out var operation))
@@ -109,8 +121,8 @@ public sealed partial class MainWindow
 
     private async Task<GatewayOperationResult?> OperateGatewayAsync(GatewayKind kind, GatewayCommand command, bool exitBatch = false)
     {
-        if ((ManualApplicationBusy && !(exitBatch && gatewayExit && !gatewayAction && !desktopApplication.IsBusy)) || dialogOpen || closing) return null;
-        var home = viewModel.Home; gatewayAction = true; activeGateway = kind; gatewayResults.Remove(kind); RefreshView();
+        if ((ManualApplicationBusy && !(exitBatch && busy.IsOnlyActive(WindowOperation.StopGatewaysForExit))) || dialogOpen || closing) return null;
+        var home = viewModel.Home; using var operation = busy.Begin(WindowOperation.OperateGateway, "正在执行网关操作…"); activeGateway = kind; gatewayResults.Remove(kind); RefreshView();
         if (kind == GatewayKind.Mobile && command is GatewayCommand.Stop or GatewayCommand.Restart) ClearMobilePair();
         try
         {
@@ -127,7 +139,7 @@ public sealed partial class MainWindow
             }
             finally
             {
-                gatewayAction = false; activeGateway = null;
+                operation.Dispose(); activeGateway = null;
                 if (!closing && home == viewModel.Home) { await RefreshGatewaysAsync(); RefreshView(); }
             }
         }
@@ -136,7 +148,7 @@ public sealed partial class MainWindow
     private async Task StartGatewaysOnLaunchAsync()
     {
         if (gatewayLaunch || closing) return;
-        var home = viewModel.Home; gatewayLaunch = true; RefreshView();
+        var home = viewModel.Home; using var operation = busy.Begin(WindowOperation.StartGateways, "正在检查网关启动设置…"); RefreshView();
         try
         {
             var result = await gatewayManagement.StartOnLaunchAsync(home, () => !closing && home == viewModel.Home, lifetime.Token);
@@ -146,24 +158,21 @@ public sealed partial class MainWindow
                 if (result.Error is { } error) gatewayPreferencesError = error;
             }
         }
-        finally { gatewayLaunch = false; if (!closing) RefreshView(); }
+        finally { operation.Dispose(); if (!closing) RefreshView(); }
     }
 
-    private async void StopGatewaysExitClicked(object sender, RoutedEventArgs args) => await StopGatewaysAndExitAsync();
-    private async Task StopGatewaysAndExitAsync()
+    private async Task<bool> StopGatewaysForExitAsync()
     {
-        if (ManualApplicationBusy || dialogOpen || closing || !await ResolveProfileDraftAsync() || !await ResolveTemplateEditAsync() || !await ResolveConnectionDraftAsync() || !await ResolveMobileDraftAsync()) return;
-        if (!await ConfirmDialogAsync("停止网关并退出", "将停止当前目录已保存的模型网关和手机网关，手机连接及经模型网关的请求会中断。确认两个网关都停止后，再退出程序。", "停止并退出")) return;
-        gatewayExit = true; RefreshView();
+        using var operation = busy.Begin(WindowOperation.StopGatewaysForExit, "正在停止网关…"); RefreshView();
         GatewayOperationResult? model, mobile;
         try
         {
             model = await OperateGatewayAsync(GatewayKind.Model, GatewayCommand.Stop, exitBatch: true);
             mobile = await OperateGatewayAsync(GatewayKind.Mobile, GatewayCommand.Stop, exitBatch: true);
         }
-        finally { gatewayExit = false; RefreshView(); }
+        finally { operation.Dispose(); RefreshView(); }
         if (model?.Succeeded != true || mobile?.Succeeded != true)
-        { NavigateTo(model?.Succeeded != true ? GatewaysNav : MobileSettingsNav); RestoreWindow(); return; }
-        exitRequested = true; await ExitWindowAsync();
+        { NavigateTo(model?.Succeeded != true ? GatewaysNav : MobileSettingsNav); RestoreWindow(); return false; }
+        return true;
     }
 }

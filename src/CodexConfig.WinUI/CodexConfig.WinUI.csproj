@@ -6,7 +6,7 @@
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <RootNamespace>CodexConfig.WinUI</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>../../assets/brand/codex-dock.ico</ApplicationIcon>
+    <ApplicationIcon>../../assets/brand/app.ico</ApplicationIcon>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -23,24 +23,31 @@
     <AssemblyName>CodexDock.WinUI</AssemblyName>
     <AssemblyName Condition="'$(InstalledBuild)' == 'true' Or '$(LocalInstallBuild)' == 'true'">CodexDock</AssemblyName>
     <DefineConstants Condition="'$(UiPreviewBuild)' == 'true' And '$(InstalledBuild)' != 'true' And '$(LocalInstallBuild)' != 'true'">$(DefineConstants);CODEX_DOCK_UI_PREVIEW</DefineConstants>
-    <Version>0.19.9</Version>
+    <EnableWinUiSmoke Condition="'$(InstalledBuild)' != 'true' And '$(LocalInstallBuild)' != 'true' And ('$(WinUiSmokeBuild)' == 'true' Or '$(UiPreviewBuild)' == 'true' Or '$(Configuration)' == 'Debug')">true</EnableWinUiSmoke>
+    <DefineConstants Condition="'$(EnableWinUiSmoke)' == 'true' And '$(InstalledBuild)' != 'true' And '$(LocalInstallBuild)' != 'true'">$(DefineConstants);CODEX_DOCK_WINUI_SMOKE</DefineConstants>
+    <Version>0.20.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
     <ProjectReference Include="../CodexConfig.Application/CodexConfig.Application.csproj" />
-    <Content Include="../../assets/brand/logo-64.png" Link="Assets/codex-dock.png" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="../../assets/brand/codex-dock.ico" Link="Assets/codex-dock.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../assets/brand/app-64.png" Link="Assets/codex-dock.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../assets/brand/app.ico" Link="Assets/codex-dock.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../assets/brand/tray-on-light.ico" Link="Assets/tray-on-light.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../assets/brand/tray-on-dark.ico" Link="Assets/tray-on-dark.ico" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../artifacts/mobile-worker/CodexDock.Mobile/**/*" Link="mobile/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup Condition="'$(EnableWinUiSmoke)' != 'true' Or '$(InstalledBuild)' == 'true' Or '$(LocalInstallBuild)' == 'true'">
+    <Compile Remove="**/*Smoke.cs;NativeClipboardFixture.cs" />
+  </ItemGroup>
   <Target Name="IncludeCompiledWinUiResourcesInPublish" AfterTargets="ComputeFilesToPublish">
     <ItemGroup>
-      <ResolvedFileToPublish Remove="$(TargetDir)App.xbf;$(TargetDir)MainWindow.xbf;$(TargetDir)DockTheme.xbf;$(TargetDir)$(AssemblyName).pri" />
+      <CompiledPageResource Include="$(TargetDir)Views/**/*.xbf" />
+      <ResolvedFileToPublish Remove="$(TargetDir)App.xbf;$(TargetDir)MainWindow.xbf;$(TargetDir)DockTheme.xbf;$(TargetDir)$(AssemblyName).pri;@(CompiledPageResource)" />
       <ResolvedFileToPublish Include="$(TargetDir)App.xbf" RelativePath="App.xbf" CopyToPublishDirectory="PreserveNewest" />
       <ResolvedFileToPublish Include="$(TargetDir)MainWindow.xbf" RelativePath="MainWindow.xbf" CopyToPublishDirectory="PreserveNewest" />
       <ResolvedFileToPublish Include="$(TargetDir)DockTheme.xbf" RelativePath="DockTheme.xbf" CopyToPublishDirectory="PreserveNewest" />
       <ResolvedFileToPublish Include="$(TargetDir)$(AssemblyName).pri" RelativePath="$(AssemblyName).pri" CopyToPublishDirectory="PreserveNewest" />
+      <ResolvedFileToPublish Include="@(CompiledPageResource)" RelativePath="Views/%(CompiledPageResource.RecursiveDir)%(CompiledPageResource.Filename)%(CompiledPageResource.Extension)" CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
 </Project>

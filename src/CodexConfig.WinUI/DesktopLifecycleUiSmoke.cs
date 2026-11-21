@@ -1,4 +1,4 @@
-﻿using CodexConfig.Application;
+using CodexConfig.Application;
 using CodexConfig.Core;
 
 namespace CodexConfig.WinUI;
@@ -26,10 +26,12 @@ public sealed partial class MainWindow
         smokeAutomaticResume = async cancellation => { resumes++; entered.TrySetResult(); await release.Task.WaitAsync(cancellation); };
         var first = TryAutomaticEnhancementsAsync(); await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var second = TryAutomaticEnhancementsAsync();
-        Check(automaticEnhancements.IsBusy && !ApplyButton.IsEnabled && !CreateEnhancedShortcutButton.IsEnabled && resumes == 1,
+        await WaitForQueuedRefreshAsync();
+        Check(automaticEnhancements.IsBusy && !ApplyButton.IsEnabled && !EnhancementsPanel.CreateEnhancedShortcutButton.IsEnabled && resumes == 1,
             "WinUI automatic reconnect shares one operation and disables conflicting launch actions");
         release.TrySetResult(); await Task.WhenAll(first, second);
-        Check(resumes == 1 && AutomaticStatus.Text.Contains("已自动接回") && original.SameContents(store.Load(options.Home)),
+        await WaitForQueuedRefreshAsync();
+        Check(resumes == 1 && EnhancementsPanel.AutomaticStatus.Text.Contains("已自动接回") && original.SameContents(store.Load(options.Home)),
             "WinUI resumes a remembered fake desktop without restarting reloading or writing its configuration");
         automaticEnhancements.Cancel();
         Check(!automaticEnhancements.IsBusy && ApplyButton.IsEnabled, "A completed automatic attempt has no disposed cancellation source and releases the UI");
@@ -39,11 +41,11 @@ public sealed partial class MainWindow
         try { WinUiLaunchOptions.Parse(["--smoke-test", Path.Combine(output, "forbidden"), "--enhanced-launch"]); throw new InvalidOperationException("Unsafe smoke arguments accepted."); }
         catch (ArgumentException) { Check(!Directory.Exists(Path.Combine(output, "forbidden")), "Smoke mode rejects launch actions before creating any workspace"); }
         var shortcut = Path.Combine(output, "Codex enhanced fixture.lnk"); SaveEnhancedShortcut(shortcut);
-        Check(File.Exists(shortcut) && AutomaticStatus.Text.Contains("已创建"), "WinUI creates an actual Windows enhanced shortcut only inside the fixture directory");
+        Check(File.Exists(shortcut) && EnhancementsPanel.AutomaticStatus.Text.Contains("已创建"), "WinUI creates an actual Windows enhanced shortcut only inside the fixture directory");
         preferences.SetAutomaticReconnect(false); LoadWorkspace(options.Home);
         var restarts = ((SmokeDesktopApplyRuntime)applicationRuntime).Restarts;
         await RequestEnhancedLaunchAsync(options.Home);
-        Check(AutomaticStatus.Text.Contains("已关闭") && ((SmokeDesktopApplyRuntime)applicationRuntime).Restarts == restarts,
+        Check(EnhancementsPanel.AutomaticStatus.Text.Contains("已关闭") && ((SmokeDesktopApplyRuntime)applicationRuntime).Restarts == restarts,
             "An enhanced launch respects the disabled per-directory setting without opening a desktop");
 
         var runtime = (SmokeDesktopApplyRuntime)applicationRuntime;
@@ -83,8 +85,8 @@ public sealed partial class MainWindow
         Check(AppWindow.IsVisible && !closing, "A tray restore makes the same WinUI window accessible again");
         await runtime.AttachEnhancementsAsync(new(Path.Combine(options.Home, "fixture.exe"), []), original, plan, 12345, lifetime.Token);
         smokeDialog = _ => Task.FromResult(Microsoft.UI.Xaml.Controls.ContentDialogResult.None);
-        exitRequested = true; await ExitWindowAsync();
-        Check(!exitRequested && !closing && runtime.IsEnhancementRunning && tray?.IsAvailable == true && AppWindow.IsVisible,
+        await RequestWindowExitAsync();
+        Check(!closing && runtime.IsEnhancementRunning && tray?.IsAvailable == true && AppWindow.IsVisible,
             "Cancelling a tray exit preserves both the live enhancement and the accessible notification icon");
         smokeDialog = null; await runtime.StopEnhancementsAsync();
         tray!.Dispose(); tray = null;
@@ -107,7 +109,7 @@ public sealed partial class MainWindow
         preferences.SetAutomaticReconnect(true); LoadWorkspace(options.Home);
         PageScroll.ChangeView(null, double.MaxValue, null, true);
         await CaptureAsync(output, "lifecycle-enhancements.png");
-        Check(CreateEnhancedShortcutButton.IsEnabled && original.SameContents(store.Load(options.Home)), "Tray shortcut and reconnect verification preserve all original configuration bytes");
+        Check(EnhancementsPanel.CreateEnhancedShortcutButton.IsEnabled && original.SameContents(store.Load(options.Home)), "Tray shortcut and reconnect verification preserve all original configuration bytes");
         smokeAutomaticResume = null;
     }
     private sealed class SmokeAutomaticRuntime(MainWindow window) : IAutomaticEnhancementRuntime

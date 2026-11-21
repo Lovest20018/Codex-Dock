@@ -5,7 +5,7 @@ const {chromium}=require('playwright-core');
 const root=path.resolve(__dirname,'../..'),out=path.join(root,'artifacts/mobile-backport-2026-11-15/browser');
 (async()=>{
  await fs.mkdir(out,{recursive:true});
- const child=spawn(process.env.CODEX_DOCK_TEST_PYTHON||'C:/Users/com/AppData/Local/Python/pythoncore-3.12-64/python.exe',['-B','tests/mobile/upstream_browser_fixture.py'],{cwd:root,windowsHide:true,stdio:['ignore','pipe','inherit']});
+ const child=spawn(process.env.CODEX_DOCK_TEST_PYTHON||(process.platform === 'win32' ? 'python' : 'python3'),['-B','tests/mobile/upstream_browser_fixture.py'],{cwd:root,windowsHide:true,stdio:['ignore','pipe','inherit']});
  let browser;
  try{
   const url=await new Promise((resolve,reject)=>{let value='';const timer=setTimeout(()=>reject(Error('Fixture startup timeout')),20000);child.stdout.on('data',data=>{value+=data;if(value.includes('\n')){clearTimeout(timer);resolve(value.split('\n')[0].trim());}});child.once('exit',code=>{clearTimeout(timer);reject(Error('Fixture exited '+code));});});

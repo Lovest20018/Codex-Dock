@@ -22,17 +22,17 @@ public sealed partial class MainWindow
     }
     private void RefreshStartupControls()
     {
-        if (StartupToggle is null) return;
-        StartupToggle.IsOn = startupState?.Enabled == true;
-        StartupToggle.IsEnabled = startupState is not null && !ManualApplicationBusy && !dialogOpen && !closing;
-        RefreshStartupButton.IsEnabled = !ManualApplicationBusy && !dialogOpen && !closing;
-        StartupStatusText.Text = startupMessage; StartupHomeText.Text = viewModel.Home;
+        if (SettingsPanel.StartupToggle is null) return;
+        SettingsPanel.StartupToggle.IsOn = startupState?.Enabled == true;
+        SettingsPanel.StartupToggle.IsEnabled = startupState is not null && !ManualApplicationBusy && !dialogOpen && !closing;
+        SettingsPanel.RefreshStartupButton.IsEnabled = !ManualApplicationBusy && !dialogOpen && !closing;
+        SettingsPanel.StartupStatusText.Text = startupMessage; SettingsPanel.StartupHomeText.Text = viewModel.Home;
     }
-    private void RefreshStartupClicked(object sender, RoutedEventArgs args) { ReadStartupSettings(); RefreshView(); }
-    private async void StartupChanged(object sender, RoutedEventArgs args)
+    internal void RefreshStartupClicked(object sender, RoutedEventArgs args) { ReadStartupSettings(); RefreshView(); }
+    internal async void StartupChanged(object sender, RoutedEventArgs args)
     {
         if (!initialized || updatingControls || ManualApplicationBusy || dialogOpen || closing || startupState is null) return;
-        await SetStartupAsync(StartupToggle.IsOn);
+        await SetStartupAsync(SettingsPanel.StartupToggle.IsOn);
     }
     private async Task SetStartupAsync(bool enabled)
     {

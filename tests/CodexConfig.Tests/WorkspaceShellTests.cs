@@ -38,12 +38,16 @@ internal static class WorkspaceShellTests
             var (shell, home, connections, _, _) = Fixture();
             var settings = new DesktopConnectionSettings(home, connections); settings.Save(true);
             File.WriteAllText(settings.SettingsPath, "{}"); shell.Load(home);
-            Assert(!shell.PreferencesAvailable && shell.Error.Length > 0 && !shell.SetConnectionRecovery(false));
+            Assert(!shell.PreferencesAvailable && shell.ConfigurationError is null && shell.Error == shell.PreferenceError &&
+                !shell.SetConnectionRecovery(false));
             Assert(File.ReadAllText(settings.SettingsPath) == "{}");
-            settings.Save(true); shell.Load(home);
-            Assert(shell.PreferencesAvailable && shell.Error.Length == 0 && shell.ConnectionRecoveryEnabled);
+            var snapshot = shell.Snapshot;
+            shell.Session.MarkDraft(true);
+            settings.Save(true); shell.ReloadPreferences();
+            Assert(shell.PreferencesAvailable && shell.Error.Length == 0 && shell.ConnectionRecoveryEnabled &&
+                ReferenceEquals(snapshot, shell.Snapshot) && shell.Session.State.HasDraft);
             File.WriteAllText(Path.Combine(home, "config.toml"), "model=[broken"); shell.Load(home);
-            Assert(!shell.PreferencesAvailable && shell.ConnectionLabel == "尚未读取" && shell.Error.Length > 0);
+            Assert(!shell.PreferencesAvailable && shell.ConnectionLabel == "尚未读取" && shell.ConfigurationError is not null && shell.PreferenceError is null);
             return Task.CompletedTask;
         }));
         tests.Add(("shell save failure preserves prior preference and blocks further writes", () =>

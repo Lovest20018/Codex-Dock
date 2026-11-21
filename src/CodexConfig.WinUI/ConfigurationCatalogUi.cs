@@ -1,4 +1,4 @@
-﻿using CodexConfig.Application;
+using CodexConfig.Application;
 using CodexConfig.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -20,62 +20,62 @@ public sealed partial class MainWindow
 
     private void InitializeConfigurationCatalog()
     {
-        CatalogScopeInput.ItemsSource = new[] { new CatalogScope("已配置", "configured"), new("全部", "all"), new("已修改", "changed"), new("常用", "common") };
-        CatalogScopeInput.SelectedIndex = 0;
-        CatalogReferenceText.Text = "配置资料核对版本 " + ConfigSchema.Instance.VerifiedRuntime + " · " + ConfigSchema.Instance.RetrievedAt +
+        CatalogPanel.CatalogScopeInput.ItemsSource = new[] { new CatalogScope("已配置", "configured"), new("全部", "all"), new("已修改", "changed"), new("常用", "common") };
+        CatalogPanel.CatalogScopeInput.SelectedIndex = 0;
+        CatalogPanel.CatalogReferenceText.Text = "配置资料核对版本 " + ConfigSchema.Instance.VerifiedRuntime + " · " + ConfigSchema.Instance.RetrievedAt +
             "\n旧内核的可用字段与默认值请在“配置来源”中核对。";
-        CatalogCategoryInput.ItemsSource = new[] { new CatalogCategory("all", "所有分类"), new("unlisted", "未收录配置") }.Concat(ConfigSchema.Instance.Categories).ToArray();
-        CatalogCategoryInput.DisplayMemberPath = "Name"; CatalogCategoryInput.SelectedIndex = 0;
+        CatalogPanel.CatalogCategoryInput.ItemsSource = new[] { new CatalogCategory("all", "所有分类"), new("unlisted", "未收录配置") }.Concat(ConfigSchema.Instance.Categories).ToArray();
+        CatalogPanel.CatalogCategoryInput.DisplayMemberPath = "Name"; CatalogPanel.CatalogCategoryInput.SelectedIndex = 0;
         catalogSearchTimer.Tick += (_, _) => { catalogSearchTimer.Stop(); catalogPageIndex = 0; RenderConfigurationCatalog(); };
     }
-    private void CatalogSearchChanged(TextBox sender, TextBoxTextChangingEventArgs args)
+    internal void CatalogSearchChanged(TextBox sender, TextBoxTextChangingEventArgs args)
     { if (initialized && !updatingControls) { catalogSearchTimer.Stop(); catalogSearchTimer.Start(); } }
-    private void OpenCatalogClicked(object sender, RoutedEventArgs args) => NavigateTo(CatalogNav);
-    private void SearchAdvancedFieldsClicked(object sender, RoutedEventArgs args)
+    internal void OpenCatalogClicked(object sender, RoutedEventArgs args) => NavigateTo(CatalogNav);
+    internal void SearchAdvancedFieldsClicked(object sender, RoutedEventArgs args)
     {
         catalogSearchTimer.Stop();
         updatingControls = true;
         try
         {
-            CatalogScopeInput.SelectedItem = ((IEnumerable<CatalogScope>)CatalogScopeInput.ItemsSource).Single(scope => scope.Id == "all");
-            CatalogCategoryInput.SelectedItem = ((IEnumerable<CatalogCategory>)CatalogCategoryInput.ItemsSource).Single(category => category.Id == "all");
-            CatalogSearchInput.Text = AdvancedSearchInput.Text.Trim();
+            CatalogPanel.CatalogScopeInput.SelectedItem = ((IEnumerable<CatalogScope>)CatalogPanel.CatalogScopeInput.ItemsSource).Single(scope => scope.Id == "all");
+            CatalogPanel.CatalogCategoryInput.SelectedItem = ((IEnumerable<CatalogCategory>)CatalogPanel.CatalogCategoryInput.ItemsSource).Single(category => category.Id == "all");
+            CatalogPanel.CatalogSearchInput.Text = AdvancedPanel.AdvancedSearchInput.Text.Trim();
             catalogPageIndex = 0;
         }
         finally { updatingControls = false; }
         NavigateTo(CatalogNav, revealStart: true);
-        FocusSearch(CatalogSearchInput);
+        FocusSearch(CatalogPanel.CatalogSearchInput);
     }
-    private void CatalogFilterChanged(object sender, RoutedEventArgs args)
+    internal void CatalogFilterChanged(object sender, RoutedEventArgs args)
     { if (initialized && !updatingControls && !buildingCatalog) { catalogPageIndex = 0; RenderConfigurationCatalog(); } }
-    private void CatalogSelectionChanged(object sender, SelectionChangedEventArgs args) => CatalogFilterChanged(sender, args);
-    private void PreviousCatalogPageClicked(object sender, RoutedEventArgs args) { catalogPageIndex--; RenderConfigurationCatalog(); PageScroll.ChangeView(null, 0, null, true); }
-    private void NextCatalogPageClicked(object sender, RoutedEventArgs args) { catalogPageIndex++; RenderConfigurationCatalog(); PageScroll.ChangeView(null, 0, null, true); }
+    internal void CatalogSelectionChanged(object sender, SelectionChangedEventArgs args) => CatalogFilterChanged(sender, args);
+    internal void PreviousCatalogPageClicked(object sender, RoutedEventArgs args) { catalogPageIndex--; RenderConfigurationCatalog(); PageScroll.ChangeView(null, 0, null, true); }
+    internal void NextCatalogPageClicked(object sender, RoutedEventArgs args) { catalogPageIndex++; RenderConfigurationCatalog(); PageScroll.ChangeView(null, 0, null, true); }
     private void RefreshConfigurationCatalogControls()
     {
-        if (CatalogRows is null) return;
+        if (CatalogPanel.CatalogRows is null) return;
         if (!ReferenceEquals(catalogSnapshot, connectionDraft.Snapshot)) { catalogPageIndex = 0; RenderConfigurationCatalog(); }
         var editable = connectionDraft.Available && !HasPendingRecovery && !ManualApplicationBusy && !dialogOpen && !closing;
-        NewSettingPathInput.IsEnabled = NewSettingValueInput.IsEnabled = AddSettingButton.IsEnabled = editable;
+        CatalogPanel.NewSettingPathInput.IsEnabled = CatalogPanel.NewSettingValueInput.IsEnabled = CatalogPanel.AddSettingButton.IsEnabled = editable;
         foreach (var refresh in catalogRefreshers) refresh(editable);
-        CatalogErrors.Text = connectionDraft.FieldErrors.Count > 0 ? "有 " + connectionDraft.FieldErrors.Count + " 项输入尚未通过校验；保存前请修正，或撤销对应项。" : "";
-        CatalogErrors.Visibility = connectionDraft.FieldErrors.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        CatalogPanel.CatalogErrors.Text = connectionDraft.FieldErrors.Count > 0 ? "有 " + connectionDraft.FieldErrors.Count + " 项输入尚未通过校验；保存前请修正，或撤销对应项。" : "";
+        CatalogPanel.CatalogErrors.Visibility = connectionDraft.FieldErrors.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
     private void RenderConfigurationCatalog()
     {
-        if (!initialized || buildingCatalog || CatalogScopeInput.SelectedItem is not CatalogScope scope) return;
+        if (!initialized || buildingCatalog || CatalogPanel.CatalogScopeInput.SelectedItem is not CatalogScope scope) return;
         buildingCatalog = true;
         try
         {
             catalogSnapshot = connectionDraft.Snapshot;
-            catalogPage = configurationCatalog.Query(connectionDraft, new(scope.Id, CatalogSearchInput.Text,
-                (CatalogCategoryInput.SelectedItem as CatalogCategory)?.Id ?? "all", CatalogAdvancedInput.IsChecked == true, catalogPageIndex));
-            catalogPageIndex = catalogPage.Page; CatalogRows.Children.Clear(); catalogInputs.Clear(); catalogRefreshers.Clear();
-            foreach (var entry in catalogPage.Entries) CatalogRows.Children.Add(BuildConfigurationField(entry));
-            CatalogCount.Text = catalogPage.Count == 0 ? "没有匹配的配置项" : catalogPage.Count + " 项 · 第 " + (catalogPage.Page + 1) + " / " + catalogPage.Pages + " 页";
-            PreviousCatalogPageButton.IsEnabled = catalogPage.Page > 0; NextCatalogPageButton.IsEnabled = catalogPage.Page + 1 < catalogPage.Pages;
+            catalogPage = configurationCatalog.Query(connectionDraft, new(scope.Id, CatalogPanel.CatalogSearchInput.Text,
+                (CatalogPanel.CatalogCategoryInput.SelectedItem as CatalogCategory)?.Id ?? "all", CatalogPanel.CatalogAdvancedInput.IsChecked == true, catalogPageIndex));
+            catalogPageIndex = catalogPage.Page; CatalogPanel.CatalogRows.Children.Clear(); catalogInputs.Clear(); catalogRefreshers.Clear();
+            foreach (var entry in catalogPage.Entries) CatalogPanel.CatalogRows.Children.Add(BuildConfigurationField(entry));
+            CatalogPanel.CatalogCount.Text = catalogPage.Count == 0 ? "没有匹配的配置项" : catalogPage.Count + " 项 · 第 " + (catalogPage.Page + 1) + " / " + catalogPage.Pages + " 页";
+            CatalogPanel.PreviousCatalogPageButton.IsEnabled = catalogPage.Page > 0; CatalogPanel.NextCatalogPageButton.IsEnabled = catalogPage.Page + 1 < catalogPage.Pages;
         }
-        catch (Exception error) { CatalogRows.Children.Clear(); SetShellError("配置列表无法显示", error.Message); }
+        catch (Exception error) { CatalogPanel.CatalogRows.Children.Clear(); SetShellError("配置列表无法显示", error.Message); }
         finally { buildingCatalog = false; }
     }
     private UIElement BuildConfigurationField(CatalogEntry entry)
@@ -163,17 +163,17 @@ public sealed partial class MainWindow
         catalogRefreshers.Add(Refresh); Refresh(connectionDraft.Available && !HasPendingRecovery && !ManualApplicationBusy && !dialogOpen && !closing);
         return new Border { Child = body, Style = (Style)Microsoft.UI.Xaml.Application.Current.Resources["DockCardStyle"] };
     }
-    private void AddSettingClicked(object sender, RoutedEventArgs args)
+    internal void AddSettingClicked(object sender, RoutedEventArgs args)
     {
         if (!CanEditConnection) return;
         try
         {
-            var path = TomlDocument.FormatPath(TomlDocument.ParsePath(NewSettingPathInput.Text.Trim()));
+            var path = TomlDocument.FormatPath(TomlDocument.ParsePath(CatalogPanel.NewSettingPathInput.Text.Trim()));
             if (TomlDocument.ParsePath(path).Any(part => part.Contains("<name>", StringComparison.Ordinal))) throw new ArgumentException("请将 <name> 替换为实际名称。");
             if (ConfigSchema.Instance.Find(path) is { } entry && !ConfigurationCatalogService.CanEdit(entry with { Path = path })) throw new ArgumentException("此字段由专用页面管理或属于父表，请选择对应子项。");
-            connectionDraft.EditField(path, NewSettingValueInput.Password);
-            NewSettingPathInput.Text = ""; NewSettingValueInput.Password = "";
-            CatalogScopeInput.SelectedIndex = 2; CatalogSearchInput.Text = path; catalogSearchTimer.Stop(); catalogPageIndex = 0; RenderConfigurationCatalog();
+            connectionDraft.EditField(path, CatalogPanel.NewSettingValueInput.Password);
+            CatalogPanel.NewSettingPathInput.Text = ""; CatalogPanel.NewSettingValueInput.Password = "";
+            CatalogPanel.CatalogScopeInput.SelectedIndex = 2; CatalogPanel.CatalogSearchInput.Text = path; catalogSearchTimer.Stop(); catalogPageIndex = 0; RenderConfigurationCatalog();
         }
         catch (Exception error) { SetShellError("设置尚未添加", error.Message); }
     }

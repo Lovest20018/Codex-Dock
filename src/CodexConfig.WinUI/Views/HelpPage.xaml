@@ -1,0 +1,27 @@
+<UserControl x:Class="CodexConfig.WinUI.Views.HelpPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CodexConfig.WinUI"
+             IsTabStop="False">
+    <StackPanel Spacing="16">
+        <TextBox x:Name="HelpSearchInput" x:FieldModifier="internal" Header="查找使用说明" PlaceholderText="例如 保存、Profile、手机、恢复" TextChanging="HelpSearchChanged" />
+        <ComboBox x:Name="HelpTopicsInput" x:FieldModifier="internal" Header="主题" DisplayMemberPath="Title" HorizontalAlignment="Stretch" SelectionChanged="HelpTopicChanged" />
+        <TextBlock x:Name="HelpEmptyText" x:FieldModifier="internal" Text="未找到匹配主题。" TextWrapping="Wrap" Visibility="Collapsed" />
+        <Border x:Name="HelpTopicCard" x:FieldModifier="internal" Style="{StaticResource DockCardStyle}">
+            <StackPanel Spacing="14">
+                <TextBlock x:Name="HelpTopicTitle" x:FieldModifier="internal" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
+                <TextBlock x:Name="HelpTopicText" x:FieldModifier="internal" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                <Button x:Name="HelpTopicActionButton" x:FieldModifier="internal" Click="HelpTopicActionClicked" HorizontalAlignment="Left" />
+            </StackPanel>
+        </Border>
+        <Button Content="键盘快捷键" HorizontalAlignment="Left" Style="{StaticResource DockQuietButtonStyle}">
+            <Button.Flyout>
+                <Flyout><StackPanel Spacing="8" MaxWidth="360">
+                    <TextBlock Text="Ctrl+S　核对并保存当前编辑对象" Style="{StaticResource DockHintTextStyle}" />
+                    <TextBlock Text="Ctrl+F　搜索当前支持筛选的页面，或打开配置搜索" Style="{StaticResource DockHintTextStyle}" />
+                    <TextBlock Text="F1 或 Ctrl+Shift+H　打开帮助" Style="{StaticResource DockHintTextStyle}" />
+                </StackPanel></Flyout>
+            </Button.Flyout>
+        </Button>
+    </StackPanel>
+</UserControl>

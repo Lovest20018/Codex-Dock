@@ -9,16 +9,16 @@ internal sealed class NativeTrayIcon : IDisposable
     private const uint CallbackMessage = 0x8000 + 73;
     private readonly IntPtr window, icon;
     private readonly Subclass callback;
-    private readonly Action restore, enhancements, gateways, stopAndExit, exit, unavailable;
+    private readonly Action restore, enhancements, gateways, exit, unavailable;
     private readonly Func<bool> installerExit;
     private readonly uint taskbarCreated, setupExitMessage;
     private bool disposed;
     internal bool IsAvailable { get; private set; }
 
-    internal NativeTrayIcon(IntPtr window, string iconPath, Action restore, Action enhancements, Action gateways, Action stopAndExit,
+    internal NativeTrayIcon(IntPtr window, string iconPath, Action restore, Action enhancements, Action gateways,
         Action exit, Action unavailable, Func<bool> installerExit)
     {
-        this.window = window; this.restore = restore; this.enhancements = enhancements; this.gateways = gateways; this.stopAndExit = stopAndExit; this.exit = exit; this.unavailable = unavailable;
+        this.window = window; this.restore = restore; this.enhancements = enhancements; this.gateways = gateways; this.exit = exit; this.unavailable = unavailable;
         this.installerExit = installerExit;
         taskbarCreated = RegisterWindowMessage("TaskbarCreated");
         setupExitMessage = RegisterWindowMessage("CodexDock.ExitForSetup.1");
@@ -60,13 +60,12 @@ internal sealed class NativeTrayIcon : IDisposable
             AppendMenu(menu, 0, 2, "运行与增强");
             AppendMenu(menu, 0, 4, "模型网关");
             AppendMenu(menu, 0x800, 0, null);
-            AppendMenu(menu, 0, 5, "停止网关并退出");
-            AppendMenu(menu, 0, 3, "退出 Codex Dock");
+            AppendMenu(menu, 0, 3, "退出…");
             GetCursorPos(out var point); SetForegroundWindow(window);
             var selected = TrackPopupMenu(menu, 0x100 | 0x2, point.X, point.Y, 0, window, IntPtr.Zero);
             PostMessage(window, 0, 0, 0);
             if (selected == 1) restore(); else if (selected == 2) enhancements(); else if (selected == 3) exit();
-            else if (selected == 4) gateways(); else if (selected == 5) stopAndExit();
+            else if (selected == 4) gateways();
         }
         finally { DestroyMenu(menu); }
     }
@@ -77,8 +76,10 @@ internal sealed class NativeTrayIcon : IDisposable
             Flags = 1 | 2 | 4, Callback = CallbackMessage, Icon = icon, Tip = "Codex Dock", Info = "", InfoTitle = "" };
         return ShellNotifyIcon(operation, ref data);
     }
+#if CODEX_DOCK_WINUI_SMOKE
     internal static void RequestWindowClose(IntPtr window) => PostMessage(window, 0x10, 0, 0);
     internal static void RequestTrayOpen(IntPtr window) => PostMessage(window, CallbackMessage, 73, 0x202);
+#endif
     public void Dispose()
     {
         if (disposed) return;

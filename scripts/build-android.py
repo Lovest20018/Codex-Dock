@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -18,10 +19,42 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'src/CodexAndroid'
 UPSTREAM = ROOT / 'src/CodexMobile/upstream'
+JAVA_STRING = r'"((?:\\.|[^"\\\r\n])*)"'
+JAVA_LITERAL = re.compile(r'//[^\r\n]*|/\*[\s\S]*?\*/|' + r"'(?:\\.|[^'\\\r\n])'" + '|' + JAVA_STRING)
+HAN = re.compile(r'[\u3400-\u9fff]')
 
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def verify_translations(java):
+    """Check native labels and error messages, including literals in arrays and conditional expressions."""
+    table = next(path for path in java if path.name == 'MobileStrings.java')
+    entry = re.compile(r'values\.put\(\s*' + JAVA_STRING + r'\s*,\s*' + JAVA_STRING + r'\s*\);')
+    translations = {}
+    table_source = table.read_text(encoding='utf-8')
+    for key, english in entry.findall(table_source):
+        if key in translations:
+            raise ValueError(f'{table.name}: duplicate translation for {key!r}')
+        translations[key] = english
+
+    missing = []
+    for path in java:
+        if path == table:
+            continue
+        source = path.read_text(encoding='utf-8')
+        for match in JAVA_LITERAL.finditer(source):
+            label = match[1]
+            # A language picker shows each language in its own script.
+            if not label or label == '简体中文' or not HAN.search(label):
+                continue
+            english = translations.get(label, '')
+            if not english.strip() or HAN.search(english):
+                line = source.count('\n', 0, match.start()) + 1
+                missing.append(f'{path.name}:{line}: {label!r}')
+    if missing:
+        raise ValueError('Missing English Android strings:\n' + '\n'.join(missing))
 
 
 def build():
@@ -46,6 +79,8 @@ def build():
             or int(sdk_xml.get(attr + 'minSdkVersion')) != meta['minSdk']
             or int(sdk_xml.get(attr + 'targetSdkVersion')) != meta['targetSdk']):
         raise ValueError('Android manifest and android.json identity, version or SDK differ.')
+    owned_java = sorted((SOURCE / 'java').rglob('*.java'))
+    verify_translations(owned_java)
     baseline = json.loads((ROOT / 'src/CodexMobile/upstream-manifest.json').read_text(encoding='utf-8'))
     if meta['upstreamCommit'] != baseline['commit']:
         raise ValueError('Android upstream revision differs from the reviewed snapshot.')
@@ -88,12 +123,15 @@ def build():
         # Overlay only owned resources; upstream assets are never rewritten in place.
         if (SOURCE / 'res').is_dir():
             shutil.copytree(SOURCE / 'res', work / 'res', dirs_exist_ok=True)
+        values = ET.Element('resources')
+        ET.SubElement(values, 'string', name='dock_version_name', translatable='false').text = meta['versionName']
+        ET.ElementTree(values).write(work / 'res/values/dock_version.xml', encoding='utf-8')
         run(tools / ('aapt2' + exe), 'compile', '--dir', work / 'res', '-o', work / 'resources.zip')
         run(tools / ('aapt2' + exe), 'link', '-I', android, '--manifest', SOURCE / 'AndroidManifest.xml',
             '--java', work / 'gen', '-o', work / 'base.apk', work / 'resources.zip')
         java = [p for p in (UPSTREAM / 'mobile/android/src').rglob('*.java')
                 if p.name not in meta['javaOverrides'] + meta['excludedJava']]
-        java += list((SOURCE / 'java').rglob('*.java')) + list((work / 'gen').rglob('*.java'))
+        java += owned_java + list((work / 'gen').rglob('*.java'))
         arguments = ['-encoding', 'UTF-8', '--release', '8', '-classpath', str(android) + os.pathsep + str(args.zxing.resolve()), '-d', str(work / 'classes')]
         arguments += [str(p.resolve()) for p in java]
         (work / 'javac.args').write_text('\n'.join('"' + a.replace('\\', '/') + '"' for a in arguments), encoding='utf-8')

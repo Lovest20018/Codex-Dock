@@ -13,28 +13,20 @@ public sealed partial class MainWindow
     private ReleaseUpdate? availableUpdate;
     private VerifiedInstaller? downloadedInstaller;
     private CancellationTokenSource? updateCancellation;
-    private bool installingUpdate, downloadingUpdate;
+    private bool downloadingUpdate;
     private string updateMessage = "尚未检查。";
     private int updatePercent;
+#if CODEX_DOCK_WINUI_SMOKE
     private Action<VerifiedInstaller>? smokeInstallerLaunch;
+#endif
 
     private void RefreshUpdateControls()
     {
-        if (CheckUpdateButton is null) return;
         var editable = !ManualApplicationBusy && !dialogOpen && !closing && updateCancellation is null;
-        UpdateVersionText.Text = "当前程序版本 " + CurrentVersion.ToString(3) + " · WinUI 3";
-        UpdateStatusText.Text = updateMessage;
-        CheckUpdateButton.IsEnabled = editable;
-        DownloadUpdateButton.Visibility = availableUpdate is not null && downloadedInstaller is null ? Visibility.Visible : Visibility.Collapsed;
-        DownloadUpdateButton.IsEnabled = editable;
-        InstallUpdateButton.Visibility = downloadedInstaller is null ? Visibility.Collapsed : Visibility.Visible;
-        InstallUpdateButton.IsEnabled = editable && !HasPendingRecovery;
-        CancelUpdateButton.Visibility = updateCancellation is null ? Visibility.Collapsed : Visibility.Visible;
-        CancelUpdateButton.IsEnabled = updateCancellation is not null;
-        UpdateProgress.Visibility = downloadingUpdate ? Visibility.Visible : Visibility.Collapsed;
-        UpdateProgress.Value = updatePercent;
+        UpdatesPanel.Render(CurrentVersion, updateMessage, editable, availableUpdate is not null, downloadedInstaller is not null,
+            editable && !HasPendingRecovery, updateCancellation is not null, downloadingUpdate, updatePercent);
     }
-    private async void CheckUpdateClicked(object sender, RoutedEventArgs args) => await CheckForUpdatesAsync();
+    internal async void CheckUpdateClicked(object sender, RoutedEventArgs args) => await CheckForUpdatesAsync();
     private async Task CheckForUpdatesAsync()
     {
         if (ManualApplicationBusy || dialogOpen || closing || updateCancellation is not null) return;
@@ -50,7 +42,7 @@ public sealed partial class MainWindow
         catch (Exception error) { if (!closing) updateMessage = UpdateError(error); }
         finally { updateCancellation = null; if (!closing) RefreshView(); }
     }
-    private async void DownloadUpdateClicked(object sender, RoutedEventArgs args) => await DownloadUpdateAsync();
+    internal async void DownloadUpdateClicked(object sender, RoutedEventArgs args) => await DownloadUpdateAsync();
     private async Task DownloadUpdateAsync()
     {
         if (ManualApplicationBusy || dialogOpen || closing || updateCancellation is not null || availableUpdate is not { } update) return;
@@ -58,7 +50,7 @@ public sealed partial class MainWindow
         downloadedInstaller = null; downloadingUpdate = true; updatePercent = 0; updateMessage = "正在下载安装器…"; RefreshView();
         try
         {
-            var directory = Path.Combine(options.SmokeOutput ?? Path.GetTempPath(), "CodexDock-updates", Guid.NewGuid().ToString("N"));
+            var directory = Path.Combine(options.IsolatedDataDirectory ?? Path.GetTempPath(), "CodexDock-updates", Guid.NewGuid().ToString("N"));
             var installer = await updateDownloads.DownloadAsync(update, directory, new Progress<int>(percent =>
             {
                 if (closing || !ReferenceEquals(updateCancellation, cancellation) || cancellation.IsCancellationRequested) return;
@@ -71,14 +63,14 @@ public sealed partial class MainWindow
         catch (Exception error) { if (!closing) updateMessage = UpdateError(error); }
         finally { updateCancellation = null; downloadingUpdate = false; if (!closing) RefreshView(); }
     }
-    private void CancelUpdateClicked(object sender, RoutedEventArgs args) => updateCancellation?.Cancel();
-    private async void InstallUpdateClicked(object sender, RoutedEventArgs args) => await InstallUpdateAsync();
+    internal void CancelUpdateClicked(object sender, RoutedEventArgs args) => updateCancellation?.Cancel();
+    internal async void InstallUpdateClicked(object sender, RoutedEventArgs args) => await InstallUpdateAsync();
     private async Task InstallUpdateAsync()
     {
         if (ManualApplicationBusy || dialogOpen || closing || updateCancellation is not null || HasPendingRecovery || downloadedInstaller is not { } installer) return;
         if (!await ResolveProfileDraftAsync() || !await ResolveTemplateEditAsync() || !await ResolveConnectionDraftAsync() || !await ResolveMobileDraftAsync()) return;
         var home = viewModel.Home; var revision = connectionDraft.Revision;
-        installingUpdate = true; RefreshView();
+        using var operation = busy.Begin(WindowOperation.InstallUpdate, "正在核验并启动安装器…"); RefreshView();
         try
         {
             if (!await ConfirmDialogAsync("安装更新并退出", "将启动已校验的正式版安装器（版本 " + (availableUpdate?.Version.ToString() ?? "已下载") + "），覆盖安装当前 Codex Dock。\n\n配置目录：" + home +
@@ -93,7 +85,7 @@ public sealed partial class MainWindow
             updateMessage = error is OperationCanceledException ? "安装已取消，请刷新网关状态后重试。" : "安装器未能启动。" + (error is IOException or InvalidDataException ? " " + error.Message : " 请核对后台状态后重试。");
             RestoreWindow();
         }
-        finally { installingUpdate = false; if (!closing) RefreshView(); }
+        finally { operation.Dispose(); if (!closing) RefreshView(); }
     }
     private sealed class WinUiUpdateInstallationRuntime(MainWindow window) : IUpdateInstallationRuntime
     {
@@ -102,17 +94,20 @@ public sealed partial class MainWindow
         { cancellation.ThrowIfCancellationRequested(); await window.applicationRuntime.StopEnhancementsAsync(); }
         public void Launch(VerifiedInstaller installer)
         {
+#if CODEX_DOCK_WINUI_SMOKE
             if (window.options.SmokeOutput is not null)
             {
                 if (window.smokeInstallerLaunch is null) throw new InvalidOperationException("隔离检查不能启动真实安装器。");
                 window.smokeInstallerLaunch(installer);
+                return;
             }
-            else _ = Process.Start(new ProcessStartInfo(installer.Path) { UseShellExecute = true }) ?? throw new IOException("无法启动更新安装器。");
+#endif
+            _ = Process.Start(new ProcessStartInfo(installer.Path) { UseShellExecute = true }) ?? throw new IOException("无法启动更新安装器。");
         }
     }
-    private void ReleasePageClicked(object sender, RoutedEventArgs args)
+    internal void ReleasePageClicked(object sender, RoutedEventArgs args)
     {
-        if (options.SmokeOutput is not null) return;
+        if (options.IsolatedDataDirectory is not null) return;
         try { Process.Start(new ProcessStartInfo(availableUpdate?.Page.AbsoluteUri ?? GitHubUpdates.Repository + "/releases/latest") { UseShellExecute = true }); }
         catch (Exception) { updateMessage = "无法打开浏览器，请稍后重试 GitHub 发布页。"; RefreshView(); }
     }

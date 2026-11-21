@@ -23,8 +23,10 @@ public sealed class MobileSetupReview
     public MobileConnectionSettings Before { get; }
     public IReadOnlyList<string> Changes { get; }
     public bool HasChanges => Changes.Count > 0;
-    public string Description => "配置目录：" + Before.Home + "\n\n" + string.Join("\n", Changes) +
-        "\n\n保存后启动手机网关。修改域名、账号或密码会使旧设备授权失效；只改端口会保留设备身份。";
+    public string Description => Describe(start: true);
+    public string Describe(bool start) => "配置目录：" + Before.Home + "\n\n" + string.Join("\n", Changes) + "\n\n" +
+        (start ? "保存后启动手机网关。" : "保存会停止旧设置对应的服务。下一步可以启动手机服务。") +
+        "修改域名、账号或密码会使旧设备授权失效；只改端口会保留设备身份。";
 }
 public sealed record MobileDevice(string Id, string Label, string Ip, DateTimeOffset LastSeen);
 public sealed record MobileDeviceList(IReadOnlyList<MobileDevice> Devices, IReadOnlyList<string> BlockedIps);
@@ -93,18 +95,25 @@ public sealed class MobileConnectionService(IMobileConnectionRuntime runtime, Wo
     }
 
     public Task<MobileActionResult<MobileConnectionSettings>> SaveAndStartAsync(MobileSetupReview review, Func<bool> eligible, CancellationToken cancellation = default)
-        => RunAsync("正在保存并启动手机连接…", async (validate, saved) =>
+        => SaveAsync(review, eligible, start: true, cancellation);
+
+    public Task<MobileActionResult<MobileConnectionSettings>> SaveAsync(MobileSetupReview review, Func<bool> eligible, CancellationToken cancellation = default)
+        => SaveAsync(review, eligible, start: false, cancellation);
+
+    private Task<MobileActionResult<MobileConnectionSettings>> SaveAsync(MobileSetupReview review, Func<bool> eligible, bool start, CancellationToken cancellation)
+        => RunAsync(start ? "正在保存并启动手机连接…" : "正在保存手机访问设置…", async (validate, saved) =>
         {
             await RequireCurrentAsync(review.Before, cancellation); validate();
             if (!review.TryConsume()) throw new InvalidOperationException("此手机连接确认已使用，请重新查看设置。");
             var settings = review.Before;
             if (review.HasChanges) { settings = await runtime.SaveAsync(review.Before.Home, review.Input, review.Before.Revision, cancellation); saved(); }
             validate(); await RequireCurrentAsync(settings, cancellation); validate();
+            if (!start) return settings;
             await runtime.StartAsync(review.Before.Home, cancellation); validate();
             await RequireCurrentAsync(settings, cancellation);
-            if (await runtime.StatusAsync(settings.Home, cancellation) is null) throw new IOException("设置已保存，尚未确认手机网关运行。请在网关管理重试启动。");
+            if (await runtime.StatusAsync(settings.Home, cancellation) is null) throw new IOException("尚未确认手机服务运行，请刷新状态后重试启动。");
             return settings;
-        }, eligible, cancellation, "手机设置已保存，后台已启动。接下来检测 HTTPS 入口，再生成配对码。");
+        }, eligible, cancellation, start ? "手机服务已启动。接下来检测 HTTPS 入口。" : "手机访问设置已保存。接下来可以启动手机服务。");
 
     public async Task<MobileConnectionView> ReadAsync(string home, CancellationToken cancellation = default)
     {

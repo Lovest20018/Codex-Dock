@@ -10,7 +10,8 @@ public sealed partial class MainWindow
     private ExperimentalFeatureService experimentalFeatures = new();
     private ExperimentalFeatureRead? featureRead;
     private CancellationTokenSource? featureCancellation;
-    private bool readingFeatures, renderingFeatures;
+    private bool renderingFeatures;
+    private bool readingFeatures => busy.IsActive(WindowOperation.ReadFeatures);
     private string featureMessage = "尚未读取此执行端的实验功能。", renderedFeatureKey = "";
     private int featurePage;
     private readonly Dictionary<string, ComboBox> featureDraftInputs = new(StringComparer.Ordinal);
@@ -21,26 +22,26 @@ public sealed partial class MainWindow
     {
         featureCancellation?.Cancel(); featureRead = null; featurePage = 0; renderedFeatureKey = "";
         featureMessage = "读取条件或已保存配置已改变，请重新读取实验功能；现有草稿保留。";
-        if (FeatureRows is not null) { FeatureRows.Children.Clear(); featureDraftInputs.Clear(); FeatureCountText.Text = ""; }
+        if (SourcesPanel.FeatureRows is not null) { SourcesPanel.FeatureRows.Children.Clear(); featureDraftInputs.Clear(); SourcesPanel.FeatureCountText.Text = ""; }
     }
     private void RefreshFeatureControls()
     {
-        if (ReadFeaturesButton is null) return;
+        if (SourcesPanel.ReadFeaturesButton is null) return;
         var editable = !ManualApplicationBusy && !dialogOpen && !closing;
-        ReadFeaturesButton.IsEnabled = editable;
-        CancelFeaturesButton.Visibility = readingFeatures ? Visibility.Visible : Visibility.Collapsed; CancelFeaturesButton.IsEnabled = readingFeatures;
-        FeatureDraftButton.Visibility = connectionDraft.HasDraft ? Visibility.Visible : Visibility.Collapsed; FeatureDraftButton.IsEnabled = editable;
-        FeatureStatusText.Text = readingFeatures ? "正在读取所选独立执行端的功能列表…" : featureMessage;
-        var key = (featureRead is null ? "none" : featureRead.Snapshot.ReadAt.ToString("O")) + "|" + connectionDraft.Revision + "|" + FeatureSearchInput.Text + "|" + featurePage + "|" + editable + "|" + HasPendingRecovery;
+        SourcesPanel.ReadFeaturesButton.IsEnabled = editable;
+        SourcesPanel.CancelFeaturesButton.Visibility = readingFeatures ? Visibility.Visible : Visibility.Collapsed; SourcesPanel.CancelFeaturesButton.IsEnabled = readingFeatures;
+        SourcesPanel.FeatureDraftButton.Visibility = connectionDraft.HasDraft ? Visibility.Visible : Visibility.Collapsed; SourcesPanel.FeatureDraftButton.IsEnabled = editable;
+        SourcesPanel.FeatureStatusText.Text = readingFeatures ? "正在读取所选独立执行端的功能列表…" : featureMessage;
+        var key = (featureRead is null ? "none" : featureRead.Snapshot.ReadAt.ToString("O")) + "|" + connectionDraft.Revision + "|" + SourcesPanel.FeatureSearchInput.Text + "|" + featurePage + "|" + editable + "|" + HasPendingRecovery;
         if (key != renderedFeatureKey && !renderingFeatures) { RenderFeatureRows(editable); renderedFeatureKey = key; }
     }
-    private async void ReadFeaturesClicked(object sender, RoutedEventArgs args) => await ReadFeaturesAsync();
-    private void CancelFeaturesClicked(object sender, RoutedEventArgs args) => featureCancellation?.Cancel();
+    internal async void ReadFeaturesClicked(object sender, RoutedEventArgs args) => await ReadFeaturesAsync();
+    internal void CancelFeaturesClicked(object sender, RoutedEventArgs args) => featureCancellation?.Cancel();
     private async Task ReadFeaturesAsync()
     {
         if (ManualApplicationBusy || dialogOpen || closing) return;
         RefreshAutomaticSourceExecutable();
-        InvalidateFeatures(); readingFeatures = true; RefreshView();
+        InvalidateFeatures(); using var operation = busy.Begin(WindowOperation.ReadFeatures, "正在读取实验功能…"); RefreshView();
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); featureCancellation = cancellation;
         try
         {
@@ -56,19 +57,19 @@ public sealed partial class MainWindow
         catch (OperationCanceledException) { if (!closing) featureMessage = "读取已取消、超时或条件已改变；实验功能状态未确认。"; }
         catch (NotSupportedException error) { if (!closing) featureMessage = error.Message; }
         catch (Exception) { if (!closing) featureMessage = "无法读取实验功能。若已更新 Codex，可自动查找或重新选择执行端。也可核对项目与 Profile。"; }
-        finally { featureCancellation = null; readingFeatures = false; renderedFeatureKey = ""; if (!closing) RefreshView(); }
+        finally { featureCancellation = null; operation.Dispose(); renderedFeatureKey = ""; if (!closing) RefreshView(); }
     }
-    private void FeatureSearchChanged(TextBox sender, TextBoxTextChangingEventArgs args)
+    internal void FeatureSearchChanged(TextBox sender, TextBoxTextChangingEventArgs args)
     { if (initialized && !updatingControls) { featurePage = 0; RefreshView(); } }
-    private void PreviousFeatureClicked(object sender, RoutedEventArgs args) { featurePage--; RefreshView(); }
-    private void NextFeatureClicked(object sender, RoutedEventArgs args) { featurePage++; RefreshView(); }
+    internal void PreviousFeatureClicked(object sender, RoutedEventArgs args) { featurePage--; RefreshView(); }
+    internal void NextFeatureClicked(object sender, RoutedEventArgs args) { featurePage++; RefreshView(); }
     private void RenderFeatureRows(bool editable)
     {
         renderingFeatures = true;
         try
         {
-            FeatureRows.Children.Clear(); featureDraftInputs.Clear();
-            var search = FeatureSearchInput.Text.Trim();
+            SourcesPanel.FeatureRows.Children.Clear(); featureDraftInputs.Clear();
+            var search = SourcesPanel.FeatureSearchInput.Text.Trim();
             var rows = featureRead?.Snapshot.Features.Where(feature => (feature.Name + " " + feature.Title + " " + feature.Description + " " + feature.StageLabel).Contains(search, StringComparison.OrdinalIgnoreCase)).ToArray() ?? [];
             var pages = Math.Max(1, (rows.Length + 19) / 20); featurePage = Math.Clamp(featurePage, 0, pages - 1);
             var saved = new TomlDocument(connectionDraft.Snapshot?.Config); var draft = connectionDraft.Document();
@@ -95,11 +96,11 @@ public sealed partial class MainWindow
                     body.Children.Add(new TextBlock { Text = "现有值不是布尔开关，请在配置草稿中检查；此处保留现有结构。", TextWrapping = TextWrapping.Wrap, Opacity = 0.7 });
                 if (feature.Stage is "underDevelopment" or "deprecated" or "removed" or "unknown")
                     body.Children.Add(new TextBlock { Text = feature.Stage == "underDevelopment" ? "开发中功能可能改变。加入草稿后仍需核对差异，保存不代表现有桌面已启用。" : "此阶段不提供快捷修改；仅保留观察结果。", TextWrapping = TextWrapping.Wrap, Opacity = 0.7 });
-                FeatureRows.Children.Add(new Border { Child = body, Padding = new(16), CornerRadius = new(8), Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(12, 128, 128, 128)) });
+                SourcesPanel.FeatureRows.Children.Add(new Border { Child = body, Padding = new(16), CornerRadius = new(8), Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(12, 128, 128, 128)) });
             }
-            FeatureCountText.Text = featureRead is null ? "" : rows.Length + " 项 · 第 " + (featurePage + 1) + " / " + pages + " 页";
-            PreviousFeatureButton.IsEnabled = editable && featureRead is not null && featurePage > 0;
-            NextFeatureButton.IsEnabled = editable && featureRead is not null && featurePage + 1 < pages;
+            SourcesPanel.FeatureCountText.Text = featureRead is null ? "" : rows.Length + " 项 · 第 " + (featurePage + 1) + " / " + pages + " 页";
+            SourcesPanel.PreviousFeatureButton.IsEnabled = editable && featureRead is not null && featurePage > 0;
+            SourcesPanel.NextFeatureButton.IsEnabled = editable && featureRead is not null && featurePage + 1 < pages;
         }
         finally { renderingFeatures = false; }
     }

@@ -1,7 +1,7 @@
 param([string]$CodexCli)
 $ErrorActionPreference = 'Stop'
 $verificationRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
-$verificationOutput = Join-Path $verificationRoot ('artifacts\superba-2026-11-11\verification-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+$verificationOutput = Join-Path $verificationRoot ('artifacts\test-runs\wpf-superba-' + [DateTime]::Now.ToString('yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Path $verificationOutput -Force | Out-Null
 $verificationOldCli = $env:CODEX_CONFIG_TEST_CLI
 $verificationOldFilter = $env:CODEX_CONFIG_TEST_FILTER

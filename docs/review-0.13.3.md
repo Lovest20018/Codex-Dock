@@ -14,7 +14,7 @@ Python 41 项回归通过。新增 Auth 用例覆盖同来源安卓及浏览器 
 
 首次沙箱 HTTP 测试因 WinError 10013 阻止本机回环连接；在允许回环的环境运行同一套隔离用例后 41 项全部通过。所有凭据和数据均为测试夹具，未接真实 Codex owner。
 
-81 项核心回归通过，其中实际冻结版 CodexDock.Mobile.exe 经五次失败、正确密码仍拒绝、后台重启、原 Cookie 保持有效、解除限制和显式撤销全链路验证。10 项浏览器/QR 检查和 107 项开发版桌面 UI 检查通过，核心及桌面编译零警告、零错误。核心本地输出保存在 artifacts/research/core-0.13.3.log，其他报告在 artifacts/mobile-browser/report.json 和 .ui-test-v0.13.3-dev/report.json。
+81 项核心回归通过，其中实际冻结版 CodexDock.Mobile.exe 经五次失败、正确密码仍拒绝、后台重启、原 Cookie 保持有效、解除限制和显式撤销全链路验证。10 项浏览器/QR 检查和 107 项开发版桌面 UI 检查通过，核心及桌面编译零警告、零错误。核心本地输出保存在 `artifacts/research/core-0.13.3.log`，其他报告在 `artifacts/mobile-browser/report.json` 和 `artifacts/test-runs/legacy/.ui-test-v0.13.3-dev/report.json`。
 
 最终发布脚本还强制对实际 EXE 运行完整 UI 回归，比较发布/安装文件，验证隔离安装和卸载；以包内 verification/ui-report.json、manifest 和本地 installer-verification-0.13.3.json 的实际结果为准。
 

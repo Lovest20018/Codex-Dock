@@ -1,13 +1,11 @@
-# Codex Config identity
+# Codex Dock brand assets
 
-The mark is an original geometric vector: two coding brackets joined by a mint configuration switch. The open space suggests a connection; the switch suggests control. It is independent of OpenAI's and Superba's brand marks.
+Codex Dock and Lovest Code use an open D with an arrow on a light sage background.
 
-- Primary: `#6256F5` (iris)
-- Signal: `#69E8CF` (mint)
-- Navigation: `#151A2E` (midnight)
-- Canvas: `#F5F6FB` (mist)
-- Text: `#1B2137`
+- Background `#EEF2ED`
+- Mark `#23453C`
+- Arrow `#498E70`
 
-Editable master: `codex-config.svg`. The same geometry lives in the WPF `Brand.xaml` resource. `scripts/render-brand.ps1` renders the vector into PNG sizes and a Windows multi-resolution ICO. The ICO is embedded in the EXE and the vector is used in both windows.
+`scripts/apply-brand.ps1` generates these assets from [the selected brand definition](../brand-refresh-20261117/selected.json). Windows builds share `app.ico`. The PNGs and platform resources derive from the same geometry.
 
 Designed as native vector artwork, with no image generation model or external brand assets. License: the project's MIT license.

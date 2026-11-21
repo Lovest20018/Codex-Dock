@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using CodexConfig.Application;
 using CodexConfig.Core;
 using Microsoft.UI.Xaml;
@@ -18,31 +18,33 @@ public sealed partial class MainWindow
         try
         {
             NavigateTo(WorkspaceNav); await SwitchHomeAsync(home);
-            Check(WorkspaceNextButton.Content.ToString() == "设置连接" && WorkspaceConnectionCard.Visibility == Visibility.Collapsed && !ApplyButton.IsEnabled && connectionDraft.Available &&
+            Check(WorkspacePanel.WorkspaceNextButton.Content.ToString() == "设置连接" && WorkspacePanel.WorkspaceConnectionCard.Visibility == Visibility.Collapsed && !ApplyButton.IsEnabled && connectionDraft.Available &&
                 !connectionDraft.HasDraft && !Directory.Exists(home) && !viewModel.IsBusy, "First-run workspace explains the next step keeps editing available and creates no home or settings");
             await ApplyDesktopAsync(); await TryAutomaticEnhancementsAsync();
             Check(runtime.Restarts == restarts && !Directory.Exists(home), "Empty first-run configuration cannot trigger manual desktop application or automatic reconnect");
             await CaptureAsync(output, "first-run-workspace-light.png");
             await RunWorkspaceNextAsync();
-            Check(ConnectionPanel.Visibility == Visibility.Visible && SetupAuthenticationChoices.Visibility == Visibility.Visible && BaseUrlInput.IsEnabled && ApiKeyInput.IsEnabled && !ApplyButton.IsEnabled,
+            Check(ConnectionPanel.Visibility == Visibility.Visible && ConnectionPanel.SetupAuthenticationChoices.Visibility == Visibility.Visible && ConnectionPanel.BaseUrlInput.IsEnabled && ConnectionPanel.ApiKeyInput.IsEnabled && !ApplyButton.IsEnabled,
                 "First-run setup action opens the existing editable connection form without starting Codex");
-            BaseUrlInput.Text = "https://first-ui.invalid/v1"; ConnectionKindInput.SelectedIndex = (int)ConnectionKind.ResponsesApi;
-            ApiKeyInput.Password = "fake-first-ui-secret";
+            ConnectionPanel.BaseUrlInput.Text = "https://first-ui.invalid/v1"; ConnectionPanel.ConnectionKindInput.SelectedIndex = (int)ConnectionKind.ResponsesApi;
+            ConnectionPanel.ApiKeyInput.Password = "fake-first-ui-secret";
             for (var i = 0; i < 30 && connectionDraft.ApiKey != "fake-first-ui-secret"; i++) await Task.Delay(20);
             SelectSetupAuthentication(native: true); await ReadOfficialLoginAsync(backup: false, native: true);
-            Check(SetupNativeCard.Visibility == Visibility.Visible && SetupNativeStatus.Text.Contains("未") && !Directory.Exists(home) &&
+            Check(ConnectionPanel.SetupNativeCard.Visibility == Visibility.Visible && ConnectionPanel.SetupNativeStatus.Text.Contains("未") && !Directory.Exists(home) &&
                 connectionDraft.ApiKey == "fake-first-ui-secret", "Checking native login without credentials leaves the alternate API draft intact");
-            SelectSetupAuthentication(native: false); await DiscoverModelsAsync();
-            Check(DiscoveredModelsInput.Visibility == Visibility.Visible && connectionDraft.Model.Length == 0 && !Directory.Exists(home), "Reading available models is explicit and renders a choice on the first connection page");
-            DiscoveredModelsInput.SelectedIndex = 0;
-            Check(connectionDraft.Model == DiscoveredModelsInput.SelectedItem as string, "Selecting the listed model updates the same connection draft");
-            BehaviorModelInput.Text = "first-selected-model";
+            SelectSetupAuthentication(native: false); OpenModelsClicked(ConnectionPanel.ChooseConnectionModelButton, new()); await DiscoverModelsAsync();
+            Check(currentPage == ModelsNav && ModelsPanel.DiscoveredModelChoices.Visibility == Visibility.Visible && connectionDraft.Model.Length == 0 && !Directory.Exists(home),
+                "First setup reads available models on the model page using its unsaved connection");
+            ModelsPanel.DiscoveredModelsInput.SelectedIndex = 0;
+            Check(connectionDraft.Model == ModelsPanel.DiscoveredModelsInput.SelectedItem as string, "Selecting the listed model updates the same connection draft");
+            ModelsPanel.BehaviorModelInput.Text = "first-selected-model";
             for (var i = 0; i < 30 && (connectionDraft.ApiKey != "fake-first-ui-secret" || connectionDraft.Model != "first-selected-model"); i++) await Task.Delay(20);
             Check(connectionDraft.ApiKey == "fake-first-ui-secret" && connectionDraft.Model == "first-selected-model", "Immediate password and adjacent text edits retain the first-run key in the shared draft");
+            OpenConnectionClicked(ModelsPanel.ReviewModelConnectionButton, new());
             runtime.Targets = [new(Path.Combine(output, "first-run-Codex.exe"), [])];
             await PrepareConnectionReviewAsync();
-            Check(ConnectionReviewCard.Visibility == Visibility.Visible && connectionReview!.Review.Targets.Contains(Path.Combine(home, "config.toml")) &&
-                !ConnectionReviewSummary.Text.Contains("fake-first-ui-secret") && SaveConnectionButton.Content.ToString() == "保存并打开 Codex" && !Directory.Exists(home),
+            Check(ConnectionPanel.ConnectionReviewCard.Visibility == Visibility.Visible && connectionReview!.Review.Targets.Contains(Path.Combine(home, "config.toml")) &&
+                !ConnectionPanel.ConnectionReviewSummary.Text.Contains("fake-first-ui-secret") && SaveConnectionButton.Content.ToString() == "保存并打开 Codex" && !Directory.Exists(home),
                 "First connection review shows the scope and default model without writing files or displaying the key");
             await CaptureAsync(output, "first-run-save-review.png");
             SetupEditReviewClicked(SetupEditReviewButton, new());
@@ -68,11 +70,11 @@ public sealed partial class MainWindow
             const string malformed = "private_field='fake-never-show-config-content'\nmodel=[unfinished"; File.WriteAllText(configPath, malformed);
             await SwitchHomeAsync(bad); NavigateTo(WorkspaceNav);
             Check(!viewModel.IsBusy && !viewModel.ConfigurationAvailable && viewModel.Snapshot is null && WorkspaceSetupCard.Visibility == Visibility.Visible && SetupRecoveryButton.Visibility == Visibility.Visible &&
-                !BaseUrlInput.IsEnabled && !ApplyButton.IsEnabled && !ErrorBar.Message.Contains("fake-never-show") && File.ReadAllText(configPath) == malformed,
+                !connectionDraft.Available && !ApplyButton.IsEnabled && !ErrorBar.Message.Contains("fake-never-show") && File.ReadAllText(configPath) == malformed,
                 "Malformed first-run TOML clears stale workspace data disables writes and offers safe repair guidance");
             Root.RequestedTheme = ElementTheme.Dark; await CaptureAsync(output, "first-run-broken-dark.png"); Root.RequestedTheme = ElementTheme.Light;
             OpenRecoveryClicked(SetupRecoveryButton, new());
-            Check(RecoveryPanel.Visibility == Visibility.Visible && !RestoreConfigurationButton.IsEnabled && File.ReadAllText(configPath) == malformed,
+            Check(RecoveryPanel.Visibility == Visibility.Visible && !RecoveryPanel.RestoreConfigurationButton.IsEnabled && File.ReadAllText(configPath) == malformed,
                 "Damaged workspace can inspect missing recovery records without overwriting its file");
             File.WriteAllBytes(configPath, firstConfig); File.WriteAllBytes(Path.Combine(bad, "auth.json"), firstAuth); await ReloadWorkspaceAsync(); NavigateTo(WorkspaceNav);
             Check(viewModel.CanApplyConfiguration && viewModel.Error.Length == 0 && ApplyButton.IsEnabled && WorkspaceSetupCard.Visibility == Visibility.Collapsed,
@@ -84,10 +86,10 @@ public sealed partial class MainWindow
                 "Encrypted connection read errors close the loading state and retain a usable repair and directory switch flow");
             File.Delete(encrypted); File.WriteAllBytes(configPath, firstConfig); await ReloadWorkspaceAsync();
             File.WriteAllText(Path.Combine(bad, "auth.json"), "{\"fake_private\":\"never-display-auth\", unfinished"); await ReloadWorkspaceAsync();
-            Check(!viewModel.IsBusy && viewModel.Snapshot is null && ErrorBar.Message.Contains("auth.json") && !ErrorBar.Message.Contains("never-display-auth") && !ApiKeyInput.IsEnabled,
+            Check(!viewModel.IsBusy && viewModel.Snapshot is null && ErrorBar.Message.Contains("auth.json") && !ErrorBar.Message.Contains("never-display-auth") && !connectionDraft.Available,
                 "Malformed authentication on reload does not expose bytes or retain a previously loaded credential");
             File.WriteAllBytes(Path.Combine(bad, "auth.json"), firstAuth); await ReloadWorkspaceAsync();
-            Check(viewModel.CanApplyConfiguration && !ErrorBar.IsOpen && ApiKeyInput.IsEnabled, "Repairing authentication restores the same workspace without restarting the shell");
+            Check(viewModel.CanApplyConfiguration && !ErrorBar.IsOpen && connectionDraft.Available, "Repairing authentication restores the same workspace without restarting the shell");
 
             var official = Path.Combine(output, "first-run-official-home"); Directory.CreateDirectory(official);
             File.WriteAllText(Path.Combine(official, "config.toml"), "model='native-official-model'\n");
@@ -106,11 +108,11 @@ public sealed partial class MainWindow
             File.WriteAllText(Path.Combine(nativeHome, "config.toml"), "model='native-default'\n");
             File.WriteAllBytes(Path.Combine(nativeHome, "auth.json"), auth);
             await ReadOfficialLoginAsync(backup: false, native: true);
-            Check(viewModel.CanApplyConfiguration && viewModel.ModelLabel == "native-default" && SetupNativeStatus.Text.Contains("已读到登录") && store.LatestBackup(nativeHome) is null,
+            Check(viewModel.CanApplyConfiguration && viewModel.ModelLabel == "native-default" && ConnectionPanel.SetupNativeStatus.Text.Contains("已读到登录") && store.LatestBackup(nativeHome) is null,
                 "Re-reading native login adopts credentials and defaults written by Codex without a Dock transaction");
             NavigateTo(WorkspaceNav); var activations = runtime.Activations;
             await RunWorkspaceNextAsync();
-            Check(WorkspaceNextButton.Content.ToString() == "回到 Codex" && runtime.Activations == activations + 1 && runtime.Restarts == restarts + 1,
+            Check(WorkspacePanel.WorkspaceNextButton.Content.ToString() == "回到 Codex" && runtime.Activations == activations + 1 && runtime.Restarts == restarts + 1,
                 "Home returns to the identified running window in one action without restarting it");
 
             var combinedHome = Path.Combine(output, "first-run-apply-home"); await SwitchHomeAsync(combinedHome); NavigateTo(ConnectionNav);
@@ -139,16 +141,16 @@ public sealed partial class MainWindow
         {
             runtime.Configured[GatewayKind.Model] = true; runtime.Running[GatewayKind.Model] = true;
             runtime.ModelDiagnostics = ModelGatewayDiagnostics.FromStatus(new(8, 2, 1, ModelBridge.ProtocolVersion, LastUpstreamStatus: 200, Metrics: metrics, UltrafastRequests: 1), "v2");
-            NavigateTo(GatewaysNav); await RefreshGatewaysAsync(); ModelGatewayDiagnosticsExpander.IsExpanded = true;
-            Check(ModelGatewayCompactionConfiguration.Text.Contains("文件允许 v2") && ModelGatewayCompactionMetrics.Text.Contains("trigger 4 个") &&
-                ModelGatewayCompactionMetrics.Text.Contains("压缩条目 1 个 · 确认完成 0 次") && ModelGatewayCompactionMetrics.Text.Contains("HTTP 200 不能") && ModelGatewayUpstreamMetrics.Text.Contains("200"),
+            NavigateTo(GatewaysNav); await RefreshGatewaysAsync(); GatewaysPanel.ModelGatewayDiagnosticsExpander.IsExpanded = true;
+            Check(GatewaysPanel.ModelGatewayCompactionConfiguration.Text.Contains("文件允许 v2") && GatewaysPanel.ModelGatewayCompactionMetrics.Text.Contains("trigger 4 个") &&
+                GatewaysPanel.ModelGatewayCompactionMetrics.Text.Contains("压缩条目 1 个 · 确认完成 0 次") && GatewaysPanel.ModelGatewayCompactionMetrics.Text.Contains("HTTP 200 不能") && GatewaysPanel.ModelGatewayUpstreamMetrics.Text.Contains("200"),
                 "WinUI gateway diagnostics distinguish allowed configuration requested compaction returned items and confirmed success");
-            Check(ModelGatewayCompactionMetrics.Text.Contains("v2 / SSE") && ModelGatewayCompactionMetrics.Text.Contains("计数可能不全") && ModelGatewayLatencyMetrics.Text.Contains("7 ms") &&
-                ModelGatewayLatencyMetrics.Text.Contains("55 ms") && ModelGatewayMetricsScope.Text.Contains("重启后重新累计"),
+            Check(GatewaysPanel.ModelGatewayCompactionMetrics.Text.Contains("v2 / SSE") && GatewaysPanel.ModelGatewayCompactionMetrics.Text.Contains("计数可能不全") && GatewaysPanel.ModelGatewayLatencyMetrics.Text.Contains("7 ms") &&
+                GatewaysPanel.ModelGatewayLatencyMetrics.Text.Contains("55 ms") && GatewaysPanel.ModelGatewayMetricsScope.Text.Contains("重启后重新累计"),
                 "Gateway details retain trigger transport incomplete inspection latency and the per-process measurement boundary");
-            CopyModelTransferClicked(CopyModelTransferButton, new());
-            Check(CopyModelTransferButton.IsEnabled && smokeCopiedTexts.LastOrDefault() == ModelGatewayTransferText.Text &&
-                ModelGatewayTransferText.Text.Contains("请求 ID req_fixture") && ModelGatewayTransferText.Text.Contains("最终响应 ID 未收到"),
+            CopyModelTransferClicked(GatewaysPanel.CopyModelTransferButton, new());
+            Check(GatewaysPanel.CopyModelTransferButton.IsEnabled && smokeCopiedTexts.LastOrDefault() == GatewaysPanel.ModelGatewayTransferText.Text &&
+                GatewaysPanel.ModelGatewayTransferText.Text.Contains("请求 ID req_fixture") && GatewaysPanel.ModelGatewayTransferText.Text.Contains("最终响应 ID 未收到"),
                 "Copying a truncated gateway response retains the request ID and marks the final response ID as absent");
             PageScroll.ChangeView(null, 210, null, true); await CaptureAsync(output, "gateway-diagnostics-light.png");
             connectionDraft.Model = "unsaved-while-reading-metrics"; var revision = connectionDraft.Revision; await RefreshGatewaysAsync();
@@ -156,21 +158,21 @@ public sealed partial class MainWindow
                 "Refreshing diagnostic counters preserves the configuration draft and never starts or stops a gateway");
             Root.RequestedTheme = ElementTheme.Dark; AppWindow.Resize(new(900, 760)); PageScroll.ChangeView(null, 260, null, true);
             await CaptureAsync(output, "gateway-diagnostics-compact-dark.png");
-            Check(ModelGatewayCompactionMetrics.ActualWidth > 250 && ModelGatewayCompactionMetrics.TransformToVisual(Root).TransformPoint(new()).X + ModelGatewayCompactionMetrics.ActualWidth <= Root.ActualWidth,
+            Check(GatewaysPanel.ModelGatewayCompactionMetrics.ActualWidth > 250 && GatewaysPanel.ModelGatewayCompactionMetrics.TransformToVisual(Root).TransformPoint(new()).X + GatewaysPanel.ModelGatewayCompactionMetrics.ActualWidth <= Root.ActualWidth,
                 "Expanded gateway diagnostics wrap inside the compact dark window while the draft actions remain available");
             runtime.Running[GatewayKind.Model] = false; await RefreshGatewaysAsync();
-            Check(ModelGatewayCompactionMetrics.Text.Length == 0 && ModelGatewayLatencyMetrics.Text.Length == 0 && ModelGatewayDiagnosticsStatus.Text.Contains("未运行"),
+            Check(GatewaysPanel.ModelGatewayCompactionMetrics.Text.Length == 0 && GatewaysPanel.ModelGatewayLatencyMetrics.Text.Length == 0 && GatewaysPanel.ModelGatewayDiagnosticsStatus.Text.Contains("未运行"),
                 "Stopped gateway clears prior counters instead of presenting an old process snapshot");
             runtime.Running[GatewayKind.Model] = null; await RefreshGatewaysAsync();
-            Check(ModelGatewayCompactionMetrics.Text.Length == 0 && ModelGatewayDiagnosticsStatus.Text.Contains("尚未确认"), "Unknown gateway listener state cannot reuse prior compaction metrics");
+            Check(GatewaysPanel.ModelGatewayCompactionMetrics.Text.Length == 0 && GatewaysPanel.ModelGatewayDiagnosticsStatus.Text.Contains("尚未确认"), "Unknown gateway listener state cannot reuse prior compaction metrics");
             runtime.Running[GatewayKind.Model] = true; runtime.FailModelProbe = true; await RefreshGatewaysAsync();
-            Check(ModelGatewayCompactionMetrics.Text.Length == 0 && ModelGatewayDiagnosticsStatus.Text.Contains("读取失败"), "Failed gateway refresh clears old measurements and explains that statistics are unconfirmed");
+            Check(GatewaysPanel.ModelGatewayCompactionMetrics.Text.Length == 0 && GatewaysPanel.ModelGatewayDiagnosticsStatus.Text.Contains("读取失败"), "Failed gateway refresh clears old measurements and explains that statistics are unconfirmed");
             runtime.FailModelProbe = false; runtime.ModelDiagnostics = ModelGatewayDiagnostics.FromStatus(new(2, 0, 0), null); await RefreshGatewaysAsync();
-            Check(ModelGatewayCompactionMetrics.Text.Contains("未返回压缩指标") && !ModelGatewayCompactionMetrics.Text.Contains("确认完成 0"),
+            Check(GatewaysPanel.ModelGatewayCompactionMetrics.Text.Contains("未返回压缩指标") && !GatewaysPanel.ModelGatewayCompactionMetrics.Text.Contains("确认完成 0"),
                 "An older gateway payload displays missing metrics without implying zero successful compactions");
             LoadConnectionDraft(); Root.RequestedTheme = ElementTheme.Light;
             await SwitchHomeAsync(Path.Combine(output, "diagnostic-empty-other-home"));
-            Check(gatewayManagement.Overview is null && ModelGatewayCompactionMetrics.Text.Length == 0 && !Directory.Exists(viewModel.Home),
+            Check(gatewayManagement.Overview is null && GatewaysPanel.ModelGatewayCompactionMetrics.Text.Length == 0 && !Directory.Exists(viewModel.Home),
                 "Changing directories removes another home's diagnostic snapshot without creating the empty destination");
         }
         finally
@@ -179,7 +181,7 @@ public sealed partial class MainWindow
             foreach (var pair in configured) runtime.Configured[pair.Key] = pair.Value;
             foreach (var pair in running) runtime.Running[pair.Key] = pair.Value;
             smokeDialog = _ => Task.FromResult(ContentDialogResult.Secondary); await SwitchHomeAsync(home); smokeDialog = null;
-            ModelGatewayDiagnosticsExpander.IsExpanded = false; Root.RequestedTheme = ElementTheme.Light; NavigateTo(WorkspaceNav);
+            GatewaysPanel.ModelGatewayDiagnosticsExpander.IsExpanded = false; Root.RequestedTheme = ElementTheme.Light; NavigateTo(WorkspaceNav);
         }
     }
 }

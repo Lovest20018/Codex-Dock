@@ -1,16 +1,24 @@
 param(
-    [string]$Version = '0.19.9',
+    [ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$PreviousVersion
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+if (-not $Version) {
+    $Version = ([xml](Get-Content -LiteralPath (Join-Path $taskRoot 'src\CodexConfig.WinUI\CodexConfig.WinUI.csproj') -Raw)).Project.PropertyGroup.Version
+}
 $taskArtifacts = Join-Path $taskRoot 'artifacts'
 $taskRelease = Join-Path $taskArtifacts "CodexDock-$Version-win-x64"
 $taskSetup = Join-Path $taskArtifacts "CodexDock-$Version-Setup-win-x64.exe"
 $taskFixtureVersion = if ($PreviousVersion) { $PreviousVersion } else { $Version }
 $taskFixtureRelease = Join-Path $taskArtifacts "CodexDock-$taskFixtureVersion-win-x64"
 if (-not (Test-Path -LiteralPath (Join-Path $taskFixtureRelease 'CodexDock.exe'))) { throw 'The running upgrade fixture payload is missing.' }
-$taskTestRoot = Join-Path $taskRoot ('.installer-check-' + [Guid]::NewGuid().ToString('N'))
+$taskLegacyDockHost = $false
+if ($PreviousVersion) {
+    $taskFixtureManifest = Get-Content -LiteralPath (Join-Path $taskFixtureRelease 'manifest.json') -Raw | ConvertFrom-Json
+    $taskLegacyDockHost = $taskFixtureManifest.startupVerificationProtocol -ne 1
+}
+$taskTestRoot = Join-Path $taskArtifacts ('test-runs\installer-' + [Guid]::NewGuid().ToString('N'))
 $taskInstall = Join-Path $taskTestRoot 'app'
 if (-not ([IO.Path]::GetFullPath($taskInstall).StartsWith($taskRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase))) { throw 'Verification path escapes workspace.' }
 New-Item -ItemType Directory -Path $taskTestRoot -Force | Out-Null
@@ -35,8 +43,8 @@ try {
     New-Item -ItemType Directory -Path $taskOtherInstall | Out-Null
     Get-ChildItem -LiteralPath $taskFixtureRelease -Force | Copy-Item -Destination $taskInstall -Recurse
     Get-ChildItem -LiteralPath $taskFixtureRelease -Force | Copy-Item -Destination $taskOtherInstall -Recurse
-    $taskUpgradeDock = Start-InstallerDockFixture $taskInstall (Join-Path $taskTestRoot 'target-dock')
-    $taskOtherDock = Start-InstallerDockFixture $taskOtherInstall (Join-Path $taskTestRoot 'other-dock')
+    $taskUpgradeDock = Start-InstallerDockFixture $taskInstall (Join-Path $taskTestRoot 'target-dock') -LegacySmokeHost:$taskLegacyDockHost
+    $taskOtherDock = Start-InstallerDockFixture $taskOtherInstall (Join-Path $taskTestRoot 'other-dock') -LegacySmokeHost:$taskLegacyDockHost
     $taskUpgradeModel = Start-InstallerModelFixture $taskInstall (Join-Path $taskTestRoot 'target model profile')
     $taskOtherModel = Start-InstallerModelFixture $taskOtherInstall (Join-Path $taskTestRoot 'other model profile')
     $taskUpgradeWorker = New-InstallerMobileFixture $taskInstall $taskMobileState
@@ -75,10 +83,7 @@ Get-ChildItem -LiteralPath $taskRelease -Recurse -File | ForEach-Object {
     if ((Get-FileHash -LiteralPath (Join-Path $taskInstall $taskRelative) -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash) { throw "Installed file mismatch: $taskRelative" }
     $taskCompared++
 }
-$taskUi = Join-Path $taskTestRoot 'ui'
-$taskRun = Start-Process -FilePath $taskExe -ArgumentList @('--smoke-test',$taskUi) -WindowStyle Hidden -PassThru -Wait
-if ($taskRun.ExitCode -ne 0) { throw "Installed EXE UI check failed. See $taskUi\failure.txt" }
-$taskReport = Get-Content -LiteralPath (Join-Path $taskUi 'report.json') -Raw | ConvertFrom-Json
+$taskReport = Invoke-DockStartupVerification $taskInstall (Join-Path $taskTestRoot 'ui')
 if ($taskReport.applicationVersion -ne $Version -or $taskReport.uiFramework -ne 'WinUI 3') { throw 'The installed WinUI application version must match the requested package version.' }
 if ($taskReport.status -ne 'PASS' -or $taskReport.executableName -ne 'CodexDock.exe' -or $taskReport.executableSha256 -ne $taskExpectedHash.ToLowerInvariant() -or $taskReport.applicationAssemblySha256 -ne (Get-FileHash -LiteralPath (Join-Path $taskInstall 'CodexDock.dll') -Algorithm SHA256).Hash.ToLowerInvariant()) { throw 'Installed application report mismatch.' }
 $taskRun = Start-Process -FilePath (Join-Path $taskInstall 'unins000.exe') -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/VERIFYONLY=1',"/LOG=$taskTestRoot\uninstall.log") -WindowStyle Hidden -PassThru -Wait
@@ -90,8 +95,8 @@ $taskVerification = [ordered]@{ status='PASS'; version=$Version; installerSha256
     installerExit=0; upgradeFixtureVersion=$taskFixtureVersion; runningDockUpgrade=$true; otherInstallationDockPreserved=$true; dockSettingsUnchanged=$true;
     runningModelUpgrade=$true; otherInstallationModelPreserved=$true; modelSettingsUnchanged=$true;
     runningMobileUpgrade=$true; otherInstallationWorkerPreserved=$true; mobileSettingsUnchanged=$true;
-    installedFilesCompared=$taskCompared; executableSha256=$taskExpectedHash.ToLowerInvariant(); installedUiChecks=$taskReport.tests.Count;
+    installedFilesCompared=$taskCompared; executableSha256=$taskExpectedHash.ToLowerInvariant(); installedStartupChecks=$taskReport.tests.Count;
     legacyApplicationFilesRemoved=$taskLegacyNames; uninstallExit=0; userFilePreserved=$true;
-    registryAndUserEnvironmentUnchanged=$true; evidenceDirectory=$taskTestRoot }
+    registryAndUserEnvironmentUnchanged=$true; evidenceDirectory=[IO.Path]::GetRelativePath($taskRoot, $taskTestRoot).Replace('\','/') }
 $taskVerification | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $taskArtifacts "installer-verification-$Version.json") -Encoding utf8
 $taskVerification | ConvertTo-Json -Depth 4

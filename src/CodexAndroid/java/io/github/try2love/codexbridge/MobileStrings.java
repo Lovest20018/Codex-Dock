@@ -3,16 +3,9 @@ import android.content.Context;
 final class MobileStrings {
  private static final java.util.Map<String,String> values=new java.util.HashMap<>();
  static {
-  values.put("粘贴 DSH 客户端 Mobile 功能提供的完整链接","Paste the full link from your DSH client’s Mobile feature");
-  values.put("连接 DSH Mobile？","Connect to DSH Mobile?");
-  values.put("\n请确认这是你自己的 DSH 客户端。将打开它自带的手机界面。","\nConfirm this is your DSH client. Its own mobile interface will open.");
-  values.put("无法保存 DSH Mobile 连接","Could not save the DSH Mobile connection");
   values.put("连接凭据不可用，请移除后重新添加","Connection credentials are unavailable. Remove and add this connection again.");
   values.put("连接凭据不可用","Connection credentials unavailable");
-  values.put("Android 8 请使用浏览器打开 DSH Mobile；App 内连接需要 Android 9 或更高版本。","On Android 8, open DSH Mobile in your browser. In-app access requires Android 9 or later.");
   values.put("连接失败，请刷新重试","Connection failed. Refresh to retry");
-  values.put("DSH Mobile 地址无效","Invalid DSH Mobile URL");
-  values.put("请使用完整的 DSH Mobile HTTPS 链接，或局域网 HTTP 链接。","Use a full DSH Mobile HTTPS link, or an HTTP link on your local network.");
 
   values.put("设置","Settings");
   values.put("返回","Back");
@@ -235,7 +228,7 @@ values.put("请填写完整的 HTTPS 网关地址，或局域网 HTTP 地址，�
   values.put("任务提醒","Task notification");
   values.put("查看聊天  ↗","View chat  ↗");
   values.put("聊天链接无效","Invalid chat link");
-  values.put("设置","Settings");
+
   values.put("启用系统后台推送","Enable system push");
   values.put("关闭任务通知","Turn off task notifications");
   values.put("开启任务通知","Turn on task notifications");
@@ -262,7 +255,7 @@ values.put("请填写完整的 HTTPS 网关地址，或局域网 HTTP 地址，�
   values.put("请先扫码保存通知对应的电脑。","Scan and save this notification’s computer first.");
   values.put("在浏览器打开外部链接？","Open external link in browser?");
   values.put("连接失败，请检查电脑和地址后刷新","Connection failed. Check the computer and address, then reload.");
-  values.put("确认","确认");
+  values.put("确认","Confirm");
   values.put("下载失败，请检查登录状态后重试","Download failed. Check sign-in and try again.");
   values.put("附件超过 50 MB 下载限制","Attachment exceeds the 50 MB download limit");
   values.put("无法保存下载文件，请检查剩余空间","Could not save the download. Check available storage.");
@@ -329,7 +322,28 @@ values.put("请填写完整的 HTTPS 网关地址，或局域网 HTTP 地址，�
   values.put("主题会应用到本机界面及聊天页面。","Theme applies to this app and its chat page.");
  }
  static {values.put("尚未连接","Not connected");values.put("后台通知通过已保存电脑的网关接收任务提醒，可能增加耗电。关闭后保留前台任务通知。","Background notifications receive task alerts through saved gateways and may use more battery. Turning them off preserves foreground alerts.");}
- static {values.put("电脑","Computers");values.put("我的","Me");values.put("聊天","Chats");values.put("添加电脑","Add computer");values.put("继续你的聊天","Continue your chats");values.put("连接电脑，查看任务进度和结果。","Connect a computer to check tasks and results.");values.put("连接你的电脑","Connect your computer");values.put("当前连接","Current connection");values.put("电脑详情","Computer details");values.put("继续聊天","Continue chat");values.put("连接诊断","Connection diagnostics");values.put("语言","Language");values.put("外观与阅读","Appearance and reading");values.put("当前电脑的聊天提醒规则","Chat alert rules on current computer");values.put("连接失败 · 点此重试","Connection failed · Tap to retry");values.put("草稿尚未保存，请先返回聊天确认登录与保存状态。","The draft could not be saved. Return to chat and check your sign-in and storage.");values.put("重新加载或切换电脑会移除尚未发送的附件。可留在当前聊天等待上传或发送完成。文字草稿已保存。","Reloading or switching computers removes unsent attachments. Stay in chat to finish uploading or sending. Text drafts have been saved.");values.put("留在当前聊天","Stay in chat");values.put("放弃附件并继续","Discard attachments and continue");values.put("无法确认草稿状态，请返回聊天重试。","Could not verify draft storage. Return to chat and retry.");values.put("切换电脑","Switch computer");values.put("通知收件箱","Notification inbox");}
+ static {values.put("电脑","Computers");values.put("我的","Me");values.put("聊天","Chats");values.put("添加电脑","Add computer");values.put("继续你的聊天","Continue your chats");values.put("连接电脑，查看任务进度和结果。","Connect a computer to check tasks and results.");values.put("连接你的电脑","Connect your computer");values.put("当前连接","Current connection");values.put("电脑详情","Computer details");values.put("继续聊天","Continue chat");values.put("连接诊断","Connection diagnostics");values.put("语言","Language");values.put("外观与阅读","Appearance and reading");values.put("当前电脑的聊天提醒规则","Chat alert rules on current computer");values.put("连接失败 · 点此重试","Connection failed · Tap to retry");values.put("草稿尚未保存，请先返回聊天确认登录与保存状态。","The draft could not be saved. Return to chat and check your sign-in and storage.");values.put("重新加载或切换电脑会移除尚未发送的附件。可留在当前聊天等待上传或发送完成。文字草稿已保存。","Reloading or switching computers removes unsent attachments. Stay in chat to finish uploading or sending. Text drafts have been saved.");values.put("留在当前聊天","Stay in chat");values.put("放弃附件并继续","Discard attachments and continue");values.put("无法确认草稿状态，请返回聊天重试。","Could not verify draft storage. Return to chat and retry.");values.put("切换电脑","Switch computer");}
  static {values.put("网关已登录","Signed in to gateway");values.put("等待连接或登录","Waiting for connection or sign-in");}
+ static {
+  values.put("刚刚","just now");
+  values.put("1 分钟前","1 minute ago");
+  values.put("%d 分钟前","%d minutes ago");
+  values.put("1 小时前","1 hour ago");
+  values.put("%d 小时前","%d hours ago");
+  values.put("1 天前","1 day ago");
+  values.put("%d 天前","%d days ago");
+  values.put("重试连接","Retry connection");
+  values.put("无法验证证书","Cannot verify the certificate");
+  values.put("网关拒绝访问","Gateway denied access");
+  values.put("连接超时","Connection timed out");
+  values.put("网关服务异常","Gateway service error");
+  values.put("网关返回错误","Gateway returned an error");
+  values.put("无法连接电脑","Cannot connect to the computer");
+  values.put("请检查网关证书是否有效、域名是否匹配，以及手机是否信任证书。","Check the gateway certificate’s validity, hostname, and trust on this phone.");
+  values.put("请核对网关账号和反向代理的认证设置，再重新连接。","Check your gateway account and the reverse proxy authentication settings, then try again.");
+  values.put("请检查手机网络，并确认电脑上的手机服务正在运行。","Check your phone’s network and make sure the mobile gateway is running on the computer.");
+  values.put("请在电脑上检查手机服务状态和反向代理设置。","Check the mobile gateway and reverse proxy settings on the computer.");
+  values.put("请确认电脑在线、手机能访问网关地址，然后重试。","Make sure the computer is online and the phone can reach the gateway, then try again.");
+ }
  static String text(Context context,String value){String language=context.getSharedPreferences("bridge",0).getString("language",java.util.Locale.getDefault().getLanguage());return language.startsWith("en")?values.getOrDefault(value,value):value;}
 }

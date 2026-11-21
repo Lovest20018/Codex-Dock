@@ -27,6 +27,17 @@ internal static class MobileConnectionServiceTests
                 await Throws<ArgumentException>(() => f.Service.PrepareAsync(f.Home, input));
             Assert(f.Runtime.Trace.Count == 0);
         }));
+        tests.Add(("saving the phone entry alone consumes its review and leaves startup explicit", async () =>
+        {
+            var f = new Fixture(root);
+            var review = await f.Prepare();
+            var saved = await f.Service.SaveAsync(review, () => true);
+            Assert(saved is { Succeeded: true, SettingsSaved: true } && saved.Value?.Configured == true && f.Runtime.Trace.SequenceEqual(new[] { "save" }));
+            Assert(!(await f.Service.SaveAndStartAsync(review, () => true)).Succeeded && f.Runtime.Trace.SequenceEqual(new[] { "save" }));
+            var start = await f.Service.PrepareAsync(f.Home, new(saved.Value!.PublicUrl, saved.Value.Username, "", saved.Value.Port));
+            Assert(!start.HasChanges && (await f.Service.SaveAndStartAsync(start, () => true)).Succeeded &&
+                f.Runtime.Trace.SequenceEqual(new[] { "save", "start" }));
+        }));
         tests.Add(("shared phone settings save freezes one confirmation and serializes with desktop save and gateway actions", async () =>
         {
             var f = new Fixture(root); var review = await f.Prepare();

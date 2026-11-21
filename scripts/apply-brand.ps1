@@ -7,13 +7,6 @@ $taskSpec = Get-Content -LiteralPath $taskSource -Raw | ConvertFrom-Json
 $taskSelected = $taskSpec.concepts[0]
 & (Join-Path $PSScriptRoot 'render-brand-refresh.ps1') -SpecFile $taskSource -OutputDirectory $taskBrand -Flat
 if (-not $?) { throw 'Selected brand rendering failed.' }
-foreach ($taskSize in @(16,20,24,32,40,48,64,128,256,512,1024)) {
-    Copy-Item -LiteralPath (Join-Path $taskBrand "app-$taskSize.png") -Destination (Join-Path $taskBrand "logo-$taskSize.png") -Force
-}
-Copy-Item -LiteralPath (Join-Path $taskBrand 'app.svg') -Destination (Join-Path $taskBrand 'codex-dock.svg') -Force
-Copy-Item -LiteralPath (Join-Path $taskBrand 'app.svg') -Destination (Join-Path $taskBrand 'codex-config.svg') -Force
-Copy-Item -LiteralPath (Join-Path $taskBrand 'app.ico') -Destination (Join-Path $taskBrand 'codex-dock.ico') -Force
-Copy-Item -LiteralPath (Join-Path $taskBrand 'app.ico') -Destination (Join-Path $taskRoot 'src\CodexConfig.App\Assets\app.ico') -Force
 Copy-Item -LiteralPath (Join-Path $taskBrand 'mono-dark-32.png') -Destination (Join-Path $taskRoot 'src\CodexConfig.App\Assets\tray-dark.png') -Force
 Copy-Item -LiteralPath (Join-Path $taskBrand 'mono-light-32.png') -Destination (Join-Path $taskRoot 'src\CodexConfig.App\Assets\tray-light.png') -Force
 $taskWebBrand = Join-Path $taskRoot 'src\CodexMobile\ui\brand'

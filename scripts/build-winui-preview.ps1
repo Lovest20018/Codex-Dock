@@ -59,7 +59,7 @@ try {
             }
             $taskPreviewProcess.Dispose()
         }
-        $taskUi = Join-Path $taskOutput ('ui-' + [Guid]::NewGuid().ToString('N'))
+        $taskUi = Join-Path $taskArtifacts ('test-runs\ui-preview-' + [Guid]::NewGuid().ToString('N'))
         $taskOldTestFilter = $env:CODEX_DOCK_WINUI_TEST_FILTER
         try {
             Remove-Item Env:CODEX_DOCK_WINUI_TEST_FILTER -ErrorAction SilentlyContinue

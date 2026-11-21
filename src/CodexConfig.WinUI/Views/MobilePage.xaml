@@ -1,0 +1,100 @@
+<UserControl x:Class="CodexConfig.WinUI.Views.MobilePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CodexConfig.WinUI"
+             IsTabStop="False">
+    <StackPanel Spacing="16">
+        <InfoBar x:Name="MobileOperationBar" x:FieldModifier="internal" IsOpen="False" IsClosable="False" />
+        <StackPanel x:Name="MobileStepsPanel" x:FieldModifier="internal" Spacing="10" Visibility="Collapsed">
+            <local:ActionWrapPanel>
+                <TextBlock x:Name="MobileEntryStepText" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+                <TextBlock x:Name="MobileStartStepText" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+                <TextBlock x:Name="MobileCheckStepText" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+                <TextBlock x:Name="MobilePairStepText" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+            </local:ActionWrapPanel>
+            <TextBlock x:Name="MobileNextStepText" x:FieldModifier="internal" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+            <local:ActionWrapPanel>
+                <Button x:Name="StartMobilePairingButton" x:FieldModifier="internal" Content="启动手机服务" Click="StartMobilePairingClicked" Style="{StaticResource DockPrimaryButtonStyle}" Visibility="Collapsed" />
+                <Button x:Name="CheckMobileEntryButton" x:FieldModifier="internal" Content="检测 HTTPS 入口" Click="CheckMobileEntryClicked" Style="{StaticResource DockPrimaryButtonStyle}" Visibility="Collapsed" />
+                <HyperlinkButton x:Name="MobileEntryHelpButton" x:FieldModifier="internal" Content="转发设置说明" Click="MobileEntryHelpClicked" Padding="0" Visibility="Collapsed" />
+            </local:ActionWrapPanel>
+        </StackPanel>
+        <Border x:Name="MobileSettingsCard" x:FieldModifier="internal" Style="{StaticResource DockCardStyle}">
+            <StackPanel Spacing="14">
+                <TextBlock Text="连接入口" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock Text="填写手机能访问的 HTTPS 地址。手机需要信任该地址的证书，地址也需要转发到这台电脑。" Style="{StaticResource DockHintTextStyle}" />
+                <TextBox x:Name="MobileUrlInput" x:FieldModifier="internal" Header="HTTPS 地址" PlaceholderText="https://codex.example.com" TextChanging="MobileTextChanged" MaxLength="2048" />
+                <Button Content="我还没有这个地址" Click="MobileEntryHelpClicked" HorizontalAlignment="Left" />
+                <TextBox x:Name="MobileUsernameInput" x:FieldModifier="internal" Header="手机登录账号" TextChanging="MobileTextChanged" MaxLength="200" />
+                <PasswordBox x:Name="MobilePasswordInput" x:FieldModifier="internal" Header="手机访问密码" PasswordRevealMode="Peek" PasswordChanging="MobilePasswordChanging" MaxLength="256" />
+                <TextBlock x:Name="MobilePasswordHint" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+                <TextBlock x:Name="MobileDraftHint" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+                <Expander x:Name="MobileAdvancedEntry" x:FieldModifier="internal" Header="高级 · 本机监听端口" HorizontalAlignment="Stretch">
+                    <TextBox x:Name="MobilePortInput" x:FieldModifier="internal" Header="本机监听端口" TextChanging="MobileTextChanged" MaxLength="5" />
+                </Expander>
+            </StackPanel>
+        </Border>
+        <Border x:Name="MobileServiceCard" x:FieldModifier="internal" Style="{StaticResource DockCardStyle}">
+            <StackPanel Spacing="12">
+                <TextBlock Text="手机服务" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <InfoBar x:Name="MobileGatewayPreferencesError" x:FieldModifier="internal" IsOpen="False" IsClosable="False" Severity="Error" Title="自动启动设置需要处理" />
+                <TextBlock x:Name="MobileGatewayPreferencesStatus" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+
+                <TextBlock x:Name="MobileGatewayStateText" x:FieldModifier="internal" Text="尚未检查" FontWeight="SemiBold" />
+                <TextBlock x:Name="MobileGatewayDescription" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+                <TextBlock x:Name="MobileGatewayDetail" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+                <ToggleSwitch x:Name="MobileGatewayAutomaticInput" x:FieldModifier="internal" Header="打开 Dock 时自动启动（立即保存偏好）" OnContent="开启" OffContent="关闭" Toggled="GatewayAutomaticChanged" />
+                <local:ActionWrapPanel>
+                    <Button x:Name="MobileGatewayStartButton" x:FieldModifier="internal" Content="启动" Tag="Mobile:Start" Click="GatewayActionClicked" />
+                    <Button x:Name="MobileGatewayRestartButton" x:FieldModifier="internal" Content="重启" Tag="Mobile:Restart" Click="GatewayActionClicked" />
+                    <Button x:Name="MobileGatewayStopButton" x:FieldModifier="internal" Content="停止" Tag="Mobile:Stop" Click="GatewayActionClicked" />
+                </local:ActionWrapPanel>
+                <InfoBar x:Name="MobileGatewayOperation" x:FieldModifier="internal" IsOpen="False" IsClosable="False" />
+                <Button Content="刷新手机服务状态" Click="RefreshGatewaysClicked" HorizontalAlignment="Left" />
+            </StackPanel>
+        </Border>
+        <Border x:Name="MobilePairCard" x:FieldModifier="internal" Style="{StaticResource DockCardStyle}">
+            <StackPanel Spacing="12">
+                <TextBlock Text="安卓扫码登录" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock Text="在 Lovest Code 的“电脑”页点“扫码连接电脑”。配对码有效 5 分钟，每次只能用一次。" Style="{StaticResource DockHintTextStyle}" />
+                <local:ActionWrapPanel>
+                    <Button x:Name="CreateMobilePairButton" x:FieldModifier="internal" Content="生成配对码" Click="CreateMobilePairClicked" Style="{StaticResource DockPrimaryButtonStyle}" />
+                    <Button x:Name="RevokeMobilePairButton" x:FieldModifier="internal" Content="撤销配对码" Click="RevokeMobilePairClicked" />
+                </local:ActionWrapPanel>
+                <Image x:Name="MobilePairImage" x:FieldModifier="internal" Width="240" Height="240" HorizontalAlignment="Left" Visibility="Collapsed" />
+                <TextBlock x:Name="MobilePairHint" x:FieldModifier="internal" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                <TextBlock x:Name="MobileCodexReadinessText" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
+        </Border>
+        <Border x:Name="MobileStatusCard" x:FieldModifier="internal" Style="{StaticResource DockCardStyle}">
+            <StackPanel Spacing="12">
+                <TextBlock Text="手机已配对" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock x:Name="MobileRuntimeText" x:FieldModifier="internal" Text="尚未读取" TextWrapping="Wrap" />
+                <TextBlock x:Name="MobileEndpointText" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+                <local:ActionWrapPanel>
+                    <Button x:Name="ViewMobileDevicesButton" Content="查看授权设备" Click="ViewMobileDevicesClicked" Style="{StaticResource DockPrimaryButtonStyle}" />
+                    <Button x:Name="PairAnotherDeviceButton" x:FieldModifier="internal" Content="配对其他手机" Click="PairAnotherDeviceClicked" />
+                </local:ActionWrapPanel>
+            </StackPanel>
+        </Border>
+        <Expander x:Name="MobileAccessTools" x:FieldModifier="internal" Header="服务与访问" HorizontalAlignment="Stretch" Visibility="Collapsed">
+            <StackPanel Spacing="10">
+                <TextBlock x:Name="MobileAccessStatus" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+                <local:ActionWrapPanel>
+                    <Button x:Name="OpenMobileManagerButton" x:FieldModifier="internal" Content="选择允许手机访问的 Codex" Click="OpenMobileManagerClicked" />
+                    <Button x:Name="RefreshMobileButton" x:FieldModifier="internal" Content="刷新状态" Click="RefreshMobileClicked" />
+                    <Button Content="服务设置与启停" Click="OpenMobileSettingsClicked" />
+                </local:ActionWrapPanel>
+            </StackPanel>
+        </Expander>
+        <Border x:Name="MobileDevicesCard" x:FieldModifier="internal" Style="{StaticResource DockCardStyle}">
+            <StackPanel Spacing="12">
+                <TextBlock Text="登录设备" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock Text="设备授权会跨服务重启保留。撤销后，该设备需要重新登录。" Style="{StaticResource DockHintTextStyle}" />
+                <StackPanel x:Name="MobileDevicesList" x:FieldModifier="internal" Spacing="12" />
+                <Button Content="前往连接与配对" Click="OpenPairingPageClicked" HorizontalAlignment="Left" />
+            </StackPanel>
+        </Border>
+        <TextBlock x:Name="MobileNotificationHint" x:FieldModifier="internal" Text="任务提醒在安卓 App 或手机工作台中选择；本页不会自动修改通知设置。" Style="{StaticResource DockHintTextStyle}" />
+    </StackPanel>
+</UserControl>

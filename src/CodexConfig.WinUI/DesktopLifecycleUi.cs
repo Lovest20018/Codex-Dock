@@ -1,4 +1,4 @@
-﻿using CodexConfig.Core;
+using CodexConfig.Core;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Windows.Storage.Pickers;
@@ -8,7 +8,7 @@ namespace CodexConfig.WinUI;
 public sealed partial class MainWindow
 {
     private NativeTrayIcon? tray;
-    private bool exitRequested, enhancedLaunchBusy;
+    private bool enhancedLaunchBusy;
     private string? pendingEnhancedHome;
     private string automaticStatus = "已开启。成功应用一次后，Dock 会记住本次实例并自动接回。";
     private string backgroundStatus = "窗口关闭后收起到托盘，增强继续运行。通过托盘菜单退出 Codex Dock。";
@@ -27,8 +27,7 @@ public sealed partial class MainWindow
                 () => DispatcherQueue.TryEnqueue(RestoreWindow),
                 () => DispatcherQueue.TryEnqueue(() => { RestoreWindow(); NavigateTo(EnhancementsNav); }),
                 () => DispatcherQueue.TryEnqueue(() => { RestoreWindow(); NavigateTo(GatewaysNav); }),
-                () => DispatcherQueue.TryEnqueue(async () => { RestoreWindow(); await StopGatewaysAndExitAsync(); }),
-                () => DispatcherQueue.TryEnqueue(async () => { RestoreWindow(); exitRequested = true; await ExitWindowAsync(); }),
+                () => DispatcherQueue.TryEnqueue(async () => { RestoreWindow(); await RequestWindowExitAsync(); }),
                 () => DispatcherQueue.TryEnqueue(() => { RestoreWindow(); backgroundStatus = "托盘暂不可用，请保持窗口运行；关闭窗口将退出程序。"; RefreshView(); }),
                 () => DispatcherQueue.TryEnqueue(async () => await RequestInstallerExitAsync()));
         }
@@ -51,11 +50,10 @@ public sealed partial class MainWindow
         AppWindow.Hide(); return true;
     }
 
-    private async Task ExitWindowAsync()
+    private async Task ExitWindowAsync(bool confirmed = false, bool stopGateways = false)
     {
-        if (await StopBeforeCloseAsync())
+        if (await StopBeforeCloseAsync(confirmed, stopGateways))
         { runtimeTimer.Stop(); lifetime.Cancel(); tray?.Dispose(); tray = null; allowClose = true; Close(); }
-        else exitRequested = false;
     }
 
     private async Task RequestInstallerExitAsync()
@@ -69,7 +67,7 @@ public sealed partial class MainWindow
         }
         if (connectionDraft.HasDraft || profileDraft.HasDraft || HasTemplateDraft || mobileDraft.HasDraft || applicationRuntime.IsEnhancementRunning)
             RestoreWindow();
-        await RequestWindowExitAsync();
+        await ExitWindowAsync();
     }
 
     private async Task TryAutomaticEnhancementsAsync()
@@ -83,10 +81,10 @@ public sealed partial class MainWindow
         catch (Exception error) { if (!closing) { automaticStatus = error.Message; RefreshView(); } }
     }
 
-    private async void CreateEnhancedShortcutClicked(object sender, RoutedEventArgs e)
+    internal async void CreateEnhancedShortcutClicked(object sender, RoutedEventArgs e)
     {
         if (ApplicationBusy || dialogOpen || closing || !viewModel.AutomaticReconnectEnabled) return;
-        if (options.SmokeOutput is not null) { automaticStatus = "隔离检查只允许在测试目录创建快捷方式。"; RefreshView(); return; }
+        if (options.IsolatedDataDirectory is not null) { automaticStatus = "隔离检查只允许在测试目录创建快捷方式。"; RefreshView(); return; }
         dialogOpen = true; RefreshView();
         try
         {
@@ -102,7 +100,7 @@ public sealed partial class MainWindow
 
     private void SaveEnhancedShortcut(string path)
     {
-        if (options.SmokeOutput is { } output && !Path.GetFullPath(path).StartsWith(Path.GetFullPath(output) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        if (options.IsolatedDataDirectory is { } output && !Path.GetFullPath(path).StartsWith(Path.GetFullPath(output) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("隔离检查不能写入真实桌面快捷方式。");
         EnhancedLaunchShortcut.Create(path, Environment.ProcessPath!, viewModel.Home);
         automaticStatus = "快捷方式已创建。双击它即可增强启动，Dock 在后台提供增强。";
@@ -133,7 +131,7 @@ public sealed partial class MainWindow
                 new CodexConfig.Application.NativeAutomaticEnhancementRuntime(desktopEnhancements).HasFeatures(
                     viewModel.SpeedCompatibilityEnabled && DesktopSpeedSettings.Eligible(store, saved), viewModel.ConnectionRecoveryEnabled))
             {
-                if (options.SmokeOutput is null) new CodexDesktop().Activate(existing);
+                if (options.IsolatedDataDirectory is null) new CodexDesktop().Activate(existing);
                 TryHideToTray(); return;
             }
             RestoreWindow(); await ApplyDesktopAsync(enhancedLaunch: true);

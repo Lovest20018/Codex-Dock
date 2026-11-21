@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.System;
@@ -16,7 +16,9 @@ public sealed partial class MainWindow
             accelerator.Invoked += async (_, args) =>
             {
                 if (!CanUseWorkspaceShortcut) return;
+#if CODEX_DOCK_WINUI_SMOKE
                 if (nativeAcceptanceInteractive) nativeKeyboardInvocations.Add(modifiers + ":" + key);
+#endif
                 args.Handled = true; await ExecuteWorkspaceShortcutAsync(key, modifiers);
             };
             Root.KeyboardAccelerators.Add(accelerator);
@@ -28,14 +30,14 @@ public sealed partial class MainWindow
     {
         if (!CanUseWorkspaceShortcut) return;
         if (key == VirtualKey.F1 && modifiers == VirtualKeyModifiers.None || key == VirtualKey.H && modifiers == (VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift))
-        { NavigateTo(HelpNav); FocusSearch(HelpSearchInput); return; }
+        { NavigateTo(HelpNav); FocusSearch(HelpPanel.HelpSearchInput); return; }
         if (modifiers != VirtualKeyModifiers.Control) return;
         if (key == VirtualKey.F)
         {
-            if (ReferenceEquals(currentPage, HelpNav)) FocusSearch(HelpSearchInput);
-            else if (ReferenceEquals(currentPage, SourcesNav)) FocusSearch(SourceSearchInput);
-            else if (ReferenceEquals(currentPage, AdvancedNav)) FocusSearch(AdvancedSearchInput);
-            else { NavigateTo(CatalogNav); FocusSearch(CatalogSearchInput); }
+            if (ReferenceEquals(currentPage, HelpNav)) FocusSearch(HelpPanel.HelpSearchInput);
+            else if (ReferenceEquals(currentPage, SourcesNav)) FocusSearch(SourcesPanel.SourceSearchInput);
+            else if (ReferenceEquals(currentPage, AdvancedNav)) FocusSearch(AdvancedPanel.AdvancedSearchInput);
+            else { NavigateTo(CatalogNav); FocusSearch(CatalogPanel.CatalogSearchInput); }
             return;
         }
         if (key != VirtualKey.S) return;
@@ -46,10 +48,7 @@ public sealed partial class MainWindow
         if (currentPage == MobileSettingsNav || currentPage == MobileNav)
         {
             if (mobileDraft.HasDraft && SaveMobileButton.IsEnabled)
-            {
-                if (currentPage == MobileNav) await PrepareMobilePairAsync();
-                else await SaveMobileAsync();
-            }
+                await SaveMobileAsync(start: currentPage != MobileNav);
             return;
         }
         if (ApplicationFooter.Visibility == Visibility.Visible && ConnectionDraftActions.Visibility == Visibility.Visible)

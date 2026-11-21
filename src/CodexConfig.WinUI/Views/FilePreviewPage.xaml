@@ -1,0 +1,25 @@
+<UserControl x:Class="CodexConfig.WinUI.Views.FilePreviewPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CodexConfig.WinUI"
+             IsTabStop="False">
+    <StackPanel Spacing="16">
+        <local:ActionWrapPanel>
+            <TextBlock Text="核对当前目录已保存的脱敏配置和认证摘要。" Style="{StaticResource DockHintTextStyle}" VerticalAlignment="Center" />
+            <HyperlinkButton Content="了解详情" Tag="preview" Click="PageHelpClicked" Padding="0" />
+        </local:ActionWrapPanel>
+        <TextBlock x:Name="SavedPreviewStatus" x:FieldModifier="internal" Text="点击读取当前文件。" TextWrapping="Wrap" />
+        <local:ActionWrapPanel>
+            <Button x:Name="ReadSavedPreviewButton" x:FieldModifier="internal" Content="重新读取文件" Click="ReadSavedPreviewClicked" />
+            <Button x:Name="CancelSavedPreviewButton" x:FieldModifier="internal" Content="取消读取" Click="CancelSavedPreviewClicked" Visibility="Collapsed" />
+        </local:ActionWrapPanel>
+        <ComboBox x:Name="SavedPreviewSectionInput" x:FieldModifier="internal" Header="查看内容" HorizontalAlignment="Stretch" SelectedIndex="0" SelectionChanged="SavedPreviewSectionChanged">
+            <ComboBoxItem Content="config.toml · 脱敏字段副本" />
+            <ComboBoxItem Content="auth.json · 认证摘要" />
+            <ComboBoxItem Content="用户环境变量 · 仅 CODEX_AUTHAPI_BASE_URL" />
+        </ComboBox>
+        <TextBlock x:Name="SavedPreviewSectionStatus" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+        <TextBox x:Name="SavedPreviewText" x:FieldModifier="internal" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="260" MaxHeight="560" FontFamily="Consolas" AutomationProperties.Name="已保存文件的脱敏内容" />
+        <Button x:Name="CopySavedPreviewButton" x:FieldModifier="internal" Content="复制脱敏内容" Click="CopySavedPreviewClicked" HorizontalAlignment="Left" />
+    </StackPanel>
+</UserControl>

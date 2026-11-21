@@ -4,7 +4,8 @@ function Wait-InstallerFixture($Process, [scriptblock]$Ready) {
         if (& $Ready) { return }
         Start-Sleep -Milliseconds 100
     }
-    throw 'Installer fixture failed to start.'
+    if ($Process.HasExited) { throw "Installer fixture exited before reporting ready (exit code $($Process.ExitCode))." }
+    throw 'Installer fixture did not report ready within 15 seconds.'
 }
 
 function Stop-InstallerProcessFixture($Process) {
@@ -17,28 +18,98 @@ function Stop-InstallerProcessFixture($Process) {
     } finally { $Process.Dispose() }
 }
 
-function Start-InstallerDockFixture([string]$ApplicationDirectory, [string]$Output) {
+function Start-InstallerDockFixture([string]$ApplicationDirectory, [string]$Output, [switch]$LegacySmokeHost) {
+    if (Test-Path -LiteralPath $Output) { throw "Dock verification directory already exists: $Output" }
     $start = [Diagnostics.ProcessStartInfo]::new((Join-Path $ApplicationDirectory 'CodexDock.exe'))
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true
-    $start.Environment['CODEX_DOCK_WINUI_TEST_FILTER'] = 'installer-host'
-    $start.ArgumentList.Add('--smoke-test')
+    $fixtureHome = $Output
+    if ($LegacySmokeHost) {
+        $start.Environment['CODEX_DOCK_WINUI_TEST_FILTER'] = 'installer-host'
+        $start.ArgumentList.Add('--smoke-test')
+        $marker = Join-Path $Output 'installer-host.ready'
+    } else {
+        New-Item -ItemType Directory -Path $Output | Out-Null
+        [IO.File]::WriteAllText((Join-Path $Output 'config.toml'), "model='fixture-model'`nopenai_base_url='https://fixture.invalid/v1'`n")
+        [IO.File]::WriteAllText((Join-Path $Output 'auth.json'), '{"auth_mode":"apikey","OPENAI_API_KEY":"fake-installer-fixture-key"}')
+        $configHash = (Get-FileHash -LiteralPath (Join-Path $Output 'config.toml')).Hash
+        $authHash = (Get-FileHash -LiteralPath (Join-Path $Output 'auth.json')).Hash
+        $start.ArgumentList.Add('--verify-startup')
+        $marker = Join-Path $Output 'startup.ready'
+    }
     $start.ArgumentList.Add($Output)
     $process = [Diagnostics.Process]::Start($start)
     try {
-        $marker = Join-Path $Output 'installer-host.ready'
-        Wait-InstallerFixture $process { Test-Path -LiteralPath $marker }
-        $fixtureHome = [IO.File]::ReadAllText($marker)
+        Wait-InstallerFixture $process { (Test-Path -LiteralPath $marker) -and (Get-Item -LiteralPath $marker).Length -gt 0 }
+        if ($LegacySmokeHost) { $fixtureHome = [IO.File]::ReadAllText($marker) }
+        $window = if ($LegacySmokeHost) { [IntPtr]::Zero } else { [IntPtr][long][IO.File]::ReadAllText($marker) }
         $config = Join-Path $fixtureHome 'config.toml'
         $auth = Join-Path $fixtureHome 'auth.json'
-        return [pscustomobject]@{ Process=$process; Config=$config; ConfigHash=(Get-FileHash -LiteralPath $config).Hash;
-            Auth=$auth; AuthHash=(Get-FileHash -LiteralPath $auth).Hash }
-    } catch { Stop-InstallerProcessFixture $process; throw }
+        if ($LegacySmokeHost) {
+            $configHash = (Get-FileHash -LiteralPath $config).Hash
+            $authHash = (Get-FileHash -LiteralPath $auth).Hash
+        }
+        return [pscustomobject]@{ Process=$process; Window=$window; Config=$config; ConfigHash=$configHash; Auth=$auth; AuthHash=$authHash }
+    } catch {
+        Stop-InstallerProcessFixture $process
+        $failure = Join-Path $Output 'startup-failure.txt'
+        if (Test-Path -LiteralPath $failure) { throw (Get-Content -LiteralPath $failure -Raw) }
+        throw
+    }
 }
 
 function Test-InstallerDockFixture($Fixture) {
     return (Get-FileHash -LiteralPath $Fixture.Config).Hash -eq $Fixture.ConfigHash -and
         (Get-FileHash -LiteralPath $Fixture.Auth).Hash -eq $Fixture.AuthHash
+}
+
+function Invoke-DockStartupVerification([string]$ApplicationDirectory, [string]$Output) {
+    if (-not ('DockStartupVerification' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class DockStartupVerification
+{
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint RegisterWindowMessage(string name);
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
+    public static bool RequestExit(IntPtr window, uint expectedProcess)
+    {
+        uint message = RegisterWindowMessage("CodexDock.ExitForSetup.1");
+        return message != 0 && GetWindowThreadProcessId(window, out uint process) != 0 &&
+            process == expectedProcess && !IsWindowVisible(window) && PostMessage(window, message, IntPtr.Zero, IntPtr.Zero);
+    }
+}
+'@
+    }
+    $executable = Join-Path $ApplicationDirectory 'CodexDock.exe'
+    $assembly = Join-Path $ApplicationDirectory 'CodexDock.dll'
+    $exeHash = (Get-FileHash -LiteralPath $executable -Algorithm SHA256).Hash.ToLowerInvariant()
+    $assemblyHash = (Get-FileHash -LiteralPath $assembly -Algorithm SHA256).Hash.ToLowerInvariant()
+    $fixture = Start-InstallerDockFixture $ApplicationDirectory $Output
+    try {
+        if (-not [DockStartupVerification]::RequestExit($fixture.Window, $fixture.Process.Id) -or
+            -not $fixture.Process.WaitForExit(15000) -or $fixture.Process.ExitCode -ne 0) {
+            throw 'The tray-hidden WinUI application did not exit normally on the installer message.'
+        }
+        if (-not (Test-InstallerDockFixture $fixture)) { throw 'Startup or exit changed the verification configuration or login.' }
+        if ($exeHash -ne (Get-FileHash -LiteralPath $executable).Hash.ToLowerInvariant() -or
+            $assemblyHash -ne (Get-FileHash -LiteralPath $assembly).Hash.ToLowerInvariant()) { throw 'The payload changed during startup verification.' }
+        $report = [ordered]@{ status='PASS'; kind='production-startup'; uiFramework='WinUI 3';
+            applicationVersion=[Reflection.AssemblyName]::GetAssemblyName($assembly).Version.ToString(3);
+            executableName='CodexDock.exe'; executableSha256=$exeHash; applicationAssemblySha256=$assemblyHash;
+            tests=@('Loaded a WinUI workspace from isolated configuration', 'Registered the tray icon and hid the main window',
+                'Exited normally after the native installer message', 'Preserved the fixture configuration and authentication') }
+        $report | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $Output 'report.json') -Encoding utf8
+        return $report
+    } finally { Stop-InstallerProcessFixture $fixture.Process }
 }
 
 function Start-InstallerModelFixture([string]$ApplicationDirectory, [string]$Output) {

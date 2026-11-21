@@ -1,0 +1,35 @@
+<UserControl x:Class="CodexConfig.WinUI.Views.CatalogPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CodexConfig.WinUI"
+             IsTabStop="False">
+    <StackPanel Spacing="16">
+        <TextBlock Text="修改加入当前目录的 config.toml 草稿。" Style="{StaticResource DockHintTextStyle}" />
+        <TextBlock x:Name="CatalogReferenceText" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+        <HyperlinkButton Content="核对配置来源" Click="OpenSourcesClicked" Padding="0" />
+        <TextBox x:Name="CatalogSearchInput" x:FieldModifier="internal" Header="搜索配置名称、说明或字段" TextChanging="CatalogSearchChanged" MaxLength="200" />
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <ComboBox x:Name="CatalogScopeInput" x:FieldModifier="internal" Header="显示范围" HorizontalAlignment="Stretch" SelectionChanged="CatalogSelectionChanged" />
+            <ComboBox x:Name="CatalogCategoryInput" x:FieldModifier="internal" Grid.Column="1" Header="分类" HorizontalAlignment="Stretch" SelectionChanged="CatalogSelectionChanged" />
+        </Grid>
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <CheckBox x:Name="CatalogAdvancedInput" x:FieldModifier="internal" Content="显示高级与弃用项" VerticalAlignment="Top" Margin="0,8,0,0" Checked="CatalogFilterChanged" Unchecked="CatalogFilterChanged" />
+        <Expander Grid.Column="1" Header="添加设置" HorizontalAlignment="Stretch">
+            <StackPanel Spacing="12">
+                <TextBox x:Name="NewSettingPathInput" x:FieldModifier="internal" Header="配置路径" PlaceholderText="例如 mcp_servers.demo.command；名称含点时使用 TOML 引号" MaxLength="1000" />
+                <PasswordBox x:Name="NewSettingValueInput" x:FieldModifier="internal" Header="TOML 值" PlaceholderText="例如 true、123、&#x22;文本&#x22; 或 [&#x22;a&#x22;]；按住眼睛可查看" PasswordRevealMode="Peek" MaxLength="65536" />
+                <Button x:Name="AddSettingButton" x:FieldModifier="internal" Content="加入配置草稿" Click="AddSettingClicked" />
+            </StackPanel>
+        </Expander>
+        </Grid>
+        <TextBlock x:Name="CatalogErrors" x:FieldModifier="internal" TextWrapping="Wrap" Visibility="Collapsed" />
+        <TextBlock x:Name="CatalogCount" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+        <StackPanel x:Name="CatalogRows" x:FieldModifier="internal" Spacing="16" />
+        <local:ActionWrapPanel>
+            <Button x:Name="PreviousCatalogPageButton" x:FieldModifier="internal" Content="上一页" Click="PreviousCatalogPageClicked" />
+            <Button x:Name="NextCatalogPageButton" x:FieldModifier="internal" Content="下一页" Click="NextCatalogPageClicked" />
+        </local:ActionWrapPanel>
+    </StackPanel>
+</UserControl>

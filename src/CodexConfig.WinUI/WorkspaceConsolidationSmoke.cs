@@ -23,7 +23,7 @@ public sealed partial class MainWindow
         void Check(bool value, string message)
         { if (!value) throw new InvalidOperationException(message); checks.Add(message); File.AppendAllText(Path.Combine(output, "progress.log"), "PASS " + message + Environment.NewLine); }
         async Task Settle()
-        { for (var i = 0; i < 250 && (readingSavedPreview || mobileRefreshing); i++) await Task.Delay(20); await Task.Delay(60); Root.UpdateLayout(); }
+        { for (var i = 0; i < 250 && (FilePreviewPanel.IsReading || mobileRefreshing); i++) await Task.Delay(20); await Task.Delay(60); Root.UpdateLayout(); }
         bool InViewport(FrameworkElement control)
         {
             var point = control.TransformToVisual(Root).TransformPoint(new());
@@ -48,14 +48,14 @@ public sealed partial class MainWindow
             await CaptureAsync(output, "refined-home-light.png");
             var title = PageTitle.TransformToVisual(Root).TransformPoint(new());
             var directory = WorkspaceDirectoryButton.TransformToVisual(Root).TransformPoint(new());
-            var summary = WorkspaceConnectionCard.TransformToVisual(Root).TransformPoint(new());
+            var summary = WorkspacePanel.WorkspaceConnectionCard.TransformToVisual(Root).TransformPoint(new());
             Check(Math.Abs(title.Y + PageTitle.ActualHeight / 2 - directory.Y - WorkspaceDirectoryButton.ActualHeight / 2) <= 2 &&
-                directory.X > title.X + 300 && Math.Abs(summary.X - title.X) <= 2 && Math.Abs(directory.X + WorkspaceDirectoryButton.ActualWidth - summary.X - WorkspaceConnectionCard.ActualWidth) <= 2,
+                directory.X > title.X + 300 && Math.Abs(summary.X - title.X) <= 2 && Math.Abs(directory.X + WorkspaceDirectoryButton.ActualWidth - summary.X - WorkspacePanel.WorkspaceConnectionCard.ActualWidth) <= 2,
                 $"The 1120 × 820 window places the directory beside the title and aligns the title, actions and summary ({Root.ActualWidth:0} × {Root.ActualHeight:0} DIP client area)");
-            var summaryValues = new[] { ModelText, EndpointText, WorkspaceProfileName, WorkspaceDesktopStatus };
+            var summaryValues = new[] { WorkspacePanel.ModelText, WorkspacePanel.EndpointText, WorkspacePanel.WorkspaceProfileName, WorkspacePanel.WorkspaceDesktopStatus };
             Check(summaryValues.Select(value => value.Text).Take(3).SequenceEqual(new[] { "saved-task-model", "https://tasks.invalid", "consolidation-home" }) &&
                 summaryValues.Select(Grid.GetRow).SequenceEqual(Enumerable.Range(0, 4)) &&
-                summaryValues.All(value => Grid.GetColumn(value) == 1 && InViewport(value)) && InViewport(WorkspaceEditConnectionButton),
+                summaryValues.All(value => Grid.GetColumn(value) == 1 && InViewport(value)) && InViewport(WorkspacePanel.WorkspaceEditConnectionButton),
                 "The Home summary presents the model, service, configuration name and runtime status in aligned rows");
             NavigateTo(AdvancedNav, revealStart: true);
             await CaptureAsync(output, "advanced-tools-standard.png");
@@ -63,17 +63,24 @@ public sealed partial class MainWindow
             foreach (var route in Pages)
             {
                 NavigateTo(route); await Settle();
-                Check(((NavigationViewItem)Navigation.SelectedItem).Tag?.ToString() == NavigationSection(route) && PageTitle.Text == SectionTitle(route.Section), "Route " + route.Tag + " selects its task and retains an accessible destination");
+                var advancedChild = NavigationSection(route) == "tools" && route != AdvancedNav;
+                var tool = AdvancedTools.FirstOrDefault(item => item.Page == route);
+                Check(((NavigationViewItem)Navigation.SelectedItem).Tag?.ToString() == NavigationSection(route) &&
+                    (advancedChild
+                        ? AdvancedBreadcrumb.Visibility == Visibility.Visible && AdvancedBreadcrumb.ItemsSource is string[] path &&
+                            path.SequenceEqual(new[] { AdvancedNav.Title, tool.Group, tool.Label }) && PageTitle.Text == tool.Label
+                        : AdvancedBreadcrumb.Visibility == Visibility.Collapsed && PageTitle.Text == SectionTitle(route.Section)),
+                    "Route " + route.Tag + " identifies its task and location in navigation");
             }
             Check(original.SameContents(store.Load(home)) && store.LatestBackup(home) is null && desktop.Restarts == restarts,
                 "Visiting every destination performs no configuration save backup or desktop restart");
             NavigateTo(ConnectionNav); await Settle(); PageScroll.ChangeView(null, 0, null, true); await Settle();
             await CaptureAsync(output, "consolidated-connection-light.png");
             string Position(FrameworkElement element) => element.Name + " " + element.TransformToVisual(Root).TransformPoint(new()) + " " + element.ActualWidth + "x" + element.ActualHeight;
-            Check(InViewport(ConnectionModeInput) && InViewport(BaseUrlInput) && InViewport(ApiKeyInput),
-                $"Connection type endpoint and key fit the initial viewport ({Position(PageScroll)}; {Position(ConnectionModeInput)}; {Position(BaseUrlInput)}; {Position(ApiKeyInput)}; root {Root.ActualWidth}x{Root.ActualHeight})");
-            Check(SetupApiCard.ActualWidth is >= 680 and <= 720 &&
-                Math.Abs(SetupApiCard.TransformToVisual(Root).TransformPoint(new()).X - PageTitle.TransformToVisual(Root).TransformPoint(new()).X) <= 2 &&
+            Check(InViewport(ConnectionPanel.ConnectionModeInput) && InViewport(ConnectionPanel.BaseUrlInput) && InViewport(ConnectionPanel.ApiKeyInput),
+                $"Connection type endpoint and key fit the initial viewport ({Position(PageScroll)}; {Position(ConnectionPanel.ConnectionModeInput)}; {Position(ConnectionPanel.BaseUrlInput)}; {Position(ConnectionPanel.ApiKeyInput)}; root {Root.ActualWidth}x{Root.ActualHeight})");
+            Check(ConnectionPanel.SetupApiCard.ActualWidth is >= 680 and <= 720 &&
+                Math.Abs(ConnectionPanel.SetupApiCard.TransformToVisual(Root).TransformPoint(new()).X - PageTitle.TransformToVisual(Root).TransformPoint(new()).X) <= 2 &&
                 SectionTabs.Visibility == Visibility.Visible &&
                 SectionTabs.Children.OfType<ToggleButton>().Where(tab => tab.IsChecked == true).Single().Content.ToString() == "连接",
                 "The regular connection form keeps a left-aligned readable width and indicates the selected tab");
@@ -83,35 +90,36 @@ public sealed partial class MainWindow
             ResizeConsolidationWindow(720, 540); await Settle();
             Check(CompactSectionInput.Visibility == Visibility.Visible, "The compact selector replaces tabs at the minimum window width");
             CompactSectionInput.SelectedItem = ModelsNav; await Settle();
-            Check(currentPage == ModelsNav && ModelsPanel.Visibility == Visibility.Visible && VisibleAncestors(BehaviorModelInput), "The advanced model editor remains reachable in the connection task");
+            Check(currentPage == ModelsNav && ModelsPanel.Visibility == Visibility.Visible && VisibleAncestors(ModelsPanel.BehaviorModelInput), "The advanced model editor remains reachable in the connection task");
             ResizeConsolidationWindow(1120, 820); await Settle();
-            BehaviorModelInput.Text = "task-selected-model"; await Settle(); var revision = connectionDraft.Revision;
+            ModelsPanel.BehaviorModelInput.Text = "task-selected-model"; await Settle(); var revision = connectionDraft.Revision;
             NavigateTo(ConnectionNav); await Settle();
-            Check(ConnectionModelSummary.Text.Contains("task-selected-model") && ConnectionModelEditorHost.Children.Contains(BehaviorModelInput) && VisibleAncestors(DiscoverModelsButton) &&
-                connectionDraft.Revision == revision && connectionDraft.HasDraft, "The connection page reads models inline and shares the draft with the advanced model editor");
+            Check(ConnectionPanel.ConnectionModelSummary.Text.Contains("task-selected-model") && VisibleAncestors(ConnectionPanel.ChooseConnectionModelButton) && !VisibleAncestors(ModelsPanel.DiscoverModelsButton) &&
+                connectionDraft.Revision == revision && connectionDraft.HasDraft, "The connection page summarizes the model and links to the only editor");
             var confirmations = 0; smokeDialog = _ => { confirmations++; return Task.FromResult(ContentDialogResult.None); };
             NavigateTo(HelpNav); await ExecuteWorkspaceShortcutAsync(VirtualKey.S, VirtualKeyModifiers.Control);
             Check(ApplicationFooter.Visibility == Visibility.Collapsed && PendingChangesButton.Visibility == Visibility.Visible && confirmations == 0 && connectionDraft.Revision == revision, "Help exposes pending changes but Ctrl S cannot save a different page's main configuration");
             NavigateTo(FilePreviewNav); await Settle(); await ExecuteWorkspaceShortcutAsync(VirtualKey.S, VirtualKeyModifiers.Control);
             Check(ApplicationFooter.Visibility == Visibility.Collapsed && confirmations == 0 && original.SameContents(store.Load(home)), "Read only file diagnosis cannot display or trigger the main configuration save action");
             NavigateTo(MobileSettingsNav); await Settle();
-            Check(MobileFooter.Visibility == Visibility.Visible && ApplicationFooter.Visibility == Visibility.Collapsed && VisibleAncestors(MobileGatewayStartButton), "Phone service settings own their save start controls and lifecycle commands");
+            Check(MobileFooter.Visibility == Visibility.Visible && ApplicationFooter.Visibility == Visibility.Collapsed && VisibleAncestors(MobilePanel.MobileGatewayStartButton), "Phone service settings own their save start controls and lifecycle commands");
             NavigateTo(GatewaysNav); await Settle();
-            Check(VisibleAncestors(ModelGatewayStartButton) && !VisibleAncestors(MobileGatewayStartButton), "The runtime gateway page contains only the model service lifecycle");
+            Check(VisibleAncestors(GatewaysPanel.ModelGatewayStartButton) && !VisibleAncestors(MobilePanel.MobileGatewayStartButton), "The runtime gateway page contains only the model service lifecycle");
             NavigateTo(ModelsNav); await Settle();
-            BehaviorModelInput.Text = "";
+            ModelsPanel.BehaviorModelInput.Text = "";
             Check(!await SaveConnectionAsync() && currentPage == ModelsNav && connectionDraft.HasDraft && confirmations == 0 && original.SameContents(store.Load(home)), "A missing default model focuses its only editor and preserves the unsaved connection before review");
-            BehaviorModelInput.Text = "task-selected-model";
+            ModelsPanel.BehaviorModelInput.Text = "task-selected-model";
             smokeDialog = _ => { confirmations++; return Task.FromResult(ContentDialogResult.Primary); };
             Check(await SaveConnectionAsync() && !connectionDraft.HasDraft && desktop.Restarts == restarts && new TomlDocument(store.Load(home).Config).String("model") == "task-selected-model",
                 "The model task completes the existing encrypted save without restarting Codex");
-            Check(currentPage == ModelsNav && DesktopApplicationActions.Visibility == Visibility.Visible && ApplyButton.IsEnabled,
+            Check(currentPage == ModelsNav && DesktopApplicationActions.Visibility == Visibility.Visible && ApplyButton.IsEnabled &&
+                ApplyFooterButtons.Children.Count == 2 && ApplicationError.Parent == PageBody,
                 "A saved configuration offers application in the same configuration area without returning home");
             PageScroll.ChangeView(null, 0, null, true); await Settle(); await CaptureAsync(output, "consolidated-models-light.png");
             original = store.Load(home); connectionDraft.Model = "main-independent-draft";
-            NavigateTo(ProfilesNav); await LoadProfileAsync("independent-task"); ProfileDocumentInput.Text = "model='profile-task-model'\n";
-            NavigateTo(MobileSettingsNav); await Settle(); MobileUrlInput.Text = "https://phone-task.invalid"; MobileUsernameInput.Text = "task-user"; MobilePasswordInput.Password = "fake-task-password-123";
-            NavigateTo(TemplatesNav); EnsureTemplateLibrary(); BeginTemplateEdit(TemplateRepository.New("Task draft", []), true); TemplateNameInput.Text = "Separate task scheme";
+            NavigateTo(ProfilesNav); await LoadProfileAsync("independent-task"); ProfilesPanel.ProfileDocumentInput.Text = "model='profile-task-model'\n";
+            NavigateTo(MobileSettingsNav); await Settle(); MobilePanel.MobileUrlInput.Text = "https://phone-task.invalid"; MobilePanel.MobileUsernameInput.Text = "task-user"; MobilePanel.MobilePasswordInput.Password = "fake-task-password-123";
+            NavigateTo(TemplatesNav); EnsureTemplateLibrary(); BeginTemplateEdit(TemplateRepository.New("Task draft", []), true); TemplatesPanel.TemplateNameInput.Text = "Separate task scheme";
             RefreshView();
             Check(PendingChangesList.Children.Count == 4 && PendingChangesButton.Content.ToString() == "待处理修改 4" && TemplateEditFooter.Visibility == Visibility.Visible && ApplicationFooter.Visibility == Visibility.Collapsed,
                 "Four independent edited objects are discoverable together while the scheme editor saves only the library");
@@ -121,7 +129,7 @@ public sealed partial class MainWindow
             Check(currentPage == ProfilesNav && HasTemplateDraft && connectionDraft.Revision == mainRevision && profileDraft.Revision == profileRevision && mobileDraft.Revision == mobileRevision && original.SameContents(store.Load(home)),
                 "Switching resource types and help preserves every draft and all saved files");
             Navigation.SelectedItem = ConfigurationSectionNav; Navigation.SelectedItem = AdvancedSectionNav;
-            Check(currentPage == AdvancedNav && profileDraft.Revision == profileRevision && AdvancedToolsList.Children.Count > 0, "Advanced tools are discoverable independently of the three daily tasks");
+            Check(currentPage == AdvancedNav && profileDraft.Revision == profileRevision && AdvancedPanel.AdvancedToolsList.Children.Count > 0, "Advanced tools are discoverable independently of the three daily tasks");
             await RunAdvancedToolsLayoutSmokeAsync(output, Check);
             Check(profileDraft.Revision == profileRevision && original.SameContents(store.Load(home)), "Searching and opening advanced tools preserve the saved configuration and draft");
             Root.RequestedTheme = ElementTheme.Dark; AppWindow.Resize(new(720, 540)); NavigateTo(MobileSettingsNav); await Settle();
@@ -131,7 +139,7 @@ public sealed partial class MainWindow
             await CaptureAsync(output, "consolidated-phone-compact-dark.png");
             AppWindow.Resize(new(1120, 820)); NavigateTo(ProfilesNav); await Settle(); await CaptureAsync(output, "consolidated-resources-dark.png");
             NavigateTo(WorkspaceNav); Root.RequestedTheme = ElementTheme.Light; await Settle(); await CaptureAsync(output, "consolidated-workspace-pending.png");
-            Check(WorkspaceNextButton.Content.ToString() == "继续编辑" && ApplicationFooter.Visibility == Visibility.Collapsed, "Home presents one primary next step for the outstanding main configuration");
+            Check(WorkspacePanel.WorkspaceNextButton.Content.ToString() == "继续编辑" && ApplicationFooter.Visibility == Visibility.Collapsed, "Home presents one primary next step for the outstanding main configuration");
         }
         finally
         {
@@ -161,8 +169,8 @@ public sealed partial class MainWindow
             await Task.Delay(100);
             Root.UpdateLayout();
             check(WorkspaceDirectoryLabel.IsTextTrimmed && WorkspaceDirectoryLabel.Text.EndsWith(folder, StringComparison.Ordinal) &&
-                ModelText.Text == model && EndpointText.Text == endpoint && WorkspaceProfileName.Text == folder &&
-                new[] { ModelText, EndpointText, WorkspaceProfileName }.All(value => value.ActualHeight > value.FontSize * 2),
+                WorkspacePanel.ModelText.Text == model && WorkspacePanel.EndpointText.Text == endpoint && WorkspacePanel.WorkspaceProfileName.Text == folder &&
+                new[] { WorkspacePanel.ModelText, WorkspacePanel.EndpointText, WorkspacePanel.WorkspaceProfileName }.All(value => value.ActualHeight > value.FontSize * 2),
                 "Long directory names are ellipsized in the header while full saved names, addresses and models wrap in the 460 DIP Home summary");
             flyout.ShowAt(WorkspaceDirectoryButton);
             await Task.Delay(100);
@@ -179,28 +187,28 @@ public sealed partial class MainWindow
     }
 
     // The monitor can cap the requested window size. Assert the layout for the measured tool area.
-    private int ExpectedAdvancedToolColumns() => AdvancedToolsList.ActualWidth switch { < 500 => 1, < 760 => 2, _ => 3 };
+    private int ExpectedAdvancedToolColumns() => AdvancedPanel.AdvancedToolsList.ActualWidth switch { < 500 => 1, < 760 => 2, _ => 3 };
 
     private double ExpectedAdvancedToolColumnWidth()
     {
         var columns = ExpectedAdvancedToolColumns();
-        return (AdvancedToolsList.ActualWidth - 12 * (columns - 1)) / columns;
+        return (AdvancedPanel.AdvancedToolsList.ActualWidth - 12 * (columns - 1)) / columns;
     }
 
     private void CheckAdvancedToolGrid(Action<bool, string> check)
     {
         var columns = ExpectedAdvancedToolColumns();
-        var cards = AdvancedToolsList.Children.OfType<Border>().ToArray();
+        var cards = AdvancedPanel.AdvancedToolsList.Children.OfType<Border>().ToArray();
         var sections = cards.Select(card => (StackPanel)card.Child).ToArray();
-        check(cards.Length == 3 && AdvancedToolsList.ColumnDefinitions.Count == columns &&
+        check(cards.Length == 3 && AdvancedPanel.AdvancedToolsList.ColumnDefinitions.Count == columns &&
             sections.Select(section => ((TextBlock)section.Children[0]).Text).SequenceEqual(new[] { "配置", "网关与增强", "诊断与恢复" }) &&
             sections.Select(section => section.Children.OfType<Button>().Count()).SequenceEqual(new[] { 3, 3, 4 }) &&
             cards.Select((card, index) => Grid.GetColumn(card) == index % columns && Grid.GetRow(card) == index / columns).All(placed => placed),
-            $"The ten tools occupy three groups in order across {columns} columns at {AdvancedToolsList.ActualWidth:0} DIP available width");
+            $"The ten tools occupy three groups in order across {columns} columns at {AdvancedPanel.AdvancedToolsList.ActualWidth:0} DIP available width");
         foreach (var card in cards)
         {
-            var cardPosition = card.TransformToVisual(AdvancedToolsList).TransformPoint(new());
-            check(cardPosition.X >= -1 && cardPosition.X + card.ActualWidth <= AdvancedToolsList.ActualWidth + 1 &&
+            var cardPosition = card.TransformToVisual(AdvancedPanel.AdvancedToolsList).TransformPoint(new());
+            check(cardPosition.X >= -1 && cardPosition.X + card.ActualWidth <= AdvancedPanel.AdvancedToolsList.ActualWidth + 1 &&
                 Math.Abs(card.ActualWidth - ExpectedAdvancedToolColumnWidth()) <= 2 &&
                 VisualDescendants<Button>(card).All(tool =>
                 {
@@ -216,27 +224,27 @@ public sealed partial class MainWindow
     {
         double Left(FrameworkElement control) => control.TransformToVisual(Root).TransformPoint(new()).X;
         double Top(FrameworkElement control) => control.TransformToVisual(Root).TransformPoint(new()).Y;
-        Button[] Tools() => VisualDescendants<Button>(AdvancedToolsList).ToArray();
+        Button[] Tools() => VisualDescendants<Button>(AdvancedPanel.AdvancedToolsList).ToArray();
 
         Root.RequestedTheme = ElementTheme.Light;
         ResizeConsolidationWindow(1840, 900);
         await Task.Delay(150); Root.UpdateLayout();
         // Hosted desktops can need the compact rail to give the three-column case enough room.
-        if (AdvancedToolsList.ActualWidth < 760 && Navigation.IsPaneOpen) Navigation.IsPaneOpen = false;
+        if (AdvancedPanel.AdvancedToolsList.ActualWidth < 760 && Navigation.IsPaneOpen) Navigation.IsPaneOpen = false;
         await CaptureAsync(output, "advanced-tools-wide.png");
         var start = Left(PageTitle);
-        var width = AdvancedToolsList.ActualWidth;
+        var width = AdvancedPanel.AdvancedToolsList.ActualWidth;
         var expectedWidth = Math.Min(1000, PageScroll.ViewportWidth) - PageBody.Padding.Left - PageBody.Padding.Right;
-        check(Math.Abs(width - expectedWidth) <= 2 && Math.Abs(Left(AdvancedSearchInput) - start) <= 2 &&
-            Math.Abs(Left(AdvancedToolsList) - start) <= 2 && Math.Abs(AdvancedSearchInput.ActualWidth - Math.Min(480, width)) <= 2 &&
-            Math.Abs(Left(PendingChangesButton) + PendingChangesButton.ActualWidth - start - AdvancedToolsList.ActualWidth) <= 2,
+        check(Math.Abs(width - expectedWidth) <= 2 && Math.Abs(Left(AdvancedPanel.AdvancedSearchInput) - start) <= 2 &&
+            Math.Abs(Left(AdvancedPanel.AdvancedToolsList) - start) <= 2 && Math.Abs(AdvancedPanel.AdvancedSearchInput.ActualWidth - Math.Min(480, width)) <= 2 &&
+            Math.Abs(Left(PendingChangesButton) + PendingChangesButton.ActualWidth - start - AdvancedPanel.AdvancedToolsList.ActualWidth) <= 2,
             $"The wide-window request keeps the title, search, tool cards and header actions in the same capped column ({Root.ActualWidth:0} × {Root.ActualHeight:0} DIP client area)");
         CheckAdvancedToolGrid(check);
         await ExecuteWorkspaceShortcutAsync(VirtualKey.F, VirtualKeyModifiers.Control);
-        check(ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), AdvancedSearchInput), "Ctrl F focuses the advanced tool search");
-        AdvancedSearchInput.Text = "回滚"; Root.UpdateLayout();
+        check(ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), AdvancedPanel.AdvancedSearchInput), "Ctrl F focuses the advanced tool search");
+        AdvancedPanel.AdvancedSearchInput.Text = "回滚"; Root.UpdateLayout();
         var recovery = Tools().SingleOrDefault();
-        var resultCard = (Border)AdvancedToolsList.Children[0];
+        var resultCard = (Border)AdvancedPanel.AdvancedToolsList.Children[0];
         check(recovery?.Content.ToString() == "备份与恢复" && Math.Abs(Left(resultCard) - start) <= 2 &&
             Math.Abs(resultCard.ActualWidth - ExpectedAdvancedToolColumnWidth()) <= 2,
             "An alias query leaves only an accessible recovery result at the normal column width on the left");
@@ -244,10 +252,10 @@ public sealed partial class MainWindow
         Root.RequestedTheme = ElementTheme.Dark;
         ResizeConsolidationWindow(720, 540);
         await Task.Delay(100); Root.UpdateLayout();
-        check(AdvancedSearchInput.Text == "回滚" && ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), AdvancedSearchInput) &&
+        check(AdvancedPanel.AdvancedSearchInput.Text == "回滚" && ReferenceEquals(FocusManager.GetFocusedElement(Root.XamlRoot), AdvancedPanel.AdvancedSearchInput) &&
             ReferenceEquals(Tools().SingleOrDefault(), recovery) && Math.Abs(resultCard.ActualWidth - ExpectedAdvancedToolColumnWidth()) <= 2,
             "Resizing retains the live query, keyboard focus and the existing result at the compact column width");
-        check(ReferenceEquals(FocusManager.FindFirstFocusableElement(AdvancedToolsList), recovery) &&
+        check(ReferenceEquals(FocusManager.FindFirstFocusableElement(AdvancedPanel.AdvancedToolsList), recovery) &&
             recovery!.Focus(FocusState.Keyboard) && AutomationProperties.GetName(recovery) == "备份与恢复",
             "A tool result is keyboard focusable and its accessible name contains only the destination");
         var peer = new ButtonAutomationPeer(recovery!);
@@ -257,19 +265,19 @@ public sealed partial class MainWindow
 
         NavigateTo(AdvancedNav, revealStart: true);
         var previousError = shellError;
-        AdvancedSearchInput.Text = "approval_policy";
-        check(AdvancedNoResults.Visibility == Visibility.Visible && AdvancedFieldSearchButton.Visibility == Visibility.Visible,
+        AdvancedPanel.AdvancedSearchInput.Text = "approval_policy";
+        check(AdvancedPanel.AdvancedNoResults.Visibility == Visibility.Visible && AdvancedPanel.AdvancedFieldSearchButton.Visibility == Visibility.Visible,
             "A raw configuration field has a visible path to search all settings");
-        SearchAdvancedFieldsClicked(AdvancedFieldSearchButton, new());
-        check(currentPage == CatalogNav && CatalogSearchInput.Text == "approval_policy" && catalogInputs.ContainsKey("approval_policy") && shellError == previousError,
+        SearchAdvancedFieldsClicked(AdvancedPanel.AdvancedFieldSearchButton, new());
+        check(currentPage == CatalogNav && CatalogPanel.CatalogSearchInput.Text == "approval_policy" && catalogInputs.ContainsKey("approval_policy") && shellError == previousError,
             "Field search opens the matching configuration editor immediately");
         NavigateTo(AdvancedNav, revealStart: true);
-        AdvancedSearchInput.Text = "mcp_servers.<name>";
-        SearchAdvancedFieldsClicked(AdvancedFieldSearchButton, new());
-        check(catalogPage is { Entries.Count: > 0 } && catalogPage.Entries.All(entry => entry.Dynamic) && CatalogRows.Children.Count == catalogPage.Entries.Count && shellError == previousError,
+        AdvancedPanel.AdvancedSearchInput.Text = "mcp_servers.<name>";
+        SearchAdvancedFieldsClicked(AdvancedPanel.AdvancedFieldSearchButton, new());
+        check(catalogPage is { Entries.Count: > 0 } && catalogPage.Entries.All(entry => entry.Dynamic) && CatalogPanel.CatalogRows.Children.Count == catalogPage.Entries.Count && shellError == previousError,
             "Schema placeholders can be searched without being treated as saved TOML paths");
-        AdvancedSearchInput.Text = "";
-        CatalogSearchInput.Text = "";
+        AdvancedPanel.AdvancedSearchInput.Text = "";
+        CatalogPanel.CatalogSearchInput.Text = "";
         NavigateTo(AdvancedNav, revealStart: true);
         await CaptureAsync(output, "advanced-tools-compact-dark.png");
         CheckAdvancedToolGrid(check);
@@ -292,12 +300,12 @@ public sealed partial class MainWindow
         }
         NavigateTo(ConnectionNav, revealStart: true);
         await Task.Delay(100); Root.UpdateLayout();
-        BaseUrlInput.Focus(FocusState.Keyboard);
+        ConnectionPanel.BaseUrlInput.Focus(FocusState.Keyboard);
         await CaptureAsync(output, "refined-connection-compact-dark.png");
         check(Top(WorkspaceDirectoryButton) >= Top(PageTitle) + PageTitle.ActualHeight - 1 &&
-            Math.Abs(Left(PageTitle) - Left(SetupApiCard)) <= 2 && PendingChangesButton.Visibility == Visibility.Visible &&
+            Math.Abs(Left(PageTitle) - Left(ConnectionPanel.SetupApiCard)) <= 2 && PendingChangesButton.Visibility == Visibility.Visible &&
             Left(PendingChangesButton) + PendingChangesButton.ActualWidth <= Root.ActualWidth &&
-            Left(ApiKeyInput) + ApiKeyInput.ActualWidth <= Root.ActualWidth &&
+            Left(ConnectionPanel.ApiKeyInput) + ConnectionPanel.ApiKeyInput.ActualWidth <= Root.ActualWidth &&
             Math.Abs(Left(PageTitle) - Left(SaveConnectionButton)) <= 2 &&
             CompactSectionInput.Visibility == Visibility.Visible && ApplicationFooter.Visibility == Visibility.Visible &&
             SaveConnectionButton.Content.ToString() == "核对连接" && Top(SaveConnectionButton) + SaveConnectionButton.ActualHeight <= Root.ActualHeight + 1,

@@ -61,4 +61,4 @@ HTTP 确认只约束 Dock 的探测和网关。API 直连时，Codex 根据已�
 pwsh -NoProfile -File scripts/verify-superba-reuse.ps1 -CodexCli 'C:\path\to\codex.exe'
 ```
 
-使用真实 `codex.exe` 路径可加入原生兼容检查；省略该参数则运行普通核心与完整 UI 回归。脚本只读真实环境以确认未变化，写入使用隔离目录、虚构凭据和独立注册表项；不会重启真实 Codex。日志、截图和结果清单位于 `artifacts/superba-2026-11-11/verification-*`。
+使用真实 `codex.exe` 路径可加入原生兼容检查，省略该参数会运行普通核心与完整 UI 回归。脚本通过只读操作核对真实环境是否有变动，写入使用隔离目录、虚构凭据和独立注册表项。新的日志、截图和结果清单位于 `artifacts/test-runs/wpf-superba-*`。

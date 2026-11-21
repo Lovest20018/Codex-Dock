@@ -28,7 +28,9 @@ public sealed class WorkspaceShellViewModel : WorkspaceObservableObject
     public WorkspaceSetupGuide SetupGuide => setupGuide;
     public bool NeedsConnectionSetup => configurationAvailable && setupGuide.Kind == WorkspaceSetupKind.NeedsConnection;
     public bool CanApplyConfiguration => ConfigurationAvailable && !NeedsConnectionSetup;
-    public string Error => configurationError ?? preferenceError ?? "";
+    public string? ConfigurationError => configurationError;
+    public string? PreferenceError => preferenceError;
+    public string Error => ConfigurationError ?? PreferenceError ?? "";
     public string Status => !configurationAvailable ? "配置未读取，请检查后重试。" :
         preferenceError is not null ? "配置已读取，增强偏好需要处理。" :
         Session.State.HasDraft ? "本地配置已读取，修改尚未保存。" :
@@ -87,13 +89,30 @@ public sealed class WorkspaceShellViewModel : WorkspaceObservableObject
         }
         catch (Exception error) when (IsStorageError(error)) { configurationError = WorkspaceStorageErrors.Describe(error); }
         enhancements.SetHome(home);
-        if (configurationAvailable)
-        {
-            try { enhancements.Reload(); preferencesAvailable = true; }
-            catch (Exception error) when (IsStorageError(error))
-            { preferenceError = "无法读取客户端增强设置。请检查设置文件内容与目录权限，修复后重新读取。"; }
-        }
+        if (configurationAvailable) ReadPreferences();
         SyncEnhancements(); Notify();
+    }
+
+    public void ReloadPreferences()
+    {
+        if (!ConfigurationAvailable) return;
+        ReadPreferences();
+        SyncEnhancements(); Notify();
+    }
+
+    private void ReadPreferences()
+    {
+        try
+        {
+            enhancements.Reload();
+            preferencesAvailable = true;
+            preferenceError = null;
+        }
+        catch (Exception error) when (IsStorageError(error))
+        {
+            preferencesAvailable = false;
+            preferenceError = "无法读取客户端增强设置。请检查设置文件内容与目录权限，修复后重新读取。";
+        }
     }
 
     public void ApplicationFinished(DesktopApplyResult result)
@@ -142,7 +161,7 @@ public sealed class WorkspaceShellViewModel : WorkspaceObservableObject
     private void Notify()
     {
         foreach (var property in new[] { nameof(Home), nameof(IsBusy), nameof(ConfigurationAvailable), nameof(PreferencesAvailable), nameof(ConnectionRecoveryEnabled), nameof(SpeedCompatibilityEnabled),
-            nameof(AutomaticReconnectEnabled), nameof(PreferencesChanged), nameof(Error), nameof(Status), nameof(ConnectionLabel), nameof(ServiceOrigin),
+            nameof(AutomaticReconnectEnabled), nameof(PreferencesChanged), nameof(Error), nameof(ConfigurationError), nameof(PreferenceError), nameof(Status), nameof(ConnectionLabel), nameof(ServiceOrigin),
             nameof(ModelLabel), nameof(ProfileName), nameof(EnhancementSummary), nameof(EnhancementStatus), nameof(SetupGuide), nameof(NeedsConnectionSetup), nameof(CanApplyConfiguration) }) Changed(property);
     }
 }

@@ -17,14 +17,22 @@ import org.json.*;
 /** Network fixtures and install interception exist only in this separate test APK. */
 public final class UpdateSmoke extends Instrumentation {
  private Activity activity;private final JSONArray checks=new JSONArray();private byte[] apk;private String digest;private volatile String mode="new";private volatile int requests;
- private final String current="0.2.4",next="0.2.5";private Class<?> releaseType,updatesType;
+ private String current,next;private Class<?> releaseType,updatesType;
  private static final String PACKAGE="io.github.lovest20018.codexdock";
  @Override public void onCreate(Bundle args){start();}
  private void ui(Runnable action){runOnMainSync(action);}
  private void check(boolean value,String message){if(!value)throw new AssertionError(message);checks.put(message);android.util.Log.i("DockUpdateQA",message);}
  private void until(BooleanSupplier condition,String message)throws Exception{long end=SystemClock.elapsedRealtime()+25000;while(SystemClock.elapsedRealtime()<end){if(condition.getAsBoolean())return;Thread.sleep(100);}throw new AssertionError(message);}
- private Object field(String name){try{Field f=activity.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(activity);}catch(Exception e){throw new RuntimeException(e);}}
- private Object call(String name,Class<?>[] types,Object...args){try{Method m=activity.getClass().getDeclaredMethod(name,types);m.setAccessible(true);return m.invoke(activity,args);}catch(Exception e){throw new RuntimeException(e);}}
+ private Object controller(String member) throws ReflectiveOperationException {
+  if("resumed".equals(member))return activity;
+  String name=Arrays.asList("downloadTask","openingDownload","cancelDownload").contains(member)?"downloads":"updates";
+  Field f=activity.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(activity);
+ }
+ private Object field(String name){try{Object target=controller(name);Field f=target.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(target);}catch(Exception e){throw new RuntimeException(e);}}
+ private void resetField(String name) throws ReflectiveOperationException {
+  Object target=controller(name);Field f=target.getClass().getDeclaredField(name);f.setAccessible(true);f.set(target,null);
+ }
+ private Object call(String name,Class<?>[] types,Object...args){try{Object target=controller(name);Method m=target.getClass().getDeclaredMethod(name,types);m.setAccessible(true);return m.invoke(target,args);}catch(Exception e){throw new RuntimeException(e);}}
  private void call(String name){call(name,new Class<?>[0]);}
  private Object release()throws Exception{return releaseType.getConstructor(String.class,String.class,long.class,String.class).newInstance(next,"Fixture Android release",(long)apk.length,digest);}
  private JSONArray rows(String version)throws Exception{
@@ -55,7 +63,9 @@ public final class UpdateSmoke extends Instrumentation {
  private String state(){Object task=field("downloadTask");if(task==null)return "NONE";try{return task.getClass().getField("state").get(task).toString();}catch(Exception e){throw new RuntimeException(e);}}
  private void cancel(){ui(()->call("cancelDownload"));}
  @Override public void onStart(){Bundle result=new Bundle();try{
-  Context target=getTargetContext();releaseType=Class.forName("io.github.try2love.codexbridge.MobileRelease",true,target.getClassLoader());updatesType=Class.forName("io.github.try2love.codexbridge.AppUpdates",true,target.getClassLoader());
+  Context target=getTargetContext();current=target.getPackageManager().getPackageInfo(PACKAGE,0).versionName;
+  String[] version=current.split("\\.");next=version[0]+"."+version[1]+"."+(Integer.parseInt(version[2])+1);
+  releaseType=Class.forName("io.github.try2love.codexbridge.MobileRelease",true,target.getClassLoader());updatesType=Class.forName("io.github.try2love.codexbridge.AppUpdates",true,target.getClassLoader());
   try(InputStream in=getContext().getAssets().open("update-fixture.apk");ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] block=new byte[8192];int count;while((count=in.read(block))!=-1)out.write(block,0,count);apk=out.toByteArray();}
   StringBuilder hash=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(apk))hash.append(String.format("%02x",b));digest=hash.toString();
   URL.setURLStreamHandlerFactory(protocol->"https".equals(protocol)?new URLStreamHandler(){protected URLConnection openConnection(URL url)throws IOException{return response(url);}}:null);
@@ -86,7 +96,7 @@ public final class UpdateSmoke extends Instrumentation {
   check(requests>=6,"Checks and download execute the production HTTP path");
   // Restore the pending file through production verification, then grant install permission externally.
   ui(()->call("resumeUpdateInstall"));check(field("updateSession")!=null,"Permission denial preserves the pending package for retry");
-  ui(()->{try{for(String name:new String[]{"downloadTask","updateSession"}){Field f=activity.getClass().getDeclaredField(name);f.setAccessible(true);f.set(activity,null);}call("restoreUpdate");}catch(Exception e){throw new RuntimeException(e);}});
+  ui(()->{try{resetField("downloadTask");resetField("updateSession");call("restoreUpdate");}catch(Exception e){throw new RuntimeException(e);}});
   until(()->Boolean.FALSE.equals(field("restoringUpdate"))&&state().equals("COMPLETE"),"Verified pending package restores");check(true,"Pending package restores from private storage and is reverified");
   try(android.os.ParcelFileDescriptor command=getUiAutomation().executeShellCommand("appops set "+PACKAGE+" REQUEST_INSTALL_PACKAGES allow");InputStream input=new FileInputStream(command.getFileDescriptor())){byte[] block=new byte[256];while(input.read(block)!=-1){}}
   ui(()->call("installDownloadedUpdate"));until(()->install.getHits()>0,"Granted permission opens installer");check(true,"Verified APK reaches the system installer after permission is granted");

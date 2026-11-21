@@ -48,4 +48,4 @@ Windows 手机连接页和 Dock Web 的“聊天与通知”补充完成提醒�
 
 核心和 WPF 检查使用虚构认证、独立配置目录和本地夹具，不调用真实模型、不发送通知。上述结果不代表实际供应商压缩成功、速度 / 费用改善，或安卓真机后台通知已验收。
 
-本机证据保存在忽略目录：`artifacts/config-optimization-core.log`、`artifacts/config-optimization-browser.log`、`.ui-test-config-optimization-complete/report.json` 及同目录截图。运行方式见 [开发说明](development.md)，字段来源维护见 [字段说明](schema-maintenance.md)。
+本机证据保存在 `artifacts/config-optimization-core.log`、`artifacts/config-optimization-browser.log` 和 `artifacts/test-runs/legacy/.ui-test-config-optimization-complete/report.json`，截图与报告同目录。运行方式见 [开发说明](development.md)，字段来源维护见 [字段说明](schema-maintenance.md)。

@@ -1,4 +1,4 @@
-﻿using CodexConfig.Application;
+using CodexConfig.Application;
 using CodexConfig.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -15,18 +15,23 @@ public sealed partial class MainWindow
         var runtime = (SmokeGatewayRuntime)gatewayRuntime;
         var original = store.Load(viewModel.Home); var home = viewModel.Home;
         NavigateTo(GatewaysNav); await RefreshGatewaysAsync();
-        Check(GatewaysPanel.Visibility == Visibility.Visible && ConnectionPanel.Visibility == Visibility.Collapsed && PageTitle.Text == "运行与增强" &&
-            !ModelGatewayStartButton.IsEnabled && !MobileGatewayStartButton.IsEnabled && !ModelGatewayAutomaticInput.IsOn && !MobileGatewayAutomaticInput.IsOn,
+        var modelDefaultsOff = GatewaysPanel.Visibility == Visibility.Visible && ConnectionPanel.Visibility == Visibility.Collapsed &&
+            PageTitle.Text == GatewaysNav.Title && !GatewaysPanel.ModelGatewayStartButton.IsEnabled && !GatewaysPanel.ModelGatewayAutomaticInput.IsOn;
+        NavigateTo(MobileSettingsNav);
+        Check(modelDefaultsOff && !MobilePanel.MobileGatewayStartButton.IsEnabled && !MobilePanel.MobileGatewayAutomaticInput.IsOn,
             "WinUI gateway page defaults both auto-start choices off and does not start unconfigured workers");
         Check(runtime.Trace.Count == 0 && original.SameContents(store.Load(home)), "Gateway refresh is read-only and never applies a connection draft");
         runtime.Configured[GatewayKind.Model] = runtime.Configured[GatewayKind.Mobile] = true;
         await RefreshGatewaysAsync();
-        Check(ModelGatewayStartButton.IsEnabled && MobileGatewayStartButton.IsEnabled && !ModelGatewayStopButton.IsEnabled,
+        var mobileCanStart = MobilePanel.MobileGatewayStartButton.IsEnabled;
+        MobilePanel.MobileGatewayAutomaticInput.IsOn = true;
+        NavigateTo(GatewaysNav);
+        Check(GatewaysPanel.ModelGatewayStartButton.IsEnabled && mobileCanStart && !GatewaysPanel.ModelGatewayStopButton.IsEnabled,
             "Saved stopped gateway definitions enable start without claiming an existing running process");
-        ModelGatewayAutomaticInput.IsOn = true; MobileGatewayAutomaticInput.IsOn = true;
+        GatewaysPanel.ModelGatewayAutomaticInput.IsOn = true;
         Check(gatewayManagement.LoadPreferences(home) == new GatewayStartupSettings(true, true) && runtime.Trace.Count == 0 && !connectionDraft.HasDraft,
             "Gateway auto-start toggles persist per directory without starting workers or changing the connection draft");
-        BehaviorModelInput.Text = "gateway-keeps-draft"; await Task.Delay(40);
+        connectionDraft.Model = "gateway-keeps-draft";
         Check(connectionDraft.HasDraft, "Gateway fixture stages a connection draft for preservation checks");
         await StartGatewaysOnLaunchAsync();
         Check(runtime.Running.Values.All(value => value == true) && connectionDraft.Model == "gateway-keeps-draft" &&
@@ -37,51 +42,64 @@ public sealed partial class MainWindow
         await RefreshGatewaysAsync(); await StartGatewaysOnLaunchAsync();
         Check(result?.Succeeded == true && runtime.Trace.Count == count && runtime.Running[GatewayKind.Model] == false && runtime.Running[GatewayKind.Mobile] == true,
             "A manual model stop survives polling and repeated launch callbacks while the phone gateway continues");
-        ModelGatewayAutomaticInput.IsOn = false; MobileGatewayAutomaticInput.IsOn = false;
+        GatewaysPanel.ModelGatewayAutomaticInput.IsOn = false;
+        NavigateTo(MobileSettingsNav); MobilePanel.MobileGatewayAutomaticInput.IsOn = false; NavigateTo(GatewaysNav);
         Check(runtime.Running[GatewayKind.Mobile] == true && gatewayManagement.LoadPreferences(home) == new GatewayStartupSettings(),
             "Disabling gateway auto-start leaves an already running phone worker untouched");
         await OperateGatewayAsync(GatewayKind.Mobile, GatewayCommand.Restart);
         Check(runtime.Trace.TakeLast(2).SequenceEqual(new[] { "stop:Mobile", "start:Mobile" }) && connectionDraft.Model == "gateway-keeps-draft",
             "Gateway restart stops before starting and preserves the connection draft");
         runtime.Running[GatewayKind.Model] = null; await RefreshGatewaysAsync();
-        Check(ModelGatewayStateText.Text == "暂未确认" && !ModelGatewayStopButton.IsEnabled,
+        Check(GatewaysPanel.ModelGatewayStateText.Text == "暂未确认" && !GatewaysPanel.ModelGatewayStopButton.IsEnabled,
             "An unconfirmed model listener remains unknown instead of being shown as stopped");
         runtime.Running[GatewayKind.Model] = false;
         runtime.Gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var starting = OperateGatewayAsync(GatewayKind.Model, GatewayCommand.Start);
-        Check(ManualApplicationBusy && !ApplyButton.IsEnabled && !ChooseHomeButton.IsEnabled && !BaseUrlInput.IsEnabled && !MobileGatewayStartButton.IsEnabled,
+        NavigateTo(MobileSettingsNav);
+        Check(ManualApplicationBusy && !ApplyButton.IsEnabled && !ChooseHomeButton.IsEnabled && !CanEditConnection && !MobilePanel.MobileGatewayStartButton.IsEnabled,
             "An in-progress gateway action locks save application directory and competing gateway actions");
         var duplicate = await OperateGatewayAsync(GatewayKind.Model, GatewayCommand.Start);
         Check(duplicate is null && !await SwitchHomeAsync(Path.Combine(output, "blocked-gateway-home")), "Duplicate gateway actions and directory switches cannot race the held operation lease");
-        runtime.Gate.TrySetResult(); await starting; runtime.Gate = null;
+        runtime.Gate.TrySetResult(); await starting; runtime.Gate = null; NavigateTo(GatewaysNav);
         runtime.FailStart = GatewayKind.Model;
         result = await OperateGatewayAsync(GatewayKind.Model, GatewayCommand.Restart);
-        Check(result?.Outcome == GatewayOperationOutcome.Failed && ModelGatewayOperation.IsOpen && ModelGatewayOperation.Message.Contains("失败") &&
+        Check(result?.Outcome == GatewayOperationOutcome.Failed && GatewaysPanel.ModelGatewayOperation.IsOpen && GatewaysPanel.ModelGatewayOperation.Message.Contains("失败") &&
             runtime.Running[GatewayKind.Mobile] == true && connectionDraft.Model == "gateway-keeps-draft",
             "A model gateway failure remains visible without stopping the phone worker or losing draft fields");
         runtime.FailStart = null;
         DiscardConnectionClicked(DiscardConnectionButton, new());
         var preferences = gatewayManagement.Preferences(home); var valid = File.ReadAllBytes(preferences.SettingsPath);
         File.WriteAllText(preferences.SettingsPath, "{\"ModelOnDockStart\":\"invalid\"}"); LoadGatewayPreferences();
-        Check(GatewayPreferencesError.IsOpen && !ModelGatewayAutomaticInput.IsEnabled && !MobileGatewayAutomaticInput.IsEnabled &&
+        var modelPreferencesBlocked = GatewaysPanel.GatewayPreferencesError.IsOpen && !GatewaysPanel.ModelGatewayAutomaticInput.IsEnabled;
+        NavigateTo(MobileSettingsNav);
+        Check(modelPreferencesBlocked && MobilePanel.MobileGatewayPreferencesError.IsOpen && !MobilePanel.MobileGatewayAutomaticInput.IsEnabled &&
             File.ReadAllText(preferences.SettingsPath).Contains("invalid"), "Corrupt gateway auto-start storage disables writes and preserves the original damaged file");
-        File.WriteAllBytes(preferences.SettingsPath, valid); LoadGatewayPreferences();
-        Check(!GatewayPreferencesError.IsOpen && ModelGatewayAutomaticInput.IsEnabled, "Repair and refresh restore gateway auto-start controls without starting a worker");
-        runtime.FailStop = GatewayKind.Model; smokeDialog = _ => Task.FromResult(ContentDialogResult.Primary);
-        await StopGatewaysAndExitAsync();
-        Check(!closing && ModelGatewayOperation.IsOpen && runtime.Running[GatewayKind.Mobile] == false && AppWindow.IsVisible,
+        File.WriteAllBytes(preferences.SettingsPath, valid); NavigateTo(GatewaysNav); LoadGatewayPreferences();
+        Check(!GatewaysPanel.GatewayPreferencesError.IsOpen && GatewaysPanel.ModelGatewayAutomaticInput.IsEnabled, "Repair and refresh restore gateway auto-start controls without starting a worker");
+        runtime.FailStop = GatewayKind.Model; smokeDialog = _ => Task.FromResult(ContentDialogResult.Secondary);
+        await RequestWindowExitAsync();
+        Check(!closing && GatewaysPanel.ModelGatewayOperation.IsOpen && runtime.Running[GatewayKind.Mobile] == false && AppWindow.IsVisible,
             "Stop-and-exit attempts both gateways and keeps the window accessible when one shutdown cannot be confirmed");
         await CaptureAsync(output, "gateways-stop-error.png");
-        runtime.FailStop = null; smokeDialog = _ => Task.FromResult(ContentDialogResult.None);
-        count = runtime.Trace.Count; await StopGatewaysAndExitAsync();
-        Check(runtime.Trace.Count == count && !closing, "Cancelling stop-and-exit leaves both gateway states untouched");
+        runtime.FailStop = null;
+        smokeDialog = dialog =>
+        {
+            Check(dialog.PrimaryButtonText == "仅退出 Dock" && dialog.SecondaryButtonText == "停止网关并退出" &&
+                ConfigurationDialogText(dialog).Contains("模型网关和手机网关继续运行"), "The shared exit dialog explains what keeps running for each choice");
+            return Task.FromResult(ContentDialogResult.None);
+        };
+        NavigateTo(SettingsNav);
+        count = runtime.Trace.Count; await RequestWindowExitAsync();
+        Check(SettingsPanel.ExitWindowButton.IsEnabled && Equals(SettingsPanel.ExitWindowButton.Content, GatewaysPanel.GatewayExitButton.Content) &&
+            runtime.Trace.Count == count && !closing, "Settings exposes the same stop-and-exit action and cancelling leaves both gateways untouched");
+        NavigateTo(GatewaysNav);
         runtime.Authorized[GatewayKind.Model] = false; await RefreshGatewaysAsync();
-        Check(!ModelGatewayStartButton.IsEnabled && ModelGatewayDescription.Text.Contains("HTTP"), "Unconfirmed HTTP routing is visible and cannot start a model gateway");
+        Check(!GatewaysPanel.ModelGatewayStartButton.IsEnabled && GatewaysPanel.ModelGatewayDescription.Text.Contains("HTTP"), "Unconfirmed HTTP routing is visible and cannot start a model gateway");
         runtime.Authorized[GatewayKind.Model] = true; gatewayResults.Clear(); await RefreshGatewaysAsync();
         PageScroll.ChangeView(null, 0, null, true); await CaptureAsync(output, "gateways-light.png");
         Root.RequestedTheme = ElementTheme.Dark; AppWindow.Resize(new(900, 760)); await Task.Delay(120); Root.UpdateLayout();
         PageScroll.ChangeView(null, double.MaxValue, null, true); await CaptureAsync(output, "gateways-compact-dark.png");
-        Check(ModelGatewayStartButton.ActualWidth > 0 && ModelGatewayStartButton.TransformToVisual(Root).TransformPoint(new()).X + ModelGatewayStartButton.ActualWidth <= Root.ActualWidth,
+        Check(GatewaysPanel.ModelGatewayStartButton.ActualWidth > 0 && GatewaysPanel.ModelGatewayStartButton.TransformToVisual(Root).TransformPoint(new()).X + GatewaysPanel.ModelGatewayStartButton.ActualWidth <= Root.ActualWidth,
             "Gateway action buttons fit the compact dark page and remain reachable by scrolling");
         Root.RequestedTheme = ElementTheme.Light;
         Check(original.SameContents(store.Load(home)) && !connectionDraft.HasDraft, "All gateway controls preserve Codex configuration authentication and connection drafts unless explicitly discarded");

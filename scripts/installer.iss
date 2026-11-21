@@ -1,8 +1,8 @@
 #ifndef AppVersion
-  #define AppVersion "0.19.9"
+  #define AppVersion "0.20.0"
 #endif
 #ifndef PayloadDir
-  #define PayloadDir "..\artifacts\CodexDock-0.19.9-win-x64"
+  #define PayloadDir "..\artifacts\CodexDock-0.20.0-win-x64"
 #endif
 
 [Setup]
@@ -20,7 +20,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.17763
 OutputDir=..\artifacts
 OutputBaseFilename=CodexDock-{#AppVersion}-Setup-win-x64
-SetupIconFile=..\src\CodexConfig.App\Assets\app.ico
+SetupIconFile=..\assets\brand\app.ico
 UninstallDisplayIcon={app}\CodexDock.exe
 WizardStyle=modern
 Compression=lzma2
@@ -105,9 +105,9 @@ begin
   Log('Codex Dock shutdown check returned ' + IntToStr(ExitCode));
   case ExitCode of
     0: Result := '';
-    10: Result := 'Codex Dock 尚未退出。请处理 Dock 窗口里的待确认操作，或在任务栏托盘右键选择“退出 Codex Dock”，然后重试安装。';
-    11: Result := '模型网关尚未退出。请打开 Dock，在“运行与增强 → 模型网关”停止服务，再退出 Dock 并重试。';
-    12: Result := '手机服务尚未退出。请打开 Dock，在“手机访问 → 服务设置”停止服务，再退出 Dock 并重试。';
+    10: Result := 'Codex Dock 尚未退出。请处理 Dock 窗口里的待确认操作，再从托盘菜单选择“退出…”，然后重试安装。';
+    11: Result := '模型网关尚未退出。请从 Dock 托盘菜单选择“退出…”和“停止网关并退出”，然后重试安装。';
+    12: Result := '手机服务尚未退出。请从 Dock 托盘菜单选择“退出…”和“停止网关并退出”，然后重试安装。';
   else
     Result := '无法确认安装目录中的 Dock 已退出。请从托盘选择“停止网关并退出”，然后重试安装。';
   end;

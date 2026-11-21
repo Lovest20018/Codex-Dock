@@ -1,0 +1,25 @@
+<UserControl x:Class="CodexConfig.WinUI.Views.ProfilesPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CodexConfig.WinUI"
+             IsTabStop="False">
+    <StackPanel Spacing="16">
+        <local:ActionWrapPanel>
+            <TextBlock Text="Profile 独立保存普通模型和行为设置。" Style="{StaticResource DockHintTextStyle}" VerticalAlignment="Center" />
+            <HyperlinkButton Content="了解详情" Tag="profiles" Click="PageHelpClicked" Padding="0" />
+        </local:ActionWrapPanel>
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <ComboBox x:Name="ProfileNamesInput" x:FieldModifier="internal" Header="现有 Profile" HorizontalAlignment="Stretch" SelectionChanged="ProfileSelectionChanged" PlaceholderText="选择后点击读取" />
+            <TextBox x:Name="ProfileNameInput" x:FieldModifier="internal" Grid.Column="1" Header="读取或新建名称" PlaceholderText="例如 daily" MaxLength="64" />
+        </Grid>
+        <local:ActionWrapPanel>
+            <Button x:Name="OpenProfileButton" x:FieldModifier="internal" Content="读取 / 新建" Click="OpenProfileClicked" />
+            <Button x:Name="RefreshProfilesButton" x:FieldModifier="internal" Content="刷新列表" Click="RefreshProfilesClicked" />
+        </local:ActionWrapPanel>
+        <TextBlock x:Name="ProfilePathText" x:FieldModifier="internal" IsTextSelectionEnabled="True" Style="{StaticResource DockHintTextStyle}" />
+        <TextBlock x:Name="ProfileStatusText" x:FieldModifier="internal" TextWrapping="Wrap" />
+        <TextBox x:Name="ProfileDocumentInput" x:FieldModifier="internal" Header="普通设置（TOML）" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="240" MaxHeight="600"
+                 MaxLength="1048576" TextChanging="ProfileDocumentChanged" PlaceholderText="例如 model = &#x22;模型 ID&#x22;&#xA;model_reasoning_effort = &#x22;high&#x22;" />
+    </StackPanel>
+</UserControl>

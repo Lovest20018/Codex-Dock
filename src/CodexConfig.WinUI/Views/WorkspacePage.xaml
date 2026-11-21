@@ -1,0 +1,60 @@
+<UserControl x:Class="CodexConfig.WinUI.Views.WorkspacePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CodexConfig.WinUI"
+             IsTabStop="False">
+    <StackPanel Spacing="18">
+        <Border Style="{StaticResource DockCardStyle}" Background="{ThemeResource DockStatusSurfaceBrush}">
+            <StackPanel Spacing="12">
+                <StackPanel Spacing="6">
+                    <TextBlock x:Name="WorkspaceNextTitle" x:FieldModifier="internal" Style="{StaticResource DockSectionHeadingStyle}" AutomationProperties.HeadingLevel="Level2" />
+                    <TextBlock x:Name="StatusText" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+                </StackPanel>
+                <local:ActionWrapPanel>
+                    <Button x:Name="WorkspaceNextButton" x:FieldModifier="internal" Content="设置连接" Click="WorkspaceNextClicked" Style="{StaticResource DockPrimaryButtonStyle}" />
+                    <HyperlinkButton x:Name="QuickModelButton" x:FieldModifier="internal" Content="更换模型" Click="QuickModelClicked" />
+                    <HyperlinkButton Content="连接手机" Click="OpenMobileClicked" />
+                    <Button x:Name="CancelQuickModelReadButton" x:FieldModifier="internal" Content="取消读取" Click="CancelQuickModelReadClicked" Visibility="Collapsed" />
+                    <Button x:Name="QuickModelApplyDetailsButton" x:FieldModifier="internal" Content="查看应用详情" Click="OpenEnhancementsClicked" Visibility="Collapsed" />
+                </local:ActionWrapPanel>
+                <TextBlock x:Name="QuickModelHint" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
+        </Border>
+        <Border x:Name="WorkspaceConnectionCard" x:FieldModifier="internal" Style="{StaticResource DockCardStyle}">
+            <StackPanel Spacing="12">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ConnectionText" x:FieldModifier="internal" Text="尚未读取" Style="{StaticResource DockSectionHeadingStyle}"
+                               AutomationProperties.HeadingLevel="Level2" VerticalAlignment="Center" />
+                    <HyperlinkButton x:Name="WorkspaceEditConnectionButton" x:FieldModifier="internal" Grid.Column="1" Content="编辑连接"
+                                     Click="OpenConnectionClicked" Padding="4,6" VerticalAlignment="Center" />
+                </Grid>
+                <Border Height="1" Background="{ThemeResource DockOutlineBrush}" />
+                <Grid x:Name="WorkspaceConnectionSummary" ColumnSpacing="12" RowSpacing="8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="88" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="默认模型" Style="{StaticResource DockFieldLabelStyle}" />
+                    <TextBlock x:Name="ModelText" x:FieldModifier="internal" Grid.Column="1" TextWrapping="Wrap" FontWeight="SemiBold" />
+                    <TextBlock Grid.Row="1" Text="服务地址" Style="{StaticResource DockFieldLabelStyle}" />
+                    <TextBlock x:Name="EndpointText" x:FieldModifier="internal" Grid.Row="1" Grid.Column="1" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="2" Text="配置名称" Style="{StaticResource DockFieldLabelStyle}" />
+                    <TextBlock x:Name="WorkspaceProfileName" x:FieldModifier="internal" Grid.Row="2" Grid.Column="1" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="3" Text="Codex 状态" Style="{StaticResource DockFieldLabelStyle}" />
+                    <TextBlock x:Name="WorkspaceDesktopStatus" x:FieldModifier="internal" Grid.Row="3" Grid.Column="1" TextWrapping="Wrap" />
+                </Grid>
+            </StackPanel>
+        </Border>
+        <Expander Header="更多操作" HorizontalAlignment="Stretch">
+            <StackPanel Spacing="10">
+                <TextBlock x:Name="EnhancementSummary" x:FieldModifier="internal" TextWrapping="Wrap" />
+                <local:ActionWrapPanel>
+                    <Button Content="查看运行状态" Click="OpenEnhancementsClicked" />
+                    <Button x:Name="ReloadButton" x:FieldModifier="internal" Content="重新读取配置" Click="ReloadClicked" />
+                </local:ActionWrapPanel>
+            </StackPanel>
+        </Expander>
+    </StackPanel>
+</UserControl>

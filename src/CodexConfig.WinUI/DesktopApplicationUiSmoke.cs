@@ -1,4 +1,4 @@
-﻿using CodexConfig.Application;
+using CodexConfig.Application;
 using CodexConfig.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -115,7 +115,7 @@ public sealed partial class MainWindow
         runtime.FailAttachment = false;
         var restartCount = runtime.Restarts;
         await ApplyDesktopAsync();
-        Check(lastApplication?.Outcome == DesktopApplyOutcome.Completed && runtime.Restarts == restartCount && runtime.Attachments == 2 && !PendingBar.IsOpen,
+        Check(lastApplication?.Outcome == DesktopApplyOutcome.Completed && runtime.Restarts == restartCount && runtime.Attachments == 2 && !EnhancementsPanel.PendingBar.IsOpen,
             "WinUI enhancement retry applies once to the same opened instance without restarting or rewriting saved files");
         smokeDialog = _ => Task.FromResult(ContentDialogResult.None);
         Check(!await StopBeforeCloseAsync() && !closing && runtime.IsEnhancementRunning,
@@ -126,7 +126,7 @@ public sealed partial class MainWindow
         runtime.RestartGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var pending = ApplyDesktopAsync();
         await ApplyDesktopAsync();
-        Check(ApplicationBusy && !ApplyButton.IsEnabled && !ChooseHomeButton.IsEnabled && !ConnectionRecoveryToggle.IsEnabled,
+        Check(ApplicationBusy && !ApplyButton.IsEnabled && !ChooseHomeButton.IsEnabled && !EnhancementsPanel.ConnectionRecoveryToggle.IsEnabled,
             "Applying disables duplicate launches directory changes and preference edits");
         Check(!await StopBeforeCloseAsync() && !closing, "An in-progress application cannot be abandoned by closing the preview");
         Check(ApplicationFooter.ActualHeight > 0 && ApplicationFooter.ActualWidth <= Root.ActualWidth, "The shared apply controls remain visible outside the scrollable page");

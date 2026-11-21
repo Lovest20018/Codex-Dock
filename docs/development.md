@@ -2,7 +2,9 @@
 
 Codex Dock 默认界面使用 C#、.NET 8、WinUI 3 和 Tomlyn，保留 WPF 兼容源码；独立手机 worker 使用 Python 3.12、完整上游 Codex 模块及 certifi。面向使用者的安装与连接方式见 [README](../README.md)。
 
-0.19.0 起，`scripts/package.ps1` 发布 WinUI 并使用 `InstalledBuild=true` 编译为 `CodexDock.exe`。普通 WinUI 开发构建为 `CodexDock.WinUI.exe`；其 smoke 报告分别记录 UI 程序集与共享 Application 程序集的摘要。正式安装包包含同次编译的 XBF/PRI 与完整运行库，CI 验证实际发布 EXE 和安装后 EXE。
+0.19.0 起，`scripts/package.ps1` 发布 WinUI 并使用 `InstalledBuild=true` 编译为 `CodexDock.exe`。正式安装包包含同次编译的 XBF、PRI 和完整运行库。正式构建排除 WinUI 冒烟入口和测试替身。Debug、界面预览构建或设置 `WinUiSmokeBuild=true` 的开发构建启用隔离冒烟入口。
+
+发布验证使用两份报告。实际发布与安装后的 EXE 在独立配置目录验收页面加载、托盘与安装器请求退出，记录真实产物散列。完整界面回归使用独立测试构建，核对同版本和共享 Application 程序集散列。两份报告随便携包的 `verification/` 一起交付。
 
 ## 本地构建
 
@@ -12,22 +14,36 @@ Codex Dock 默认界面使用 C#、.NET 8、WinUI 3 和 Tomlyn，保留 WPF 兼�
 pwsh -NoProfile -File scripts/build-mobile.ps1 -Python 'C:\path\to\Python312\python.exe' -InstallBuildTools
 ```
 
-之后 `scripts/build-mobile.ps1` 复用 `artifacts/mobile-build-venv`。先构建 worker，再构建和测试 WPF；手机 worker 会复制到应用的 `mobile` 子目录。终端使用 PowerShell 7。
+之后 `scripts/build-mobile.ps1` 复用 `artifacts/mobile-build-venv`。先构建 worker，再运行 Windows 测试。手机 worker 会复制到应用的 `mobile` 子目录。终端使用 PowerShell 7。
 
 ```powershell
-dotnet build src/CodexConfig.App/CodexConfig.App.csproj -c Release
 dotnet build tests/CodexConfig.Tests/CodexConfig.Tests.csproj -c Release
 & .\tests\CodexConfig.Tests\bin\Release\net8.0-windows\CodexConfig.Tests.exe
-dotnet run --project src/CodexConfig.App/CodexConfig.App.csproj -c Release -- --smoke-test .ui-test-local
+dotnet test tests/CodexConfig.UnitTests/CodexConfig.UnitTests.csproj -c Release --logger trx --results-directory artifacts/test-runs/unit
+pwsh -NoProfile -File scripts/test-windows-ui.ps1
 ```
 
 核心和 UI 检查使用虚构凭据、隔离配置目录及测试环境变量。UI 检查覆盖布局、草稿、模板、备份恢复、托盘、开机启动和更新入口；缩放使用布局变换模拟。
 
+更新解析与校验、网关诊断投影及事件解析用例已迁入 xUnit。使用 `dotnet test --filter` 按测试名筛选，CI 保留 TRX 报告。原有运行器继续负责进程、系统与安装兼容性夹具。
+
+### WPF 兼容版
+
+WPF 的目标维护截止日为 **2027 年 2 月 28 日**。达到目标日期前，WinUI 稳定版需要覆盖受支持的 Windows 10 与 Windows 11 环境，确认安装、配置草稿、加密备份恢复、托盘退出和两个网关的完整路径。用连续两个稳定版本的回归及问题记录核对该条件，并为仍需兼容版的用户保留最近可用构建及回退说明。未满足条件时延后下线。
+
+在兼容期内，Core 和 Application 的每次改动都通过 `Regression checks` 同时验证 WinUI 和 WPF，报告保存在同一次 CI 的 `windows-test-reports`。本地可在同一次 `scripts/test-windows-ui.ps1` 运行中依次跑两个界面。
+
+Windows 界面和安装器的隔离输出集中在 `artifacts/test-runs/`。测试结束后，运行 `pwsh -NoProfile -File scripts/clear-test-runs.ps1 -WhatIf` 查看清理范围。移除 `-WhatIf` 后执行清理，加入 `-IncludeLegacy` 可一并清理 `legacy/` 中归档的旧报告。
+
 手机 Python 回归：`py -3.12 -B -m unittest discover -s tests/mobile -p 'test_*.py' -v`。浏览器 QA：先在 `tests/mobile` 执行 `npm ci`，再从仓库根执行 `node tests/mobile/browser-smoke.cjs`；需要本机 Chrome，可用 `CODEX_DOCK_TEST_PYTHON` 指定 Python 绝对路径。测试创建独立浏览器资料和临时 Codex 数据目录；HTTPS 请求仅转到隔离 worker。上游浏览器用例通过 `tests/mobile/playwright.config.cjs` 复用，Windows 夹具使用生产服务相同的 HTTP/1.1。上游 Node / Python 原始用例保存在 `src/CodexMobile/upstream/tests`。回环套接字和测试子进程需要在环境许可下运行；不要禁用这些必要检查来生成发布包。
+
+`node --test tests/mobile/upstream-contract.browser.cjs` 使用 Playwright 检查上游网页真实渲染的选择器，以及本机管理页依赖的账号面板 DOM 和方法。升级上游时，CI 会列出缺失或重复的选择器及改名的成员。可以用 `CODEX_DOCK_TEST_CHROME` 指定 Chrome，或在 `tests/mobile` 执行 `npx --no-install playwright-core install chromium` 使用 Playwright 配套浏览器。
+
+Lovest Code 的 `MainActivity` 管理原生外壳和生命周期。电脑列表、聊天 WebView、通知收件箱、更新和下载使用独立控制器。聊天桥接沿用现有 prompt 协议，按 WebView 的随机令牌定位处理函数，并核对消息来源与当前页面的同源关系。焦点、页面和载荷限制由各动作保留。若采用 `WebMessagePort`，需要同步调整页面脚本，处理导航时的端口关闭、重新绑定和来源校验。
 
 设置 `CODEX_CONFIG_TEST_CLI` 为原生 `codex.exe` 的绝对路径，可加入三项原生兼容检查：内置 `openai`、旧 provider，以及 `config/read` 项目来源层和 profile 支持边界。前两项只使用本机模拟上游与虚构官方登录；来源读取不创建模型任务，不消耗真实模型额度。网关进程用例使用测试程序自身的专用入口，界面用例使用实际 CodexDock 程序。Windows 用户加密、注册表和回环子进程检查需在正常用户上下文运行。
 
-本轮配置合并的完整入口为 `pwsh -NoProfile -File scripts/verify-superba-reuse.ps1`；可用 `-CodexCli 'C:\path\to\codex.exe'` 加入原生兼容检查。该脚本构建并运行全部核心和隔离 WPF 检查，结果保存在独立的 `artifacts/superba-2026-11-11/verification-*` 目录，不操作真实 Codex 桌面。
+运行 `pwsh -NoProfile -File scripts/verify-superba-reuse.ps1` 可构建并运行核心和隔离 WPF 检查，结果保存在 `artifacts/test-runs/wpf-superba-*`。传入 `-CodexCli 'C:\path\to\codex.exe'` 可加入原生兼容检查。
 
 定向检查可设置 `CODEX_CONFIG_TEST_FILTER='desktop'`（多个名称片段用分号分隔）；输出会注明筛选范围，不替代完整回归。`CODEX_CONFIG_UI_TEST_FILTER='desktop-restart'` 仅验证已保存结果页的重启操作和布局，使用已存在的明文夹具及模拟生命周期，可在无法使用用户加密的环境运行；完整 WPF 检查仍负责真实加密保存链路。两种筛选默认均关闭，完整验证脚本会暂时清除并在结束时恢复它们。
 

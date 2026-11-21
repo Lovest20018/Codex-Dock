@@ -25,7 +25,10 @@ def sha(path):
 
 
 def versions():
-    windows = ET.parse(ROOT / 'src/CodexConfig.App/CodexConfig.App.csproj').findtext('.//Version')
+    windows = ET.parse(ROOT / 'src/CodexConfig.WinUI/CodexConfig.WinUI.csproj').findtext('.//Version')
+    wpf = ET.parse(ROOT / 'src/CodexConfig.App/CodexConfig.App.csproj').findtext('.//Version')
+    if windows != wpf:
+        raise ValueError('WinUI and WPF versions must match.')
     android = json.loads((ROOT / 'src/CodexAndroid/android.json').read_text(encoding='utf-8'))['versionName']
     if not all(re.fullmatch(r'\d+\.\d+\.\d+', value or '') for value in (windows, android)):
         raise ValueError('Release versions must be semantic versions.')
@@ -107,12 +110,27 @@ def windows_files(directory, windows):
         if not path.is_file() or path.stat().st_size == 0:
             raise ValueError('Missing release asset: ' + path.name)
     with zipfile.ZipFile(directory / f'CodexDock-{windows}-win-x64.zip') as archive:
-        manifest = json.loads(archive.read(f'CodexDock-{windows}-win-x64/manifest.json'))
-        ui = json.loads(archive.read(f'CodexDock-{windows}-win-x64/verification/ui-report.json'))
+        payload = f'CodexDock-{windows}-win-x64/'
+        manifest = json.loads(archive.read(payload + 'manifest.json'))
+        ui = json.loads(archive.read(payload + 'verification/ui-report.json'))
         if manifest['sourceCommit'] != commit() or manifest['version'] != windows or ui['status'] != 'PASS':
             raise ValueError('Windows package provenance or UI check failed.')
         if manifest.get('uiFramework') != 'WinUI 3' or ui.get('uiFramework') != 'WinUI 3':
             raise ValueError('Windows release must contain the verified WinUI application.')
+        executable = hashlib.sha256(archive.read(payload + 'CodexDock.exe')).hexdigest()
+        assembly = hashlib.sha256(archive.read(payload + 'CodexDock.dll')).hexdigest()
+        if (manifest.get('startupVerificationProtocol') != 1
+                or ui.get('kind') != 'production-startup' or ui.get('applicationVersion') != windows
+                or len(ui.get('tests', [])) < 4
+                or not all(report.get('executableSha256') == executable
+                           and report.get('applicationAssemblySha256') == assembly for report in (manifest, ui))):
+            raise ValueError('Production startup evidence does not match the packaged application.')
+        smoke = json.loads(archive.read(payload + 'verification/ui-smoke-report.json'))
+        shared = hashlib.sha256(archive.read(payload + 'CodexConfig.Application.dll')).hexdigest()
+        if (smoke.get('status') != 'PASS' or smoke.get('uiFramework') != 'WinUI 3' or smoke.get('applicationVersion') != windows
+                or smoke.get('executableName') != 'CodexDock.WinUI.exe' or not smoke.get('tests')
+                or smoke.get('sharedApplicationAssemblySha256', '').lower() != shared):
+            raise ValueError('The isolated WinUI smoke suite did not verify the packaged version and application layer.')
         for line in (directory / f'SHA256SUMS-{windows}.txt').read_text().splitlines():
             digest, name = line.split('  ', 1)
             actual = sha(directory / name) if '/' not in name else hashlib.sha256(archive.read(name)).hexdigest()
@@ -121,8 +139,13 @@ def windows_files(directory, windows):
     installer = json.loads((directory / f'installer-verification-{windows}.json').read_text(encoding='utf-8-sig'))
     if installer['status'] != 'PASS' or installer['installerSha256'] != sha(directory / f'CodexDock-{windows}-Setup-win-x64.exe'):
         raise ValueError('Windows installer verification does not match the release.')
+    if not re.fullmatch(r'artifacts/test-runs/installer-[0-9a-f]{32}', installer.get('evidenceDirectory', '')):
+        raise ValueError('Windows installer evidence must use a relative workspace location.')
     if any(installer.get(key) is not True for key in ('runningMobileUpgrade', 'otherInstallationWorkerPreserved', 'mobileSettingsUnchanged')):
         raise ValueError('Windows installer verification must cover the running mobile upgrade and installation isolation.')
+    if (installer.get('executableSha256') != executable or installer.get('installedStartupChecks', 0) < 4
+            or any(installer.get(key) is not True for key in ('runningDockUpgrade', 'otherInstallationDockPreserved', 'dockSettingsUnchanged'))):
+        raise ValueError('Windows installer verification must cover installed startup and tray upgrade isolation.')
     return paths
 
 

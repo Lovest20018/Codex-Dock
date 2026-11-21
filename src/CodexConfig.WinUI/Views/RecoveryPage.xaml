@@ -1,0 +1,15 @@
+<UserControl x:Class="CodexConfig.WinUI.Views.RecoveryPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CodexConfig.WinUI"
+             IsTabStop="False">
+    <StackPanel Spacing="16">
+        <local:ActionWrapPanel>
+            <TextBlock Text="核对差异后，从当前目录的备份恢复配置与登录。" Style="{StaticResource DockHintTextStyle}" VerticalAlignment="Center" />
+            <HyperlinkButton Content="了解详情" Tag="recovery" Click="PageHelpClicked" Padding="0" />
+        </local:ActionWrapPanel>
+        <TextBlock x:Name="RecoveryStatusText" x:FieldModifier="internal" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+        <Button x:Name="RestoreConfigurationButton" x:FieldModifier="internal" Content="查看恢复差异" Click="RestoreConfigurationClicked" HorizontalAlignment="Left" />
+        <Button x:Name="RefreshRecoveryButton" x:FieldModifier="internal" Content="重新读取备份状态" Click="RefreshRecoveryClicked" HorizontalAlignment="Left" />
+    </StackPanel>
+</UserControl>

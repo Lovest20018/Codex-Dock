@@ -1,0 +1,49 @@
+<UserControl x:Class="CodexConfig.WinUI.Views.ModelsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CodexConfig.WinUI"
+             IsTabStop="False">
+    <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition MaxWidth="704" /></Grid.ColumnDefinitions>
+        <StackPanel Spacing="18">
+            <Border Style="{StaticResource DockCardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="默认主模型" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <local:ActionWrapPanel>
+                        <Button x:Name="DiscoverModelsButton" x:FieldModifier="internal" Content="读取可用模型" Click="DiscoverModelsClicked" />
+                        <Button x:Name="CancelDiscoveryButton" x:FieldModifier="internal" Content="取消读取" Click="CancelDiscoveryClicked" Visibility="Collapsed" />
+                        <Button x:Name="CheckServiceKeyButton" x:FieldModifier="internal" Content="检查连接" Click="CheckServiceKeyClicked" Visibility="Collapsed" />
+                    </local:ActionWrapPanel>
+                    <TextBlock x:Name="ModelDiscoveryStatus" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" AutomationProperties.LiveSetting="Polite" />
+                    <StackPanel x:Name="DiscoveredModelChoices" x:FieldModifier="internal" Spacing="8" Visibility="Collapsed">
+                        <TextBox x:Name="ModelFilterInput" x:FieldModifier="internal" AutomationProperties.Name="筛选模型名称" PlaceholderText="筛选模型名称" TextChanging="ModelFilterChanged" MaxLength="512" />
+                        <ComboBox x:Name="DiscoveredModelsInput" x:FieldModifier="internal" Header="服务模型" HorizontalAlignment="Stretch" SelectionChanged="DiscoveredModelChanged" PlaceholderText="选择一个模型" />
+                        <TextBlock x:Name="ModelFilterStatus" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" />
+                    </StackPanel>
+                    <TextBox x:Name="BehaviorModelInput" x:FieldModifier="internal" Header="模型 ID（可手动填写）" TextChanging="BehaviorModelChanged" MaxLength="512" />
+                    <HyperlinkButton x:Name="ReviewModelConnectionButton" x:FieldModifier="internal" Content="返回连接并核对" Click="OpenConnectionClicked" Padding="0" Visibility="Collapsed" />
+                    <TextBlock x:Name="ModelCapabilityStatus" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+                    <StackPanel x:Name="BehaviorFields" x:FieldModifier="internal" Spacing="14" />
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource DockCardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="执行与审批" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel x:Name="ApprovalFields" x:FieldModifier="internal" Spacing="14" />
+                    <CheckBox x:Name="DedicatedReviewerInput" x:FieldModifier="internal" Content="固定使用 codex-auto-review 审核" Checked="DedicatedReviewerChanged" Unchecked="DedicatedReviewerChanged" />
+                    <TextBlock x:Name="ReviewerStatus" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+                    <Expander Header="模型能力目录（高级）" HorizontalAlignment="Stretch"><StackPanel Spacing="12">
+                    <TextBlock x:Name="CatalogStatus" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" IsTextSelectionEnabled="True" />
+                    <local:ActionWrapPanel>
+                        <Button x:Name="SynchronizeCatalogButton" x:FieldModifier="internal" Content="同步能力目录" Click="SynchronizeCatalogClicked" />
+                        <Button x:Name="ImportCatalogButton" x:FieldModifier="internal" Content="导入能力目录" Click="ImportCatalogClicked" />
+                    </local:ActionWrapPanel>
+                    <Button x:Name="ReadClientCatalogButton" x:FieldModifier="internal" Content="读取客户端目录" Click="ReadClientCatalogClicked" HorizontalAlignment="Left" />
+                    </StackPanel></Expander>
+                </StackPanel>
+            </Border>
+            <TextBlock Text="保存后可应用到 Codex，并在聊天中核对实际设置。" Style="{StaticResource DockHintTextStyle}" />
+            <HyperlinkButton Content="管理旧聊天接续和速度兼容" Click="OpenEnhancementsClicked" Padding="0" HorizontalAlignment="Left" />
+        </StackPanel>
+    </Grid>
+</UserControl>

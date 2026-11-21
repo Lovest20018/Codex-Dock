@@ -204,6 +204,7 @@
         <Setter Property="Foreground" Value="{ThemeResource DockSecondaryTextBrush}" />
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
+    <Style x:Key="DockHintTextStyle" TargetType="TextBlock" BasedOn="{StaticResource DockFieldLabelStyle}" />
 
     <Style TargetType="Button">
         <Setter Property="Padding" Value="12,7" />

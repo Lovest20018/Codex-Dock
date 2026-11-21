@@ -7,7 +7,7 @@ namespace CodexConfig.WinUI;
 
 public sealed partial class MainWindow
 {
-    private bool openingDesktop, observingDesktop;
+    private bool observingDesktop;
     private int? runningDesktopCount;
     private (string Home, CodexDesktopTarget Target)? openedDesktop;
     private static string DesktopChoiceLabel(CodexDesktopTarget target) =>
@@ -37,13 +37,13 @@ public sealed partial class MainWindow
         finally { observingDesktop = false; }
     }
 
-    private async void OpenNativeLoginClicked(object sender, RoutedEventArgs args) => await OpenWorkspaceDesktopAsync(forLogin: true);
+    internal async void OpenNativeLoginClicked(object sender, RoutedEventArgs args) => await OpenWorkspaceDesktopAsync(forLogin: true);
 
     private async Task OpenWorkspaceDesktopAsync(bool forLogin = false)
     {
         if (ApplicationBusy || dialogOpen || closing || HasPendingRecovery || viewModel.Snapshot is not { } saved) return;
         if (forLogin ? !ShowingNativeLogin : !viewModel.CanApplyConfiguration || connectionDraft.HasDraft) return;
-        openingDesktop = true; shellError = ""; setupNativeStatus = ""; RefreshView();
+        using var operation = busy.Begin(WindowOperation.OpenDesktop, "正在打开 Codex…"); shellError = ""; setupNativeStatus = ""; RefreshView();
         ReviewedDesktopChoice? launch = null;
         try
         {
@@ -89,7 +89,7 @@ public sealed partial class MainWindow
         }
         catch (OperationCanceledException) when (closing || lifetime.IsCancellationRequested) { }
         catch (Exception error) { if (!closing) SetShellError(forLogin ? "暂时无法打开登录" : "暂时无法打开 Codex", error.Message); }
-        finally { openingDesktop = false; if (!closing) RefreshView(); }
+        finally { operation.Dispose(); if (!closing) RefreshView(); }
         if (launch is not null) await ApplyDesktopAsync(modelChoice: launch);
     }
 

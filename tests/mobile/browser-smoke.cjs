@@ -5,7 +5,7 @@ const assert=require('node:assert/strict');
 const {spawn,execFileSync}=require('node:child_process');
 const {chromium}=require('playwright-core'),{PNG}=require('pngjs'),jsQR=require('jsqr');
 const root=path.resolve(__dirname,'../..'),out=path.join(root,'artifacts/mobile-browser');
-const python=process.env.CODEX_DOCK_TEST_PYTHON||'C:/Users/com/AppData/Local/Python/pythoncore-3.12-64/python.exe';
+const python=process.env.CODEX_DOCK_TEST_PYTHON||(process.platform === 'win32' ? 'python' : 'python3');
 const checks=[];
 function proxy(request,port){return new Promise((resolve,reject)=>{
   const headers={...request.headers(),host:'fixture.invalid'};delete headers['content-length'];

@@ -1,0 +1,51 @@
+<UserControl x:Class="CodexConfig.WinUI.Views.SourcesPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CodexConfig.WinUI"
+             IsTabStop="False">
+    <StackPanel Spacing="16">
+        <local:ActionWrapPanel>
+            <TextBlock Text="读取所选执行端的配置层与来源。" Style="{StaticResource DockHintTextStyle}" VerticalAlignment="Center" />
+            <HyperlinkButton Content="了解详情" Tag="sources" Click="PageHelpClicked" Padding="0" />
+        </local:ActionWrapPanel>
+        <TextBox x:Name="SourceExecutableInput" x:FieldModifier="internal" Header="本机执行端 codex.exe" TextChanging="SourceConditionChanged" MaxLength="2000" />
+        <local:ActionWrapPanel>
+            <Button x:Name="FindSourceExecutableButton" x:FieldModifier="internal" Content="自动查找" Click="FindSourceExecutableClicked" />
+            <Button x:Name="ChooseSourceExecutableButton" x:FieldModifier="internal" Content="选择执行端" Click="ChooseSourceExecutableClicked" />
+        </local:ActionWrapPanel>
+        <TextBox x:Name="SourceProjectInput" x:FieldModifier="internal" Header="项目目录（决定项目覆盖层）" TextChanging="SourceConditionChanged" MaxLength="2000" />
+        <Button x:Name="ChooseSourceProjectButton" x:FieldModifier="internal" Content="选择项目目录" Click="ChooseSourceProjectClicked" HorizontalAlignment="Left" />
+        <TextBox x:Name="SourceProfileInput" x:FieldModifier="internal" Header="Profile 名称（留空读取主配置）" TextChanging="SourceConditionChanged" MaxLength="64" />
+        <local:ActionWrapPanel>
+            <Button x:Name="ReadSourceButton" x:FieldModifier="internal" Content="读取配置来源" Click="ReadSourceClicked" />
+            <Button x:Name="CancelSourceButton" x:FieldModifier="internal" Content="取消读取" Click="CancelSourceClicked" Visibility="Collapsed" />
+        </local:ActionWrapPanel>
+        <TextBlock x:Name="SourceStatusText" x:FieldModifier="internal" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+        <TextBlock x:Name="SourceLayersText" x:FieldModifier="internal" IsTextSelectionEnabled="True" Style="{StaticResource DockHintTextStyle}" />
+        <TextBox x:Name="SourceSearchInput" x:FieldModifier="internal" Header="筛选来源结果" TextChanging="SourceSearchChanged" MaxLength="200" />
+        <TextBlock x:Name="SourceCountText" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+        <StackPanel x:Name="SourceRows" x:FieldModifier="internal" Spacing="14" />
+        <local:ActionWrapPanel>
+            <Button x:Name="PreviousSourceButton" x:FieldModifier="internal" Content="上一页" Click="PreviousSourceClicked" IsEnabled="False" />
+            <Button x:Name="NextSourceButton" x:FieldModifier="internal" Content="下一页" Click="NextSourceClicked" IsEnabled="False" />
+        </local:ActionWrapPanel>
+        <Expander x:Name="ExperimentalFeaturesExpander" x:FieldModifier="internal" Header="实验功能支持与观察值" HorizontalAlignment="Stretch">
+            <StackPanel Spacing="12" HorizontalAlignment="Stretch">
+                <TextBlock Text="读取上方执行端支持的实验功能，修改加入主配置草稿。" Style="{StaticResource DockHintTextStyle}" />
+                <local:ActionWrapPanel>
+                    <Button x:Name="ReadFeaturesButton" x:FieldModifier="internal" Content="读取实验功能" Click="ReadFeaturesClicked" />
+                    <Button x:Name="CancelFeaturesButton" x:FieldModifier="internal" Content="取消读取" Click="CancelFeaturesClicked" Visibility="Collapsed" />
+                    <Button x:Name="FeatureDraftButton" x:FieldModifier="internal" Content="查看主配置草稿" Click="OpenCatalogClicked" Visibility="Collapsed" />
+                </local:ActionWrapPanel>
+                <TextBlock x:Name="FeatureStatusText" x:FieldModifier="internal" Text="尚未读取此执行端的实验功能。" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                <TextBox x:Name="FeatureSearchInput" x:FieldModifier="internal" Header="筛选实验功能" TextChanging="FeatureSearchChanged" MaxLength="200" />
+                <TextBlock x:Name="FeatureCountText" x:FieldModifier="internal" Style="{StaticResource DockHintTextStyle}" />
+                <StackPanel x:Name="FeatureRows" x:FieldModifier="internal" Spacing="12" />
+                <local:ActionWrapPanel>
+                    <Button x:Name="PreviousFeatureButton" x:FieldModifier="internal" Content="上一页功能" Click="PreviousFeatureClicked" IsEnabled="False" />
+                    <Button x:Name="NextFeatureButton" x:FieldModifier="internal" Content="下一页功能" Click="NextFeatureClicked" IsEnabled="False" />
+                </local:ActionWrapPanel>
+            </StackPanel>
+        </Expander>
+    </StackPanel>
+</UserControl>

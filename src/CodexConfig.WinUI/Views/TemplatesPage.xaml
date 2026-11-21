@@ -1,0 +1,27 @@
+<UserControl x:Class="CodexConfig.WinUI.Views.TemplatesPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CodexConfig.WinUI"
+             IsTabStop="False">
+    <StackPanel Spacing="16">
+        <TextBlock Text="方案库存储普通设置；选择需要的差异加入配置草稿，再统一确认保存。服务连接与凭据不进入方案。" Style="{StaticResource DockHintTextStyle}" />
+        <StackPanel x:Name="TemplateLibraryActions" x:FieldModifier="internal" Spacing="10">
+            <Button x:Name="NewTemplateButton" x:FieldModifier="internal" Content="新建方案" Click="NewTemplateClicked" HorizontalAlignment="Left" />
+            <Button x:Name="CaptureTemplateButton" x:FieldModifier="internal" Content="从当前设置创建" Click="CaptureTemplateClicked" HorizontalAlignment="Left" />
+            <Button x:Name="RefreshTemplatesButton" x:FieldModifier="internal" Content="重新读取方案库" Click="RefreshTemplatesClicked" HorizontalAlignment="Left" />
+            <Button x:Name="RestoreBuiltInsButton" x:FieldModifier="internal" Content="恢复内置方案" Click="RestoreBuiltInsClicked" HorizontalAlignment="Left" />
+        </StackPanel>
+        <TextBlock x:Name="TemplateStatusText" x:FieldModifier="internal" TextWrapping="Wrap" />
+        <StackPanel x:Name="TemplateList" x:FieldModifier="internal" Spacing="14" />
+        <StackPanel x:Name="TemplateDetails" x:FieldModifier="internal" Spacing="14" Visibility="Collapsed" />
+        <StackPanel x:Name="TemplateEditPanel" x:FieldModifier="internal" Spacing="14" Visibility="Collapsed">
+            <TextBox x:Name="TemplateNameInput" x:FieldModifier="internal" Header="方案名称" TextChanging="TemplateEditTextChanged" MaxLength="60" />
+            <TextBox x:Name="TemplateDescriptionInput" x:FieldModifier="internal" Header="简介" TextChanging="TemplateEditTextChanged" AcceptsReturn="True" TextWrapping="Wrap" MaxLength="240" />
+            <StackPanel x:Name="TemplateEditRows" x:FieldModifier="internal" Spacing="14" />
+            <Button x:Name="AddTemplateRowButton" x:FieldModifier="internal" Content="添加字段" Click="AddTemplateRowClicked" HorizontalAlignment="Left" />
+            <TextBlock x:Name="TemplateEditError" x:FieldModifier="internal" TextWrapping="Wrap" />
+            <TextBlock Text="保存方案只更新本机方案库，不会写入 Codex 配置。" Style="{StaticResource DockHintTextStyle}" />
+        </StackPanel>
+        <Button x:Name="UndoTemplateButton" x:FieldModifier="internal" Content="撤销上次加入的方案" Click="UndoTemplateClicked" Visibility="Collapsed" HorizontalAlignment="Left" />
+    </StackPanel>
+</UserControl>

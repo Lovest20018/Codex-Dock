@@ -109,9 +109,9 @@ internal static class WorkspaceInformationTests
         });
         Test("central help searches shared topics and exposes navigation destinations only", () =>
         {
-            Assert(DockHelpCatalog.Topics.Count == 7 && DockHelpCatalog.Topics.Select(topic => topic.Id).Distinct().Count() == 7);
+            Assert(DockHelpCatalog.Topics.Count == 8 && DockHelpCatalog.Topics.Select(topic => topic.Id).Distinct().Count() == 8);
             Assert(DockHelpCatalog.Search(" profile ").Any(topic => topic.Id == "profiles") && DockHelpCatalog.Search("no-such-topic-123").Count == 0);
-            Assert(DockHelpCatalog.Topics.All(topic => new[] { "connection", "preview", "profiles", "gateways", "settings", "recovery", "updates" }.Contains(topic.Destination)));
+            Assert(DockHelpCatalog.Topics.All(topic => new[] { "connection", "preview", "sources", "profiles", "gateways", "settings", "recovery", "updates" }.Contains(topic.Destination)));
             Assert(DockHelpCatalog.Topics.First().Text == DockHelpCatalog.QuickStartText && ((IList<DockHelpTopic>)DockHelpCatalog.Topics).IsReadOnly);
         });
     }

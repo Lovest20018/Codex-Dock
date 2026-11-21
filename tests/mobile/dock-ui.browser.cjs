@@ -6,7 +6,7 @@ const root=path.resolve(__dirname,'../..'),out=path.join(root,'artifacts/dock-ui
 function proxy(request,port){return new Promise((resolve,reject)=>{const headers={...request.headers(),host:'fixture.invalid'},body=request.postDataBuffer();delete headers['content-length'];if(body)headers['content-length']=body.length;const req=http.request({host:'127.0.0.1',port,path:new URL(request.url()).pathname+new URL(request.url()).search,method:request.method(),headers},res=>{const parts=[];res.on('data',p=>parts.push(p));res.on('end',()=>resolve({status:res.statusCode,headers:res.headers,body:Buffer.concat(parts)}));});req.on('error',reject);req.end(body);});}
 (async()=>{
  await fs.mkdir(out,{recursive:true});
- const child=spawn(process.env.CODEX_DOCK_TEST_PYTHON||'C:/Users/com/AppData/Local/Python/pythoncore-3.12-64/python.exe',['-B','tests/mobile/manager_fixture.py'],{cwd:root,windowsHide:true});let browser;
+ const child=spawn(process.env.CODEX_DOCK_TEST_PYTHON||(process.platform === 'win32' ? 'python' : 'python3'),['-B','tests/mobile/manager_fixture.py'],{cwd:root,windowsHide:true});let browser;
  try{
   const config=await new Promise((resolve,reject)=>{let s='';child.stdout.on('data',b=>{s+=b;if(s.includes('\n'))resolve(JSON.parse(s.split('\n')[0]));});child.once('exit',c=>reject(Error('fixture '+c)));});
   browser=await chromium.launch({executablePath:process.env.CODEX_DOCK_TEST_CHROME||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});

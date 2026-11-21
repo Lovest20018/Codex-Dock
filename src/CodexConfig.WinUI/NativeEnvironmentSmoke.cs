@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using CodexConfig.Core;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -10,13 +10,12 @@ namespace CodexConfig.WinUI;
 public sealed partial class MainWindow
 {
     private bool nativeEnvironmentAcceptance;
-    private bool restoringNativeClipboard;
     private async Task RunNativeEnvironmentSmokeAsync(string output, List<string> checks)
     {
         void Check(bool value, string message)
         { if (!value) throw new InvalidOperationException(message); checks.Add(message); File.AppendAllText(Path.Combine(output, "progress.log"), "PASS " + message + Environment.NewLine); }
         async Task SettleEnvironmentAsync()
-        { for (var index = 0; index < 100 && readingSavedPreview; index++) await Task.Delay(20); await Task.Delay(100); Root.UpdateLayout(); }
+        { for (var index = 0; index < 100 && FilePreviewPanel.IsReading; index++) await Task.Delay(20); await Task.Delay(100); Root.UpdateLayout(); }
         var previous = viewModel.Home; var position = AppWindow.Position; var size = AppWindow.Size;
         var home = Path.Combine(output, "native-directory space & literal"); Directory.CreateDirectory(home);
         File.WriteAllText(Path.Combine(home, "config.toml"), "# fake-native-comment-secret\nmodel='native-environment-model'\nopenai_base_url='https://environment.invalid/v1'\n[mcp_servers.fixture]\nenv={PRIVATE='fake-native-environment-secret'}\n");
@@ -65,7 +64,7 @@ public sealed partial class MainWindow
             }
             AppWindow.MoveAndResize(new(position.X, position.Y, size.Width, size.Height)); Root.RequestedTheme = ElementTheme.Light; await SettleEnvironmentAsync(); RestoreWindow();
             NavigateTo(FilePreviewNav); await SettleEnvironmentAsync();
-            Check(savedPreview is not null && !SavedPreviewText.Text.Contains("fake-") && !SavedPreviewText.Text.Contains("unsaved-native-environment-model"),
+            Check(FilePreviewPanel.Snapshot is not null && !FilePreviewPanel.SavedPreviewText.Text.Contains("fake-") && !FilePreviewPanel.SavedPreviewText.Text.Contains("unsaved-native-environment-model"),
                 "Native copy acceptance uses the saved sanitized snapshot while the model remains an unsaved draft");
             var clipboard = await NativeClipboardFixture.TryCreateAsync(NativeClipboardFixture.KnownTestText);
             if (clipboard is not null)
@@ -79,16 +78,17 @@ public sealed partial class MainWindow
                     Check(clipboard.OwnsContent, "Actual Windows path copy writes the exact current directory including spaces and metacharacters");
                     await Task.Delay(200);
                     if (!clipboard.OwnsContent) throw new OperationCanceledException("剪贴板已改变，未覆盖新内容。");
-                    SavedPreviewSectionInput.SelectedIndex = 1; CopySavedPreviewClicked(CopySavedPreviewButton, new());
-                    if (!SavedPreviewStatus.Text.Contains("已复制")) throw new IOException($"原生预览复制未完成，未读取剪贴板。busy={ApplicationBusy}; currentHome={SavedPreviewCurrentHome}; section={SelectedPreviewSection?.State}; enabled={CopySavedPreviewButton.IsEnabled}; message={savedPreviewMessage}");
-                    await clipboard.VerifyOwnedTextAsync(savedPreview!.Auth.Text);
+                    FilePreviewPanel.SavedPreviewSectionInput.SelectedIndex = 1; FilePreviewPanel.CopySavedPreviewClicked(FilePreviewPanel.CopySavedPreviewButton, new());
+                    if (!FilePreviewPanel.SavedPreviewStatus.Text.Contains("已复制")) throw new IOException($"原生预览复制未完成，未读取剪贴板。busy={ApplicationBusy}; currentHome={FilePreviewPanel.HasCurrentSnapshot}; section={FilePreviewPanel.SelectedSection?.State}; enabled={FilePreviewPanel.CopySavedPreviewButton.IsEnabled}; message={FilePreviewPanel.Message}");
+                    await clipboard.VerifyOwnedTextAsync(FilePreviewPanel.Snapshot!.Auth.Text);
                     if (!clipboard.OwnsContent) throw new OperationCanceledException("剪贴板在验收期间改变，未读取新内容。");
-                    Check(clipboard.OwnsContent && !savedPreview!.Auth.Text.Contains("fake-") && savedPreview.Auth.Text.Contains("OPENAI_API_KEY"),
+                    Check(clipboard.OwnsContent && !FilePreviewPanel.Snapshot!.Auth.Text.Contains("fake-") && FilePreviewPanel.Snapshot.Auth.Text.Contains("OPENAI_API_KEY"),
                         "Actual Windows authentication copy contains only the redacted presence summary");
                 }
                 finally
                 {
-                    nativeEnvironmentAcceptance = false; restoringNativeClipboard = true;
+                    nativeEnvironmentAcceptance = false;
+                    using var operation = busy.Begin(WindowOperation.RestoreClipboard, "正在恢复剪贴板…");
                     try
                     {
                         await clipboard.RestoreAsync(() =>
@@ -99,7 +99,7 @@ public sealed partial class MainWindow
                     }
                     finally
                     {
-                        restoringNativeClipboard = false;
+                        operation.Dispose();
                         await File.WriteAllTextAsync(Path.Combine(output, "clipboard-result.json"), JsonSerializer.Serialize(new
                         { clipboard.Restored, clipboard.Superseded, knownTestMarkerOnly = true, privateClipboardContentRecorded = false }));
                     }

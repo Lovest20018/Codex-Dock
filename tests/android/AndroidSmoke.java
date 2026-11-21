@@ -19,14 +19,120 @@ public final class AndroidSmoke extends Instrumentation {
  private Bundle options;private Activity activity;private String base;private final JSONArray checks=new JSONArray();
  @Override public void onCreate(Bundle args){options=args;start();}
  private void ui(Runnable action){runOnMainSync(action);}
- private Object field(String name){try{Field f=activity.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(activity);}catch(Exception e){throw new RuntimeException(e);}}
- private void field(String name,Object value){try{Field f=activity.getClass().getDeclaredField(name);f.setAccessible(true);f.set(activity,value);}catch(Exception e){throw new RuntimeException(e);}}
- private Object call(String name,Class<?>[] types,Object... values){try{Method m=activity.getClass().getDeclaredMethod(name,types);m.setAccessible(true);return m.invoke(activity,values);}catch(Exception e){throw new RuntimeException(e);}}
+ private Object controller(String member) throws ReflectiveOperationException {
+  String name;
+  switch(member){
+   case "checkComputers": case "home": case "resumeUrl": case "homeStates": case "lastReachability":
+    name="computerList";break;
+   case "beforeLeave": case "clear": case "connect": case "connectNow": case "connectionError": case "gatewayMenu":
+   case "handleBack": case "previewShell": case "selectedFiles": case "showChat": case "chatDetail": case "connectionDeadline":
+   case "connectionErrorPanel": case "fileGeneration": case "files": case "fileView": case "gatewayPopup":
+   case "generation": case "origin": case "web":
+    name="chat";break;
+   case "cancelDownload": case "downloadArtifact": case "downloadTask":
+    name="downloads";break;
+   default:return activity;
+  }
+  Field controller=activity.getClass().getDeclaredField(name);controller.setAccessible(true);
+  return controller.get(activity);
+ }
+ private Object field(String name){try{Object target=controller(name);Field f=target.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(target);}catch(Exception e){throw new RuntimeException(e);}}
+ private void field(String name,Object value){try{Object target=controller(name);Field f=target.getClass().getDeclaredField(name);f.setAccessible(true);f.set(target,value);}catch(Exception e){throw new RuntimeException(e);}}
+ private Object call(String name,Class<?>[] types,Object... values){try{Object target=controller(name);Method m=target.getClass().getDeclaredMethod(name,types);m.setAccessible(true);return m.invoke(target,values);}catch(Exception e){throw new RuntimeException(e);}}
  private void call(String name){call(name,new Class<?>[]{});}
  private void check(boolean value,String message){if(!value)throw new AssertionError(message);checks.put(message);}
  private void until(BooleanSupplier predicate,String message)throws Exception{long end=SystemClock.elapsedRealtime()+20000;while(SystemClock.elapsedRealtime()<end){if(predicate.getAsBoolean())return;Thread.sleep(150);}throw new AssertionError(message);}
  private Object js(String script){try{CountDownLatch done=new CountDownLatch(1);String[] result={null};ui(()->((WebView)field("web")).evaluateJavascript(script,value->{result[0]=value;done.countDown();}));if(!done.await(12,TimeUnit.SECONDS))throw new AssertionError("JS timeout");return new JSONTokener(result[0]).nextValue();}catch(Exception e){throw new RuntimeException(e);}}
  private String text(View view){if(view.getVisibility()!=View.VISIBLE)return "";StringBuilder result=new StringBuilder();if(view instanceof TextView)result.append(((TextView)view).getText()).append('\n');if(view instanceof ViewGroup)for(int n=0;n<((ViewGroup)view).getChildCount();n++)result.append(text(((ViewGroup)view).getChildAt(n)));return result.toString();}
+ private Button findButton(View view,String label){
+  if(view instanceof Button&&label.contentEquals(((Button)view).getText()))return (Button)view;
+  if(view instanceof ViewGroup)for(int n=0;n<((ViewGroup)view).getChildCount();n++){
+   Button button=findButton(((ViewGroup)view).getChildAt(n),label);if(button!=null)return button;
+  }
+  return null;
+ }
+ @SuppressWarnings("unchecked")
+ private void connectionFeedback(Context target, Instrumentation controller)throws Exception{
+  String address="https://127.0.0.1:1";
+  SharedPreferences prefs=target.getSharedPreferences("bridge",0);
+  java.util.Set<String> saved=new java.util.HashSet<>(prefs.getStringSet("origins",java.util.Collections.emptySet()));
+  String active=prefs.getString("active",null);
+  Class<?> checkType=activity.getClass().getClassLoader().loadClass("io.github.try2love.codexbridge.ComputerList$ComputerReachability");
+  Constructor<?> outcome=checkType.getDeclaredConstructor(boolean.class,long.class);outcome.setAccessible(true);
+  Object previous=outcome.newInstance(true,SystemClock.elapsedRealtime()-61000);
+  Class<?> problem=activity.getClass().getClassLoader().loadClass("io.github.try2love.codexbridge.ConnectionProblem");
+  Method fromWebError=problem.getDeclaredMethod("fromWebError",int.class);fromWebError.setAccessible(true);
+  Object certificate=fromWebError.invoke(null,WebViewClient.ERROR_FAILED_SSL_HANDSHAKE);
+  Object timeout=fromWebError.invoke(null,WebViewClient.ERROR_TIMEOUT);
+  controller.runOnMainSync(()->{
+   try{
+    java.util.Set<String> addresses=new java.util.HashSet<>(saved);addresses.add(address);
+    prefs.edit().putStringSet("origins",addresses).apply();
+    ((java.util.Map<String,Object>)field("lastReachability")).put(address,previous);
+    call("home");call("checkComputers");
+    TextView state=((java.util.Map<String,TextView>)field("homeStates")).get(address);
+    check(state.getText().toString().contains("Online · 1 minute ago"),"Checking again retains the last reachability result and its age");
+    int[] codes={401,503,WebViewClient.ERROR_FAILED_SSL_HANDSHAKE,WebViewClient.ERROR_TIMEOUT};
+    String[] reasons={"Gateway denied access · HTTP 401","Gateway service error · HTTP 503","Cannot verify the certificate","Connection timed out"};
+    for(int n=0;n<codes.length;n++){
+     call("connectNow",new Class<?>[]{String.class},address+"/");
+     WebView web=(WebView)field("web");final int code=codes[n];
+     WebResourceRequest request=new WebResourceRequest(){
+      public Uri getUrl(){return Uri.parse(address+"/");} public boolean isForMainFrame(){return true;}
+      public boolean isRedirect(){return false;} public boolean hasGesture(){return false;}
+      public String getMethod(){return "GET";} public java.util.Map<String,String> getRequestHeaders(){return java.util.Collections.emptyMap();}
+     };
+     if(code>0)web.getWebViewClient().onReceivedHttpError(web,request,
+      new WebResourceResponse("text/plain","UTF-8",code,"Fixture error",java.util.Collections.emptyMap(),new ByteArrayInputStream(new byte[0])));
+     else call("connectionError",new Class<?>[]{String.class,WebView.class,int.class,problem},
+      address+"/",web,field("generation"),code==WebViewClient.ERROR_TIMEOUT?timeout:certificate);
+     View panel=(View)field("connectionErrorPanel");
+     Button retry=panel==null?null:findButton(panel,"Retry connection");
+     check(panel!=null&&text(panel).contains(reasons[n])&&retry!=null&&retry.isEnabled(),"Connection error card shows "+reasons[n]+" with a retry action");
+     if(n==codes.length-1){
+      retry.performClick();
+      check(field("web")!=web&&field("connectionErrorPanel")==null,"Retry starts a fresh connection to the same address");
+     }
+    }
+   }finally{
+    call("clear");
+    prefs.edit().putStringSet("origins",saved).putString("active",active).remove("last-opened:"+address).apply();
+    ((java.util.Map<String,Object>)field("lastReachability")).remove(address);
+    call("home");
+   }
+  });
+ }
+ private void computerPreferences(Context target)throws Exception{
+  SharedPreferences prefs=target.getSharedPreferences("test-computer-store",0);
+  String from="https://computer.invalid",to="https://new-computer.invalid",other=from+":8443";
+  String cleared="cleared:",first=":first-stream",second=":second-stream";
+  prefs.edit().clear().putStringSet("origins",new java.util.HashSet<>(java.util.Arrays.asList(from,to,other)))
+   .putString("active",from).putString("name:"+from,"Keep this name").putString("computer-name:"+from,"Legacy name")
+   .putString("last-chat:"+from,"Saved chat").putBoolean("notificationsMuted:"+from,true)
+   .putLong(cleared+from+first,42).putLong(cleared+from+second,21)
+   .putLong(cleared+to+first,50).putLong(cleared+other+first,99).commit();
+  try{
+   Class<?> type=target.getClassLoader().loadClass("io.github.try2love.codexbridge.ComputerStore");
+   Constructor<?> constructor=type.getDeclaredConstructor(SharedPreferences.class);constructor.setAccessible(true);
+   Object store=constructor.newInstance(prefs);
+   Method migrate=type.getDeclaredMethod("migrate",String.class,String.class,String.class);migrate.setAccessible(true);
+   migrate.invoke(store,from,to,"Saved descriptor");
+   check(!prefs.getStringSet("origins",java.util.Collections.emptySet()).contains(from)&&to.equals(prefs.getString("active",""))
+    &&"Keep this name".equals(prefs.getString("name:"+to,""))&&"Legacy name".equals(prefs.getString("computer-name:"+to,""))
+    &&"Saved chat".equals(prefs.getString("last-chat:"+to,""))&&!prefs.getBoolean("notificationsMuted:"+to,false),
+    "Address migration preserves existing computer metadata and the destination notification preference");
+   check(!prefs.contains(cleared+from+first)&&!prefs.contains(cleared+from+second)&&prefs.getLong(cleared+to+first,0)==50
+    &&prefs.getLong(cleared+to+second,0)==21&&prefs.getLong(cleared+other+first,0)==99,
+    "Address migration keeps the highest cleared cursor per stream and isolates explicit ports");
+   Method remove=type.getDeclaredMethod("remove",String.class);remove.setAccessible(true);
+   remove.invoke(store,to);
+   Method mark=type.getDeclaredMethod("markCleared",String.class,String.class,long.class);mark.setAccessible(true);
+   mark.invoke(store,to,"first-stream",52L);
+   check(!prefs.contains("active")&&!prefs.contains("computer-name:"+to)&&!prefs.contains("last-chat:"+to)
+    &&!prefs.contains(cleared+to+first)&&!prefs.contains(cleared+to+second)&&prefs.getLong(cleared+other+first,0)==99,
+    "Removal clears legacy names and notification positions and ignores a late clear callback");
+  }finally{prefs.edit().clear().commit();}
+ }
  // Active chat progress animates continuously; a UI barrier avoids waiting forever for idle.
  private void shot(String name)throws Exception{ui(()->{});Thread.sleep(600);ui(()->{});Bitmap b=getUiAutomation().takeScreenshot();File dir=getTargetContext().getExternalFilesDir(null);if(dir==null)throw new IOException("Missing target external files directory");try(FileOutputStream out=new FileOutputStream(new File(dir,name+".png"))){b.compress(Bitmap.CompressFormat.PNG,100,out);}b.recycle();}
  private void notificationEvents(Context target,NotificationManager manager)throws Exception{
@@ -71,15 +177,25 @@ public final class AndroidSmoke extends Instrumentation {
 target.getSharedPreferences("bridge",0).edit().clear().putBoolean("alerts",true).putString("language","zh").commit();
   Intent intent=new Intent(Intent.ACTION_MAIN).setClassName(target.getPackageName(),"io.github.try2love.codexbridge.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK);
   activity=startActivitySync(intent);waitForIdleSync();
+  if("full".equals(options.getString("mode","full"))){
+   computerPreferences(target);
+   check(target.getPackageManager().getPackageInfo(target.getPackageName(),0).versionName.equals(call("appVersion",new Class<?>[0])),
+    "The native settings version matches the APK version");
+  }
   String[] visible={""};ui(()->visible[0]=text(activity.getWindow().getDecorView()));
   check(visible[0].contains("Lovest Code")&&visible[0].contains("继续你的聊天")&&!visible[0].contains("DSH"),"Lovest Code home and Codex-only connection entry");shot("home-zh");
   ui(()->{target.getSharedPreferences("bridge",0).edit().putString("language","en").apply();call("home");visible[0]=text(activity.getWindow().getDecorView());});check(visible[0].contains("Connect your computer")&&!visible[0].matches("(?s).*[\\u4e00-\\u9fff].*"),"English home has complete translated Dock copy");shot("home-en");ui(()->{target.getSharedPreferences("bridge",0).edit().putString("language","zh").apply();call("home");});
+  if("full".equals(options.getString("mode","full"))){
+   ui(()->target.getSharedPreferences("bridge",0).edit().putString("language","en").apply());
+   try{connectionFeedback(target,this);}
+   finally{ui(()->{target.getSharedPreferences("bridge",0).edit().putString("language","zh").apply();call("home");});}
+  }
   ui(()->call("connect",new Class<?>[]{String.class},base+"/"));
   until(()->Boolean.TRUE.equals(js("!!window.DockUI&&!!document.getElementById('login-button')&&!document.getElementById('login').hidden&&document.getElementById('bootstrap-status').hidden")),"Production login initialized");
   js("document.getElementById('username').value='fixture';document.getElementById('password').value='isolated-android-fixture';document.getElementById('login-button').click();true");
   until(()->Boolean.TRUE.equals(js("!!document.getElementById('app')&&!document.getElementById('app').hidden&&!!window.DockUI")),"Authenticated production Dock page");
   check(Boolean.TRUE.equals(js("document.getElementById('app').getBoundingClientRect().width>0")),"Real Dock assets and password login in Android WebView");
-  check(Boolean.TRUE.equals(js("prompt('codexbridge-copy:wrong-token','rejected')===null&&prompt('codexbridge-theme:wrong-token','light')===null")),"Forged native bridge tokens are rejected");
+  check(Boolean.TRUE.equals(js("prompt('codexbridge-copy:wrong-token','rejected')===null&&prompt('codexbridge-theme:wrong-token','light')===null&&prompt('lovest-shell:wrong-token','{}')===null")),"Forged native bridge tokens are rejected");
   final boolean[] blocked={false};ui(()->{WebView v=(WebView)field("web");blocked[0]=v.getWebViewClient().shouldOverrideUrlLoading(v,new WebResourceRequest(){public Uri getUrl(){return Uri.parse("https://untrusted.invalid/");}public boolean isForMainFrame(){return true;}public boolean isRedirect(){return false;}public boolean hasGesture(){return false;}public String getMethod(){return "GET";}public java.util.Map<String,String> getRequestHeaders(){return java.util.Collections.emptyMap();}});});check(blocked[0],"External navigation without a user gesture is blocked");
   until(()->Boolean.TRUE.equals(js("window.LovestShell?.version===1&&document.documentElement.classList.contains('lovest-shell')")),"Versioned owned adapter acknowledged");
   if("full".equals(options.getString("mode","full"))){

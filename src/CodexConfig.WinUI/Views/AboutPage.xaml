@@ -1,0 +1,11 @@
+<UserControl x:Class="CodexConfig.WinUI.Views.AboutPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:CodexConfig.WinUI"
+             IsTabStop="False">
+    <StackPanel Spacing="16">
+        <TextBlock Text="Codex Dock · Windows" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
+        <TextBlock Text="在 Windows 管理 Codex 的模型连接和手机服务。高级工具提供配置查询、网关和备份。" TextWrapping="Wrap" />
+        <TextBlock Text="增强偏好按配置目录保存。窗口关闭后收起到托盘，增强继续运行。可创建增强快捷方式；重开程序会核对并接回之前确认的实例。" Style="{StaticResource DockHintTextStyle}" />
+    </StackPanel>
+</UserControl>

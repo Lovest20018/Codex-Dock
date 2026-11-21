@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.19.9',
+    [string]$Version,
     [switch]$SkipPublish,
     [string]$InnoCompiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
@@ -9,6 +9,7 @@ $taskArtifacts = Join-Path $taskRoot 'artifacts'
 $taskCommit = (git -C $taskRoot rev-parse HEAD).Trim()
 if (git -C $taskRoot status --porcelain) { throw 'Commit reviewed changes before producing a release package.' }
 $taskSourceVersion = ([xml](Get-Content -LiteralPath (Join-Path $taskRoot 'src\CodexConfig.WinUI\CodexConfig.WinUI.csproj') -Raw)).Project.PropertyGroup.Version
+if (-not $Version) { $Version = $taskSourceVersion }
 if ($Version -ne $taskSourceVersion) { throw 'Package version must match the WinUI source version.' }
 $taskRelease = Join-Path $taskArtifacts "CodexDock-$Version-win-x64"
 if (-not ([IO.Path]::GetFullPath($taskRelease).StartsWith($taskArtifacts + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase))) { throw 'Release path escapes artifacts.' }
@@ -60,20 +61,23 @@ Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\android-dock-shell-plan.md') -
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\release-0.13.0.md'),(Join-Path $taskRoot 'docs\review-0.13.0.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\release-0.12.0.md'),(Join-Path $taskRoot 'docs\review-0.12.0.md') -Destination (Join-Path $taskRelease 'docs') -Force
 Get-ChildItem -LiteralPath (Join-Path $taskRoot 'assets\brand') -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $taskRelease 'brand') -Force }
-Copy-Item -LiteralPath (Join-Path $taskRoot 'src\CodexConfig.App\Assets\app.ico') -Destination (Join-Path $taskRelease 'brand') -Force
-$taskUiOutput = Join-Path $taskRoot ('.ui-test-v' + ($Version -replace '\.0$',''))
-Remove-Item Env:CODEX_DOCK_WINUI_TEST_FILTER -ErrorAction SilentlyContinue
-$taskRun = Start-Process -FilePath $taskExe -ArgumentList @('--smoke-test',$taskUiOutput) -WindowStyle Hidden -PassThru -Wait
-if ($taskRun.ExitCode -ne 0) { throw "Published EXE UI check failed. See $taskUiOutput\failure.txt" }
-$taskUiReport = Join-Path $taskUiOutput 'report.json'
-if (-not (Test-Path -LiteralPath $taskUiReport) -or (Get-Content -LiteralPath $taskUiReport -Raw | ConvertFrom-Json).status -ne 'PASS') { throw 'The published EXE must pass its isolated UI check before packaging.' }
-$taskExeHash = (Get-FileHash -LiteralPath $taskExe -Algorithm SHA256).Hash.ToLowerInvariant()
-$taskAssemblyHash = (Get-FileHash -LiteralPath (Join-Path $taskRelease 'CodexDock.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
-$taskReport = Get-Content -LiteralPath $taskUiReport -Raw | ConvertFrom-Json
-if ($taskReport.applicationVersion -ne $Version -or $taskReport.uiFramework -ne 'WinUI 3') { throw 'The running WinUI application version must match the requested package version.' }
-if ($taskReport.executableName -ne 'CodexDock.exe' -or $taskReport.executableSha256 -ne $taskExeHash -or $taskReport.applicationAssemblySha256 -ne $taskAssemblyHash) { throw 'The UI report must match this published executable and application assembly.' }
+$taskUiOutput = Join-Path $taskArtifacts ('test-runs\ui-release-' + $Version + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -ItemType Directory -Path $taskUiOutput -Force | Out-Null
+. (Join-Path $taskRoot 'tests\installer\dock-upgrade-fixture.ps1')
+$taskReport = Invoke-DockStartupVerification $taskRelease (Join-Path $taskUiOutput 'startup')
+if ($taskReport.applicationVersion -ne $Version) { throw 'The running WinUI application version must match the requested package version.' }
+$taskExeHash = $taskReport.executableSha256
+$taskAssemblyHash = $taskReport.applicationAssemblySha256
+$taskSmokeOutput = Join-Path $taskUiOutput 'smoke'
+& (Join-Path $PSScriptRoot 'test-windows-ui.ps1') -OutputDirectory $taskSmokeOutput -WinUi
+$taskSmokeReport = Get-Content -LiteralPath (Join-Path $taskSmokeOutput 'winui\report.json') -Raw | ConvertFrom-Json
+$taskSharedHash = (Get-FileHash -LiteralPath (Join-Path $taskRelease 'CodexConfig.Application.dll')).Hash.ToLowerInvariant()
+if ($taskSmokeReport.applicationVersion -ne $Version -or $taskSmokeReport.sharedApplicationAssemblySha256.ToLowerInvariant() -ne $taskSharedHash) {
+    throw 'The isolated UI suite must exercise the release version and shared application assembly.'
+}
 New-Item -ItemType Directory -Path (Join-Path $taskRelease 'verification') -Force | Out-Null
-Copy-Item -LiteralPath $taskUiReport -Destination (Join-Path $taskRelease 'verification\ui-report.json') -Force
+Copy-Item -LiteralPath (Join-Path $taskUiOutput 'startup\report.json') -Destination (Join-Path $taskRelease 'verification\ui-report.json') -Force
+Copy-Item -LiteralPath (Join-Path $taskSmokeOutput 'winui\report.json') -Destination (Join-Path $taskRelease 'verification\ui-smoke-report.json') -Force
 
 @(
     "Codex Dock $Version / Windows x64"
@@ -99,7 +103,7 @@ $taskExeHash = (Get-FileHash -LiteralPath $taskExe -Algorithm SHA256).Hash.ToLow
 @{
     name='CodexDock'; version=$Version; platform='win-x64'; selfContained=$true; uiFramework='WinUI 3'
     createdAtUtc=[DateTimeOffset]::UtcNow.ToString('o'); sourceCommit=$taskCommit; executableSha256=$taskExeHash; applicationAssemblySha256=$taskAssemblyHash
-    installer='Inno Setup, per-user'; settings='Codex configuration shares a draft; mobile access saves independently'
+    installer='Inno Setup, per-user'; startupVerificationProtocol=1; settings='Codex configuration shares a draft; mobile access saves independently'
     mobileWorkerSha256=(Get-FileHash -LiteralPath (Join-Path $taskRelease 'mobile\CodexDock.Mobile.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
     desktopQuitHelperSha256=(Get-FileHash -LiteralPath (Join-Path $taskRelease 'mobile\runtime\client-helpers\codex-quit-helper.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
     mobileUpstreamCommit='0721aa7dafa6177751ba7e568e0ad0efee05655b'
@@ -113,23 +117,9 @@ $taskSetup = Join-Path $taskArtifacts "CodexDock-$Version-Setup-win-x64.exe"
 $taskZip = Join-Path $taskArtifacts "CodexDock-$Version-win-x64.zip"
 Compress-Archive -LiteralPath $taskRelease -DestinationPath $taskZip -Force
 
-Add-Type -AssemblyName System.IO.Compression
 $taskSourceZip = Join-Path $taskArtifacts "CodexDock-$Version-source.zip"
-# The committed tree is the release boundary; never sweep vendor build caches
-# or temporary fixtures into a source archive.
-$taskSourceFiles = @(git -C $taskRoot -c core.quotepath=false ls-files | ForEach-Object { Get-Item -LiteralPath (Join-Path $taskRoot $_) })
-$taskStream = [IO.File]::Open($taskSourceZip, [IO.FileMode]::Create)
-try {
-    $taskArchive = [IO.Compression.ZipArchive]::new($taskStream, [IO.Compression.ZipArchiveMode]::Create)
-    try {
-        foreach ($taskFile in $taskSourceFiles) {
-            $taskName = $taskFile.FullName.Substring($taskRoot.Length + 1).Replace('\','/')
-            $taskEntry = $taskArchive.CreateEntry($taskName, [IO.Compression.CompressionLevel]::Optimal)
-            $taskInput = [IO.File]::OpenRead($taskFile.FullName); $taskOutput = $taskEntry.Open()
-            try { $taskInput.CopyTo($taskOutput) } finally { $taskOutput.Dispose(); $taskInput.Dispose() }
-        }
-    } finally { $taskArchive.Dispose() }
-} finally { $taskStream.Dispose() }
+git -C $taskRoot archive --format=zip --output=$taskSourceZip $taskCommit
+if ($LASTEXITCODE -ne 0) { throw 'Source archive failed.' }
 & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'verify-release-privacy.ps1') -PayloadDir $taskRelease -SourceArchive $taskSourceZip -History
 if ($LASTEXITCODE -ne 0) { throw 'Release privacy scan failed.' }
 $taskChecksumLines = foreach ($taskFile in @($taskSetup,$taskZip,$taskSourceZip,$taskExe)) {

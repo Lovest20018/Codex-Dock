@@ -37,24 +37,24 @@ public sealed partial class MainWindow
     private void RefreshQuickModelEntry(bool editable)
     {
         var available = connectionDraft.Available && !HasPendingRecovery && !viewModel.NeedsConnectionSetup;
-        QuickModelButton.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
-        QuickModelButton.IsEnabled = available && editable && quickModelRead is null;
-        QuickModelButton.Content = connectionDraft.HasDraft && connectionDraft.Model.Length > 0 && connectionDraft.Model != viewModel.ModelLabel
+        WorkspacePanel.QuickModelButton.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        WorkspacePanel.QuickModelButton.IsEnabled = available && editable && quickModelRead is null;
+        WorkspacePanel.QuickModelButton.Content = connectionDraft.HasDraft && connectionDraft.Model.Length > 0 && connectionDraft.Model != viewModel.ModelLabel
             ? "继续更换模型" : "更换模型";
-        CancelQuickModelReadButton.Visibility = quickModelRead is null ? Visibility.Collapsed : Visibility.Visible;
-        QuickModelApplyDetailsButton.Visibility = quickModelAwaitingApply && lastApplication?.Outcome is DesktopApplyOutcome.ExitBlocked or DesktopApplyOutcome.Failed
+        WorkspacePanel.CancelQuickModelReadButton.Visibility = quickModelRead is null ? Visibility.Collapsed : Visibility.Visible;
+        WorkspacePanel.QuickModelApplyDetailsButton.Visibility = quickModelAwaitingApply && lastApplication?.Outcome is DesktopApplyOutcome.ExitBlocked or DesktopApplyOutcome.Failed
             ? Visibility.Visible : Visibility.Collapsed;
-        QuickModelHint.Text = quickModelRead is not null ? "正在读取可用模型和本机 Codex 状态…" :
+        WorkspacePanel.QuickModelHint.Text = quickModelRead is not null ? "正在读取可用模型和本机 Codex 状态…" :
             savingConfiguration && currentPage == WorkspaceNav ? "正在备份并保存…" :
             applying ? ApplicationStage.Text :
             (quickModelAwaitingApply || configurationResult?.WasWritten == true) && lastApplication is { } result ? result.Progress.Message :
             quickModelAwaitingApply ? "正在使用 Codex 时，可以等当前任务结束再应用。" :
             connectionDraft.ConnectionChanged ? "先核对本次连接修改，再读取可用模型。" : "";
-        QuickModelHint.Visibility = available && QuickModelHint.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        WorkspacePanel.QuickModelHint.Visibility = available && WorkspacePanel.QuickModelHint.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private async void QuickModelClicked(object sender, RoutedEventArgs args) => await OpenQuickModelAsync();
-    private void CancelQuickModelReadClicked(object sender, RoutedEventArgs args) => quickModelRead?.Cancel();
+    internal async void QuickModelClicked(object sender, RoutedEventArgs args) => await OpenQuickModelAsync();
+    internal void CancelQuickModelReadClicked(object sender, RoutedEventArgs args) => quickModelRead?.Cancel();
 
     private async Task OpenQuickModelAsync()
     {
@@ -62,6 +62,7 @@ public sealed partial class MainWindow
             viewModel.NeedsConnectionSetup || connectionDraft.Snapshot is not { } snapshot) return;
         if (connectionDraft.ConnectionChanged) { NavigateTo(ConnectionNav, revealStart: true); return; }
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        using var operation = busy.Begin(WindowOperation.ReadQuickModels, "正在读取模型和 Codex 状态…");
         quickModelRead = cancellation;
         shellError = ""; RefreshView();
         try
@@ -78,11 +79,12 @@ public sealed partial class MainWindow
             var (models, service, status) = await modelRead;
             var (targets, targetError) = await targetRead;
             quickModelRead = null;
+            operation.Dispose();
             var savedModel = store.ReadSettings(snapshot).Model;
             var picker = new QuickModelDialog(models, status, savedModel, connectionDraft.Model, targets, targetError,
                 source.Mode == ConnectionMode.OfficialWithApi, viewModel.SpeedCompatibilityEnabled, viewModel.ConnectionRecoveryEnabled,
                 viewModel.PreferencesAvailable, model => configurationSave.PrepareReview(connectionDraft.RequestForModel(model, service, source)))
-                { XamlRoot = Root.XamlRoot, RequestedTheme = Root.ActualTheme, PrimaryButtonStyle = WorkspaceNextButton.Style };
+                { XamlRoot = Root.XamlRoot, RequestedTheme = Root.ActualTheme, PrimaryButtonStyle = WorkspacePanel.WorkspaceNextButton.Style };
             var result = await ShowDialogAsync(picker);
             if (closing || revision != connectionDraft.Revision)
             {
@@ -100,7 +102,7 @@ public sealed partial class MainWindow
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception error) { if (!closing) SetShellError("换模型未完成", error.Message); }
-        finally { quickModelRead = null; if (!closing) RefreshView(); }
+        finally { operation.Dispose(); quickModelRead = null; if (!closing) RefreshView(); }
     }
 
     private async Task<(IReadOnlyList<string> Models, ModelCatalogResult? Service, string Status)> ReadQuickModelListAsync(
@@ -190,10 +192,9 @@ public sealed partial class MainWindow
                 var filterHint = Wrapped("");
                 void ShowChoices(string filter)
                 {
-                    const int visibleLimit = 20;
-                    var matches = list.Where(value => value.Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase)).Take(visibleLimit + 1).ToArray();
+                    var matches = FilterModelChoices(list, filter);
                     ModelChoices.Children.Clear();
-                    foreach (var choice in matches.Take(visibleLimit))
+                    foreach (var choice in matches.Take(ModelListLimit))
                     {
                         var button = new RadioButton
                         {
@@ -203,8 +204,7 @@ public sealed partial class MainWindow
                         button.Checked += (_, _) => { SelectModel(choice); manual.Text = choice; };
                         ModelChoices.Children.Add(button);
                     }
-                    filterHint.Text = matches.Length == 0 ? "没有匹配的模型。" :
-                        matches.Length > visibleLimit ? "输入名称可查找其余模型。" : "";
+                    filterHint.Text = ModelFilterHint(matches.Length);
                     filterHint.Visibility = filterHint.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
                 }
                 AutomationProperties.SetName(ModelChoices, "新聊天使用的模型");
