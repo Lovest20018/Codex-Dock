@@ -18,6 +18,9 @@ Catalog(e,t,n){const diagnostic="serviceTierAccess:";const a={c:n=>[]},C={Ym:opt
     private const string Runtime = """
 const modules={};function w(k){let e={exports:{}};modules[k](e,e.exports,w);return e.exports}w.m=modules;w.o=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);w.C=e=>{var k,m=e.__webpack_modules__,r=e.__rspack_esm_runtime;for(k in m)w.o(m,k)&&(w.m[k]=m[k]);r&&r(w);};export{w as __webpack_require__};
 """;
+    private const string RuntimeWithChunkIds = """
+const modules={},loaded={};function w(k){let e={exports:{}};modules[k](e,e.exports,w);return e.exports}w.m=modules;w.o=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);w.C=e=>{var k,j,ids=e.__rspack_esm_ids,m=e.__webpack_modules__,r=e.__rspack_esm_runtime,i=0;for(k in m)w.o(m,k)&&(w.m[k]=m[k]);for(r&&r(w);i<(ids?.length??0);i++)loaded[j=ids[i]]=0;};export{w as __webpack_require__};
+""";
 
     internal static void Register(List<(string Name, Func<Task> Run)> tests, string root)
     {
@@ -37,6 +40,31 @@ const modules={};function w(k){let e={exports:{}};modules[k](e,e.exports,w);retu
             var location = DesktopSpeedPatch.RuntimeLocations("assets/runtime.js", Runtime).Single();
             Assert(Runtime[location.Column..].StartsWith("var k,m=e.__webpack_modules__") && location.Chunk == "e");
             Throws(() => DesktopSpeedPatch.RuntimeLocations("runtime.js", "unsupported-runtime"));
+        });
+        Test("speed patch finds the Rspack registration with chunk IDs before it copies factories", () =>
+        {
+            const string runtime = "// runtime\n" + RuntimeWithChunkIds;
+            var location = DesktopSpeedPatch.RuntimeLocations("assets/runtime.js", runtime).Single();
+            Assert(location.Line == 1 && location.Chunk == "e" && runtime.Split('\n')[1][location.Column..].StartsWith("var k,j,ids="));
+            Throws(() => DesktopSpeedPatch.RuntimeLocations("assets/runtime.js", runtime + Runtime));
+        });
+        Test("speed patch keeps the thread provider argument when reading the queued default", () =>
+        {
+            const string provider = "e.getThreadModelProvider(r)";
+            var source = Factories.Replace("})},async writeServiceTier", "}," + provider + ")},async writeServiceTier", StringComparison.Ordinal);
+            var result = DesktopSpeedPatch.Rewrite(source);
+            Assert(result.Gates.Contains("queue-default") && result.Source.Contains("}," + provider + ")},async writeServiceTier"));
+        });
+        Test("speed patch adds the selected model to the conversation-scoped query", () =>
+        {
+            const string source = "function q(c,s,m,o,p){let x,y,k=(0,r.c)(62),z=o;(0,r.use)(r.context);let h=z.hostId;" +
+                "k[0]!==c||k[1]!==h?(x={hostId:h,conversationId:c},k[0]=c,k[1]=h,k[2]=x):x=k[2];" +
+                "let a=x,b=(0,r.P)(r.query,a);k[3]!==c||k[4]!==h?(y={conversationId:c,hostId:h},k[3]=c,k[4]=h,k[5]=y):y=k[5];" +
+                "let{data:d,isLoading:i}=(0,v.Ym)(y),u=b;let{serviceTierAccess:t}=(0,r.U)(x);let f=(0,r.bs)(d?.models,s.model);return f;}";
+            var result = DesktopSpeedPatch.Rewrite(source);
+            Assert(result.Gates.SequenceEqual(new[] { "selected-model" }));
+            Assert(result.Source.Contains("h===\"local\"?{...y,additionalAvailableModels:[s.model]}:y"));
+            Assert(DesktopSpeedPatch.Rewrite(source.Replace("d?.models,s.model", "d?.models,z.model")).Gates.Count == 0);
         });
         Test("speed preferences default off and are isolated from connection drafts and other homes", () =>
         {
@@ -63,11 +91,13 @@ const modules={};function w(k){let e={exports:{}};modules[k](e,e.exports,w);retu
 
     internal static async Task BrowserAsync(string root, string browser, string? nativeAssets = null)
     {
+        root = Path.GetFullPath(root);
         var fixture = Path.Combine(root, "speed-browser-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(Path.Combine(fixture, "assets"));
+        var runtime = nativeAssets is null ? Runtime : RuntimeWithChunkIds;
         File.WriteAllText(Path.Combine(fixture, "index.html"), "<meta http-equiv=\"Content-Security-Policy\" content=\"script-src 'self'\"><script type=\"module\" src=\"./assets/main.js\"></script>");
-        File.WriteAllText(Path.Combine(fixture, "assets", "runtime.js"), Runtime);
+        File.WriteAllText(Path.Combine(fixture, "assets", "runtime.js"), runtime);
         File.WriteAllText(Path.Combine(fixture, "assets", "chunk.js"), Factories);
-        File.WriteAllText(Path.Combine(fixture, "assets", "main.js"), "import{__webpack_require__ as w}from'./runtime.js';import*as chunk from'./chunk.js';w.C(chunk);for(const k of Object.keys(chunk.__webpack_modules__))w(k);globalThis.auth='apiKey';globalThis.ready=true;");
+        File.WriteAllText(Path.Combine(fixture, "assets", "main.js"), "import{__webpack_require__ as w}from'./runtime.js';import*as chunk from'./chunk.js';w.C({__rspack_esm_ids:[]});w.C(chunk);for(const k of Object.keys(chunk.__webpack_modules__))w(k);globalThis.auth='apiKey';globalThis.ready=true;");
         if (nativeAssets is not null)
         {
             var modules = Directory.GetFiles(nativeAssets, "*.js"); Assert(modules.Length == 3, "Expected three verified native gate chunks");
@@ -93,7 +123,11 @@ const modules={};function w(k){let e={exports:{}};modules[k](e,e.exports,w);retu
                 try
                 {
                     using var data = JsonDocument.Parse(await http.GetStringAsync($"http://127.0.0.1:{port}/json/list"));
-                    socket = data.RootElement.EnumerateArray().FirstOrDefault(page => page.GetProperty("type").GetString() == "page").GetProperty("webSocketDebuggerUrl").GetString();
+                    socket = data.RootElement.EnumerateArray()
+                        .FirstOrDefault(page => page.GetProperty("type").GetString() == "page" &&
+                            Uri.TryCreate(page.GetProperty("url").GetString(), UriKind.Absolute, out var url) &&
+                            url.Scheme == "file")
+                        .GetProperty("webSocketDebuggerUrl").GetString();
                 }
                 catch { await Task.Delay(100); }
             }
@@ -123,7 +157,7 @@ const modules={};function w(k){let e={exports:{}};modules[k](e,e.exports,w);retu
                     throw new InvalidOperationException("The debugger pause notification was lost");
                 }
             }
-            var locations = DesktopSpeedPatch.RuntimeLocations("assets/runtime.js", Runtime);
+            var locations = DesktopSpeedPatch.RuntimeLocations("assets/runtime.js", runtime);
             session = await DesktopSpeedSession.StartAsync(port, browser, new(locations, new Dictionary<string, int>()), () => eligible);
             try { await session.WaitUntilAppliedAsync(); }
             catch (Exception error)
@@ -184,7 +218,10 @@ const modules={};function w(k){let e={exports:{}};modules[k](e,e.exports,w);retu
         var running = platform.Running();
         var target = new CodexDesktopTarget(platform.Installed().Distinct(StringComparer.OrdinalIgnoreCase).Single(), []);
         var original = running.Where(value => !running.Any(parent => parent.Id == value.ParentId)).ToArray();
-        var plan = DesktopSpeedPatch.Inspect(target.Executable);
+        var plan = DesktopSpeedPatch.Inspect(target.Executable, connectionsEnabled: true);
+        var store = new ConfigStore(new FakeEnvironment(), _ => null);
+        var connections = new DesktopConnectionBackend(store, store.Load(home), () => true, () => true);
+        Assert(connections.SpeedEligible, "The isolated configuration must qualify for speed compatibility");
         var start = CodexDesktop.CreateStartInfo(target.Executable, home, null); platform.PrepareStart(start);
         start.Environment["CODEX_ELECTRON_USER_DATA_PATH"] = profile;
         start.Environment.Remove("OPENAI_API_KEY");
@@ -205,7 +242,7 @@ const modules={};function w(k){let e={exports:{}};modules[k](e,e.exports,w);retu
                     if (GatewayWorkerProcess.PortFree(port)) { await Task.Delay(200, timeout.Token); continue; }
                     using var listener = GatewayWorkerProcess.Capture(port);
                     if (listener is not null) Assert(listener.Id == process.Id, "Fixture debugger belongs to another process");
-                    session = await DesktopSpeedSession.StartAsync(port, target.Executable, plan, () => true, timeout.Token); break;
+                    session = await DesktopSpeedSession.StartAsync(port, target.Executable, plan, () => true, timeout.Token, connections); break;
                 }
                 catch (Exception error) when (error is DesktopSpeedNotReadyException or HttpRequestException)
                 { await Task.Delay(200, timeout.Token); }
@@ -224,7 +261,13 @@ const select=(w.c.Xvtr?.exports??w("Xvtr")).a;
 const model={model:"gpt-6.1-sol",displayName:"Isolated model",supportedReasoningEfforts:[{reasoningEffort:"high",description:"Fixture"}],serviceTiers:[{id:"priority",name:"Fast"}],hidden:false,availableAccessPrograms:null,isDefault:false};
 const options={additionalAvailableModels:new Set(),authMethod:"apikey",availableModels:new Set(["old-default-model"]),defaultModel:null,enabledReasoningEfforts:new Set(["high"]),hasConfiguredModelCatalog:false,includeUltraReasoningEffort:true,isCustomModelProvider:false,models:[model],useHiddenModels:true};
 const before=select(options),after=select({...options,additionalAvailableModels:new Set([model.model])});
-return {beforeCount:before.models.length,afterCount:after.models.length,tiers:after.models[0]?.serviceTiers,selectedModelQueryPatched:Function.prototype.toString.call(w.m.uizX).includes("additionalAvailableModels:")};
+const selectedModelQueryPatched=Object.values(w.m).some(factory=>{
+  const source=Function.prototype.toString.call(factory);
+  return source.includes("__codexDockSpeedUntil")&&source.includes("additionalAvailableModels:[");
+});
+const connectionsPatched=globalThis.__codexDockConnection?.enabled===true&&
+  Object.values(w.m).some(factory=>Function.prototype.toString.call(factory).includes("__codexDockConnection.dispatch"));
+return {beforeCount:before.models.length,afterCount:after.models.length,tiers:after.models[0]?.serviceTiers,selectedModelQueryPatched,connectionsPatched};
 })()
 """, returnByValue = true, awaitPromise = true, allowUnsafeEvalBlockedByCSP = false
             }, timeout.Token);
@@ -233,6 +276,7 @@ return {beforeCount:before.models.length,afterCount:after.models.length,tiers:af
                 nativeLookup.GetProperty("selectedModelQueryPatched").GetBoolean() &&
                 nativeLookup.GetProperty("tiers")[0].GetProperty("id").GetString() == "priority",
                 "Native selected model lookup lost its original Fast tier: " + nativeLookup.GetRawText());
+            Assert(nativeLookup.GetProperty("connectionsPatched").GetBoolean(), "Native connection recovery was not installed with the speed gates");
             File.WriteAllText(Path.Combine(fixture, "result.json"), JsonSerializer.Serialize(new
             { passed = true, isolatedHome = home, isolatedProfile = profile, status = session.Status, nativeSelectedModelLookup = nativeLookup, originalProcessesPreserved = original.All(value => platform.Running().Contains(value)) }));
             Console.WriteLine("Isolated native desktop PASS: " + session.Status);

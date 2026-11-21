@@ -8,9 +8,9 @@ internal static class ConnectionRecoveryBrowserTests
 {
     private const string Runtime = "const modules={};function w(k){let e={exports:{}};modules[k](e,e.exports,w);return e.exports}w.m=modules;w.o=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);w.C=e=>{var k,m=e.__webpack_modules__,r=e.__rspack_esm_runtime;for(k in m)w.o(m,k)&&(w.m[k]=m[k]);r&&r(w);};export{w as __webpack_require__};";
     private const string Module = """
-export const __webpack_modules__={Manager(e,t,n){
+export const __webpack_modules__={Manager:function(e,t,n){
 class M {
-  constructor(){this.requestClient={sendRequest:async(method,p)=>{trace.push({method,p});const s=fixtureThread;
+  constructor(){this.requestClient={sendRequest:async(method,p,options,signal)=>{signal?.throwIfAborted();trace.push({method,p,sameSignal:signal==null?undefined:signal===globalThis.fixtureSignal});const s=fixtureThread;
     if(method==='thread/read')return{thread:{id:p.threadId,modelProvider:s.provider,cwd:'C:/fixture',status:{type:s.status}}};
     if(method==='config/read')return{config:{model_provider:'openai'}};
     if(method==='thread/unsubscribe'){s.status='notLoaded';return{status:'unsubscribed'}};
@@ -19,7 +19,7 @@ class M {
   assertActive(){}
   getHostId(){return 'local'}
   getConversation(){return{model:'selected-model',reasoningEffort:'max',serviceTier:'ultrafast',threadRuntimeStatus:{type:fixtureThread.status}}}
-  async sendRequest(e,t,n){this.assertActive();let r=await this.requestClient.sendRequest(e,t,n).catch(n=>{throw n});return r}
+  async sendRequest(e,t,n,r){this.assertActive();let p=null==r?this.requestClient.sendRequest(e,t,n):this.requestClient.sendRequest(e,t,n,r),a=await p.catch(n=>{throw n});return a}
   async resumeThread(p){const value=await this.sendRequest('thread/resume',p);globalThis.cacheRefreshed=true;return value}
 }
 globalThis.trace=[];globalThis.fixtureThread={status:'idle',provider:'legacy'};globalThis.manager=new M();globalThis.fixtureReady=true;
@@ -66,7 +66,15 @@ globalThis.trace=[];globalThis.fixtureThread={status:'idle',provider:'legacy'};g
             string? socket = null;
             for (var i = 0; i < 100 && socket is null; i++)
             {
-                try { using var pages = JsonDocument.Parse(await http.GetStringAsync($"http://127.0.0.1:{port}/json/list")); socket = pages.RootElement.EnumerateArray().Single(value => value.GetProperty("type").GetString() == "page").GetProperty("webSocketDebuggerUrl").GetString(); }
+                try
+                {
+                    using var pages = JsonDocument.Parse(await http.GetStringAsync($"http://127.0.0.1:{port}/json/list"));
+                    socket = pages.RootElement.EnumerateArray()
+                        .Single(value => value.GetProperty("type").GetString() == "page" &&
+                            Uri.TryCreate(value.GetProperty("url").GetString(), UriKind.Absolute, out var url) &&
+                            url.Scheme == "file")
+                        .GetProperty("webSocketDebuggerUrl").GetString();
+                }
                 catch { await Task.Delay(100); }
             }
             if (socket is null) throw new IOException("Fixture browser not ready");
@@ -80,10 +88,16 @@ globalThis.trace=[];globalThis.fixtureThread={status:'idle',provider:'legacy'};g
             var before = await Evaluate("({ready:globalThis.fixtureReady,enabled:globalThis.__codexDockConnection?.enabled,patched:Function.prototype.toString.call(manager.sendRequest).includes('__codexDockConnection')})");
             Check(before.GetProperty("ready").GetBoolean() && before.GetProperty("enabled").GetBoolean() && before.GetProperty("patched").GetBoolean(), "registration patch installs the real controller through CDP without changing CSP");
             var id = JsonSerializer.Serialize(threadId);
-            await Evaluate("manager.sendRequest('turn/start',{threadId:" + id + ",clientUserMessageId:'stable-uuid',input:[{type:'text',text:'browser-private-sentinel'}]})");
+            var cancelled = await Evaluate("(async()=>{try{await manager.sendRequest('thread/resume',{threadId:" + id + "},null,AbortSignal.abort());return false}catch(e){return e.name==='AbortError'&&trace.length===0}})()");
+            using (var db = new NativeSqlite(Path.Combine(home, "state_5.sqlite"))) Check(cancelled.GetBoolean() && db.Query("SELECT model_provider FROM threads WHERE id=?1", threadId).Single()[0] == "legacy",
+                "an aborted native resume leaves the old thread loaded and its index untouched");
+            await Evaluate("globalThis.fixtureSignal=new AbortController().signal;manager.sendRequest('turn/start',{threadId:" + id + ",clientUserMessageId:'stable-uuid',input:[{type:'text',text:'browser-private-sentinel'}]},null,fixtureSignal)");
             using (var db = new NativeSqlite(Path.Combine(home, "state_5.sqlite"))) Check(db.Query("SELECT model_provider FROM threads WHERE id=?1", threadId).Single()[0] == "openai", "renderer binding prepares only the synthetic chat index");
             var trace = await Evaluate("trace");
             Check(trace.EnumerateArray().Count(value => value.GetProperty("method").GetString() == "turn/start") == 1 && (await Evaluate("cacheRefreshed===true")).GetBoolean(), "native cache refresh completes before exactly one original input");
+            Check(trace.EnumerateArray().All(value => value.GetProperty("method").GetString() == "turn/start"
+                ? value.GetProperty("sameSignal").GetBoolean() : !value.TryGetProperty("sameSignal", out _)),
+                "the native abort signal follows the original turn and is absent from auxiliary requests");
             var resume = trace.EnumerateArray().Single(value => value.GetProperty("method").GetString() == "thread/resume").GetProperty("p");
             Check(resume.GetProperty("model").GetString() == "selected-model" && resume.GetProperty("config").GetProperty("model_reasoning_effort").GetString() == "max" && resume.GetProperty("serviceTier").GetString() == "ultrafast", "recovery preserves model, Max and Ultra Fast selections");
             var doc = new TomlDocument(baseline.Config); doc.Set("openai_base_url", "https://b.invalid/v1"); File.WriteAllBytes(Path.Combine(home, "config.toml"), doc.Bytes);

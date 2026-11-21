@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.19.8',
+    [string]$Version = '0.19.9',
     [ValidatePattern('^\d+\.\d+\.\d+$')][string]$PreviousVersion
 )
 $ErrorActionPreference = 'Stop'

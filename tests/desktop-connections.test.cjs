@@ -9,7 +9,7 @@ function fixture() {
   const selected = { model: 'chosen-model', reasoningEffort: 'max', serviceTier: 'ultrafast' };
   const current = { generation: 'A', provider: 'openai', baseUrl: 'http://127.0.0.1:9/v1', restartRequired: false };
   const window = {}; window.top = window;
-  const context = vm.createContext({ window, location: { protocol: 'app:' }, setTimeout, clearTimeout, console });
+  const context = vm.createContext({ window, location: { protocol: 'app:' }, AbortSignal, setTimeout, clearTimeout, console });
   context.fixtureBinding = payload => {
     const request = JSON.parse(payload); host.push(request);
     let value = {};
@@ -89,6 +89,85 @@ test('provider mismatch prepares only after unload and updates the same chat', a
   assert.equal(response.thread.id, f.id); assert.equal(response.modelProvider, 'openai');
   assert.equal(response.model, 'explicit'); assert.equal(response.reasoningEffort, 'high'); assert.equal(response.serviceTier, 'priority');
   assert.equal(f.host.filter(x => x.operation === 'prepare').length, 1); f.runtime.stop();
+});
+test('an already aborted native signal skips all recovery and dispatch work', async () => {
+  const f = fixture();
+  f.states.get(f.id).provider = 'legacy';
+  try {
+    for (const method of ['thread/start', 'thread/resume', 'turn/start']) {
+      await assert.rejects(
+        f.runtime.dispatch(f.manager, method, { threadId: f.id }, undefined, f.send, AbortSignal.abort()),
+        { name: 'AbortError' }
+      );
+    }
+    assert.deepEqual(f.host, []);
+    assert.deepEqual(f.native, []);
+    assert.deepEqual(f.states.get(f.id), { status: 'idle', provider: 'legacy' });
+  } finally { f.runtime.stop(); }
+});
+test('native cancellation during the final state read prevents unloading', async () => {
+  const f = fixture();
+  f.states.get(f.id).provider = 'legacy';
+  const request = new AbortController();
+  let reads = 0;
+  const send = async (...args) => {
+    const result = await f.send(...args);
+    if (args[0] === 'thread/read' && ++reads === 2) request.abort();
+    return result;
+  };
+  try {
+    await assert.rejects(
+      f.runtime.dispatch(f.manager, 'thread/resume', { threadId: f.id }, undefined, send, request.signal),
+      { name: 'AbortError' }
+    );
+    assert.deepEqual(f.native.map(x => x.method), ['thread/read', 'config/read', 'thread/read']);
+    assert.equal(f.host.some(x => x.operation === 'prepare'), false);
+    assert.deepEqual(f.states.get(f.id), { status: 'idle', provider: 'legacy' });
+  } finally { f.runtime.stop(); }
+});
+test('request options can still cancel a queued turn with a separate native signal', async () => {
+  const f = fixture();
+  const options = new AbortController();
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const first = f.runtime.dispatch(f.manager, 'turn/start', { threadId: f.id, clientUserMessageId: 'first' },
+    undefined, async (...args) => { await gate; return f.send(...args); });
+  try {
+    const queued = f.runtime.dispatch(f.manager, 'turn/start', { threadId: f.id, clientUserMessageId: 'cancelled' },
+      { signal: options.signal }, f.send, new AbortController().signal);
+    options.abort();
+    await assert.rejects(queued, { name: 'AbortError' });
+    assert.deepEqual(f.native, []);
+  } finally {
+    release();
+    await first;
+    f.runtime.stop();
+  }
+  assert.deepEqual(f.native.filter(x => x.method === 'turn/start').map(x => x.parameters.clientUserMessageId), ['first']);
+});
+test('native cancellation after unload prevents index preparation and permits a retry', async () => {
+  const f = fixture();
+  f.states.get(f.id).provider = 'legacy';
+  const request = new AbortController();
+  const send = async (...args) => {
+    const result = await f.send(...args);
+    if (args[0] === 'thread/unsubscribe') request.abort();
+    return result;
+  };
+  try {
+    await assert.rejects(
+      f.runtime.dispatch(f.manager, 'turn/start', { threadId: f.id }, undefined, send, request.signal),
+      { name: 'AbortError' }
+    );
+    assert.equal(f.host.some(x => x.operation === 'prepare'), false);
+    assert.equal(f.native.some(x => x.method === 'thread/resume' || x.method === 'turn/start'), false);
+    assert.deepEqual(f.states.get(f.id), { status: 'notLoaded', provider: 'legacy' });
+
+    await f.runtime.dispatch(f.manager, 'turn/start', { threadId: f.id }, undefined, f.send, new AbortController().signal);
+    assert.equal(f.host.filter(x => x.operation === 'prepare').length, 1);
+    assert.equal(f.native.filter(x => x.method === 'turn/start').length, 1);
+    assert.deepEqual(f.states.get(f.id), { status: 'idle', provider: 'openai' });
+  } finally { f.runtime.stop(); }
 });
 test('remote hosts and unsupported methods preserve native behavior', async () => {
   const f = fixture(); f.manager.getHostId = () => 'ssh-fixture';

@@ -25,6 +25,26 @@ public static class DesktopSpeedPatch
         $"({Lease}>Date.now()&&{host}===\"local\"&&({auth}===\"apiKey\"||{auth}===\"apikey\"||{auth}==null))";
     private sealed record Gate(string Name, Regex Pattern, Func<Match, string> Replacement);
     private static Regex Pattern(string value) => new(value, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(3));
+    private static readonly Regex Registration = Pattern(
+        $@"(?<chunk>{Id})=>\{{(?<start>var (?<key>{Id}),(?:(?<chunkId>{Id}),{Id}=\k<chunk>\.__rspack_esm_ids,)?" +
+        $@"(?<modules>{Id})=\k<chunk>\.__webpack_modules__,{Id}=\k<chunk>\.__rspack_esm_runtime(?(chunkId),{Id}=0);)" +
+        @"for\(\k<key> in \k<modules>\)");
+    private const string ModelQuery = $@"let\{{data:(?<catalog>{Id}),isLoading:{Id}\}}=\(0,{Id}\.Ym\)\((?<gate>\k<arguments>)\),";
+    private const string LegacyModelLookup =
+        $@"(?<compiler>{Id})={Call}\(60\),\{{modelSettings:(?<selectedSettings>{Id}),setModelAndReasoningEffort:{Id}\}}={Id}," +
+        $@"[\s\S]{{0,1400}}?let (?<host>{Id})={Id}\.hostId;[\s\S]{{0,800}}?" +
+        $@"\k<compiler>\[3\]!==\k<host>\?\((?<arguments>{Id})=\{{hostId:\k<host>\}}," +
+        @"\k<compiler>\[3\]=\k<host>,\k<compiler>\[4\]=\k<arguments>\):\k<arguments>=\k<compiler>\[4\];" + ModelQuery;
+    private const string ConversationModelLookup =
+        $@"function {Id}\((?<conversation>{Id}),(?<selectedSettings>{Id}),{Id},{Id},{Id}\)\{{let (?:{Id},){{2,24}}(?<compiler>{Id})={Call}\(62\),[^;]{{0,1200}}?;" +
+        $@"\(0,{Id}\.use\)\({Id}\.{Id}\);" +
+        $@"let (?<host>{Id})={Id}\.hostId;\k<compiler>\[0\]!==\k<conversation>\|\|\k<compiler>\[1\]!==\k<host>" +
+        $@"\?\((?<threadQuery>{Id})=\{{hostId:\k<host>,conversationId:\k<conversation>\}}," +
+        @"\k<compiler>\[0\]=\k<conversation>,\k<compiler>\[1\]=\k<host>,\k<compiler>\[2\]=\k<threadQuery>\):\k<threadQuery>=\k<compiler>\[2\];" +
+        $@"let (?<threadArgs>{Id})=\k<threadQuery>,{Id}={Call}\({Id}\.{Id},\k<threadArgs>\);" +
+        $@"\k<compiler>\[3\]!==\k<conversation>\|\|\k<compiler>\[4\]!==\k<host>\?\((?<arguments>{Id})=\{{conversationId:\k<conversation>,hostId:\k<host>\}}," +
+        @"\k<compiler>\[3\]=\k<conversation>,\k<compiler>\[4\]=\k<host>,\k<compiler>\[5\]=\k<arguments>\):\k<arguments>=\k<compiler>\[5\];" +
+        ModelQuery + $@"(?=[\s\S]{{0,1600}}?{Call}\(\k<catalog>\?\.models,\k<selectedSettings>\.model\))";
     private static readonly Gate[] Definitions =
     [
         new("menu", Pattern(
@@ -40,7 +60,8 @@ public static class DesktopSpeedPatch
         new("queue-default", Pattern(
             $"if\\(\"local\"===(?<manager>{Id})\\.getHostId\\(\\)&&await (?<runtime>{Id})\\.isUsingCopilotInference\\(\\)\\)return!1;" +
             $"let (?<result>{Id})=await \\k<manager>\\.getAccount\\(\\{{priority:\"critical\"\\}}\\);return " +
-            $"(?<gate>\\k<result>\\.account\\?\\.type===\"chatgpt\"(?:\\|\\|\\k<result>\\.account\\?\\.type==={Types})*)\\}}\\)\\}},async writeServiceTier\\("),
+            $"(?<gate>\\k<result>\\.account\\?\\.type===\"chatgpt\"(?:\\|\\|\\k<result>\\.account\\?\\.type==={Types})*)\\}}" +
+            $"(?:,\\k<manager>\\.getThreadModelProvider\\({Id}\\))?\\)\\}},async writeServiceTier\\("),
             m => "(" + m.Groups["gate"].Value + "||" + Allow(m.Groups["manager"].Value + ".getHostId()", m.Groups["result"].Value + ".account?.type") + ")"),
         new("queue-explicit", Pattern(
             $"function\\((?<manager>{Id}),\\{{settings:(?<settings>{Id}),storage:{Id},filesystem:{Id},runtime:(?<runtime>{Id})\\}},{Id},{Id},{Id}\\)\\{{" +
@@ -52,12 +73,7 @@ public static class DesktopSpeedPatch
                 "&&typeof " + m.Groups["runtime"].Value + ".isUsingCopilotInference===\"function\"&&!(await " + m.Groups["runtime"].Value + ".isUsingCopilotInference())))"),
         // The speed hook otherwise filters the model catalog without including the selected model.
         // The composer already includes it. Preserve its real metadata instead of inventing tiers.
-        new("selected-model", Pattern(
-            $"(?<compiler>{Id})={Call}\\(60\\),\\{{modelSettings:(?<selectedSettings>{Id}),setModelAndReasoningEffort:{Id}\\}}={Id}," +
-            $"[\\s\\S]{{0,1400}}?let (?<host>{Id})={Id}\\.hostId;[\\s\\S]{{0,800}}?" +
-            $"\\k<compiler>\\[3\\]!==\\k<host>\\?\\((?<arguments>{Id})=\\{{hostId:\\k<host>\\}}," +
-            $"\\k<compiler>\\[3\\]=\\k<host>,\\k<compiler>\\[4\\]=\\k<arguments>\\):\\k<arguments>=\\k<compiler>\\[4\\];" +
-            $"let\\{{data:{Id},isLoading:{Id}\\}}=\\(0,{Id}\\.Ym\\)\\((?<gate>\\k<arguments>)\\),"),
+        new("selected-model", Pattern(LegacyModelLookup + "|" + ConversationModelLookup),
             m => "(" + Lease + ">Date.now()&&" + m.Groups["host"].Value + "===\"local\"?{..." +
                 m.Groups["arguments"].Value + ",additionalAvailableModels:[" + m.Groups["selectedSettings"].Value + ".model]}:" + m.Groups["arguments"].Value + ")")
     ];
@@ -74,7 +90,7 @@ public static class DesktopSpeedPatch
             if (matches.Count > 1) throw new InvalidDataException("速度兼容门控存在重复匹配：" + definition.Name);
             if (matches.Count == 0) continue;
             var match = matches[0]; var gate = match.Groups["gate"];
-            var bindings = new[] { "host", "identity", "manager", "runtime", "account", "result", "auth", "scope", "selectedSettings", "compiler", "arguments" }
+            var bindings = new[] { "host", "identity", "manager", "runtime", "account", "result", "auth", "scope", "selectedSettings", "compiler", "arguments", "conversation" }
                 .Select(name => match.Groups[name]).Where(group => group.Success).Select(group => group.Value).ToArray();
             if (bindings.Distinct().Count() != bindings.Length) throw new InvalidDataException("速度兼容门控的变量作用域无法核对。");
             edits.Add((gate.Index, gate.Length, definition.Replacement(match))); gates.Add(definition.Name);
@@ -124,7 +140,7 @@ public static class DesktopSpeedPatch
 
     internal static IReadOnlyList<SpeedRuntimeLocation> RuntimeLocations(string path, string source)
     {
-        var matches = Pattern($"(?<chunk>{Id})=>\\{{(?<start>var {Id},{Id}=\\k<chunk>\\.__webpack_modules__,{Id}=\\k<chunk>\\.__rspack_esm_runtime;)for\\(").Matches(source);
+        var matches = Registration.Matches(source);
         if (matches.Count != 1) throw new InvalidDataException("此 Codex 模块加载器尚未匹配。");
         var match = matches[0]; var index = match.Groups["start"].Index;
         var head = source[..index]; var line = head.Count(character => character == '\n'); var lastLine = head.LastIndexOf('\n');

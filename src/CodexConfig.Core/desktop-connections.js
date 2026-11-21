@@ -21,19 +21,26 @@ function (bindingName, resumeOnly) {
       for (const request of pending.values()) { clearTimeout(request.timer); request.reject(new Error("Dock 接续已停止，请重试或重新应用。")); }
       pending.clear(); threads.clear();
     },
-    async dispatch(manager, method, parameters, options, send) {
+    async dispatch(manager, method, parameters, options, send, nativeSignal) {
       operations++;
-      try { return await dispatch(manager, method, parameters, options, send); }
+      try { return await dispatch(manager, method, parameters, options, send, nativeSignal); }
       finally { operations--; }
     }
   };
-  async function dispatch(manager, method, parameters, options, send) {
+  async function dispatch(manager, method, parameters, options, send, nativeSignal) {
       if (!controller.enabled || stopped || Date.now() >= controller.until || manager.getHostId?.() !== "local" ||
           parameters?.hostId && parameters.hostId !== "local" || parameters?.host_id && parameters.host_id !== "local" ||
           !["thread/start", "thread/resume", "turn/start"].includes(method) || internal.has(parameters)) return send(method, parameters, options);
+      const optionSignal = options?.signal;
+      const signal = nativeSignal && optionSignal ? AbortSignal.any([nativeSignal, optionSignal]) : nativeSignal ?? optionSignal;
+      signal?.throwIfAborted();
+      const sendIfActive = (...request) => {
+        signal?.throwIfAborted();
+        return send(...request);
+      };
       if (method === "thread/start") {
-        const state = await current();
-        const response = await send(method, parameters, options);
+        const state = await current(signal);
+        const response = await sendIfActive(method, parameters, options);
         if (response?.thread?.id) threads.set(response.thread.id, { generation: state.generation, preferences: preferences(parameters, response), tail: Promise.resolve() });
         return response;
       }
@@ -47,11 +54,12 @@ function (bindingName, resumeOnly) {
       state.tail = ownTail;
       let acquired = false;
       try {
-        await wait(predecessor, options?.signal, 125000);
+        await wait(predecessor, signal, 125000);
         acquired = true;
-        return await prepare(manager, method, parameters, options, send, state);
+        return await prepare(manager, method, parameters, options, sendIfActive, state, signal);
       } catch (error) {
-        void report("blocked"); throw error;
+        if (!signal?.aborted) void report("blocked");
+        throw error;
       } finally { if (acquired) release(); else void predecessor.finally(release); }
   }
   globalThis.__codexDockConnection = controller;
@@ -66,8 +74,10 @@ function (bindingName, resumeOnly) {
     });
   }
   const report = phase => call("report", { phase }).catch(() => {});
-  async function current() {
+  async function current(signal) {
+    signal?.throwIfAborted();
     const state = await call("inspect");
+    signal?.throwIfAborted();
     if (state.restartRequired) throw new Error(state.reason || "当前连接需要重新打开 Codex。通用应用入口会保留退出确认。");
     return state;
   }
@@ -92,15 +102,16 @@ function (bindingName, resumeOnly) {
       Promise.resolve(promise).then(value => finish(resolve, value), error => finish(reject, error));
     });
   }
-  async function prepare(manager, method, parameters, options, send, tracked) {
+  async function prepare(manager, method, parameters, options, send, tracked, signal) {
     const threadId = parameters.threadId;
-    const target = await current();
+    const target = await current(signal);
     const nativeOptions = { priority: "critical", timeoutMs: 10000 };
     const read = () => send("thread/read", { threadId, includeTurns: false }, nativeOptions);
     const found = await read();
     const thread = found?.thread;
     if (!thread || thread.ephemeral === true) return send(method, parameters, options);
     const cached = await manager.getConversation?.(threadId);
+    signal?.throwIfAborted();
     // The desktop marks its cache active optimistically before dispatching a new
     // turn. Native thread/read distinguishes that pending send from a live turn.
     if (thread.status?.type === "active") {
@@ -120,22 +131,25 @@ function (bindingName, resumeOnly) {
       throw new Error("项目的模型入口覆盖了 Dock 保存值，请先核对项目配置。历史保持不变。");
     if (thread.status?.type !== "notLoaded") {
       const before = await read();
+      signal?.throwIfAborted();
       if (before.thread.status?.type === "active") { void report("deferred"); return send(method, parameters, options); }
       void report("waiting");
       await send("thread/unsubscribe", { threadId }, nativeOptions);
       const deadline = Date.now() + 110000;
       while (true) {
-        if (options?.signal?.aborted || stopped) throw options?.signal?.reason || new Error("聊天接续已取消。");
+        if (stopped) throw new Error("聊天接续已取消。");
         const state = await read();
         if (state.thread.status?.type === "active") throw new Error("聊天开始了新回复，已停止切换，请在回复完成后重试。");
         if (state.thread.status?.type === "notLoaded") break;
         if (Date.now() >= deadline) throw new Error("聊天仍被其他窗口使用，请关闭该聊天的其他窗口后重试。");
-        await wait(new Promise(resolve => setTimeout(resolve, 250)), options?.signal, 1000);
+        await wait(new Promise(resolve => setTimeout(resolve, 250)), signal, 1000);
       }
     }
-    const latest = await current();
+    const latest = await current(signal);
     if (latest.generation !== target.generation) throw new Error("恢复期间连接已改变，请重试。");
+    signal?.throwIfAborted();
     if (providerChanged) await call("prepare", { threadId, sourceProvider: thread.modelProvider, targetProvider: target.provider, generation: target.generation });
+    signal?.throwIfAborted();
     const resume = { threadId, modelProvider: target.provider };
     if (selected.model != null) resume.model = selected.model;
     if (selected.effort !== undefined) resume.config = { model_reasoning_effort: selected.effort };
@@ -154,7 +168,7 @@ function (bindingName, resumeOnly) {
     try { response = await manager.resumeThread(resume); } finally { internal.delete(resume); }
     verify(response, threadId, target.provider);
     tracked.generation = target.generation; tracked.preferences = preferences(parameters, response, selected); void report("restored");
-    const after = await current();
+    const after = await current(signal);
     if (after.generation !== target.generation) throw new Error("发送前连接已改变，请重试。");
     return send(method, parameters, options); // Exactly one original input, including its original UUID.
   }

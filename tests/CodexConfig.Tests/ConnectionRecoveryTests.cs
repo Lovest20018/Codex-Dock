@@ -109,6 +109,14 @@ internal static class ConnectionRecoveryTests
             Throws(() => DesktopConnectionPatch.Rewrite(source.Replace("assertActive", "unknown")));
             Throws(() => DesktopConnectionPatch.Rewrite(source + source));
         });
+        Test("native manager hook passes the optional abort signal to both the controller and original request", () =>
+        {
+            const string source = "async sendRequest(e,t,n,r){this.assertActive();let p=null==r?this.requestClient.sendRequest(e,t,n):this.requestClient.sendRequest(e,t,n,r),a=await p.catch(n=>{throw n});return a}";
+            var patched = DesktopConnectionPatch.Rewrite(source);
+            Assert(patched.Contains("__codexDockConnection.dispatch(this,e,t,n") && patched.Contains("this.requestClient.sendRequest(__dockMethod,__dockParameters,__dockOptions,r)),r):"));
+            Assert(patched.Contains(",a=await p.catch(") && DesktopConnectionPatch.Count(source + source) == 2);
+            Throws(() => DesktopConnectionPatch.Rewrite(source.Replace("await p.catch", "await t.catch")));
+        });
     }
     private sealed class FixtureEnvironment : IUserEnvironment { public string? Read() => null; public void Write(string? value) { } }
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "CreateHardLinkW", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]

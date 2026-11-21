@@ -119,13 +119,13 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
             var table = runtime.Chunk + ".__webpack_modules__";
             var anchors = (plan.SpeedEnabled ? "serviceTierAccess:|readServiceTier|Failed to read service tier for request" : "") +
                 (plan.ConnectionsEnabled ? (plan.SpeedEnabled ? "|" : "") + "this\\.requestClient\\.sendRequest" : "");
-            var condition = "Object.values(" + table + ").some(f=>typeof f===\"function\"&&/" + anchors + "/.test(Function.prototype.toString.call(f)))";
+            var condition = table + "!=null&&Object.values(" + table + ").some(f=>typeof f===\"function\"&&/" + anchors + "/.test(Function.prototype.toString.call(f)))";
             var result = await client.CallAsync("Debugger.setBreakpointByUrl", new { lineNumber = runtime.Line, columnNumber = runtime.Column,
                 urlRegex = "^" + Regex.Escape(new Uri(moduleBase, runtime.Path).AbsoluteUri) + "$", condition }, cancellation);
             breakpoints.Add(result.GetProperty("breakpointId").GetString()!, runtime);
         }
-        loop = RunAsync();
         if (!resumeOnly) await client.CallAsync("Page.reload", new { ignoreCache = false }, cancellation);
+        loop = RunAsync();
     }
 
     private async Task WaitForDocumentAsync(CancellationToken cancellation)
@@ -192,7 +192,9 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
                     if (!parameters.GetProperty("hitBreakpoints").EnumerateArray().Any(value => breakpoints.ContainsKey(value.GetString()!)))
                         throw new IOException("检测到其他调试暂停，速度兼容已停止，请先完成调试后重新应用。");
                     ownedPause = notification.Pause;
-                    try { await PatchPausedAsync(parameters, token).ConfigureAwait(false); }
+                    try { await PatchPausedAsync(parameters, ownedPause, token).ConfigureAwait(false); }
+                    catch (SpeedCdp.PauseEndedException)
+                    { client.ForgetPause(ownedPause); ownedPause = 0; continue; }
                     catch when (!client.IsCurrentPause(ownedPause)) { ownedPause = 0; continue; }
                     catch
                     {
@@ -258,10 +260,11 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
     {
         if (!client.IsCurrentPause(pause)) return;
         try { await client.CallAsync("Debugger.resume", new { }, token).ConfigureAwait(false); }
+        catch (SpeedCdp.PauseEndedException) { client.ForgetPause(pause); }
         catch when (!client.IsCurrentPause(pause)) { } // Navigation or another client already resumed it.
     }
 
-    private async Task PatchPausedAsync(JsonElement parameters, CancellationToken token)
+    private async Task PatchPausedAsync(JsonElement parameters, long pause, CancellationToken token)
     {
         var ids = parameters.GetProperty("hitBreakpoints").EnumerateArray().Select(value => value.GetString()!).Where(breakpoints.ContainsKey).ToArray();
         if (ids.Length != 1) throw new InvalidDataException("速度兼容暂停位置无法唯一核对。");
@@ -274,7 +277,8 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
         foreach (var factory in result.EnumerateArray())
         {
             var key = factory.GetProperty("key").GetString()!; var source = factory.GetProperty("source").GetString()!;
-            if (!Regex.IsMatch(key, @"^[A-Za-z_$][\w$]*$") || !source.StartsWith(key + "(", StringComparison.Ordinal))
+            var method = source.StartsWith(key + "(", StringComparison.Ordinal);
+            if (!Regex.IsMatch(key, @"^[A-Za-z_$][\w$]*$") || (!method && !source.StartsWith("function(", StringComparison.Ordinal)))
                 throw new InvalidDataException("Codex 模块工厂结构无法核对。");
             if (source.Contains("__codexDockSpeedUntil", StringComparison.Ordinal) || source.Contains(DesktopConnectionPatch.Marker, StringComparison.Ordinal)) continue;
             var rewrite = plan.SpeedEnabled ? DesktopSpeedPatch.Rewrite(source) : new SpeedRewrite(source, []);
@@ -284,10 +288,11 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
             if (found.Count == 0) continue;
             if (Regex.IsMatch(source, @"\bimport\s*[.(]")) throw new InvalidDataException("此速度模块包含不支持的模块引用。");
             var quoted = JsonSerializer.Serialize(key);
-            assignments.Add("p[" + quoted + "]=({" + rewritten + "})[" + quoted + "];");
+            var expression = method ? "({" + rewritten + "})[" + quoted + "]" : "(" + rewritten + ")";
+            assignments.Add("p[" + quoted + "]=" + expression + ";");
             gates.UnionWith(found);
         }
-        if (assignments.Count == 0) return;
+        if (assignments.Count == 0 || !client.IsCurrentPause(pause)) return;
         // All literals parse before any assignment; a malformed replacement leaves the table unchanged.
         await EvaluateFrameAsync(frame, "(()=>{const p={};" + string.Join("", assignments) + "Object.assign(" + table + ",p);return true})()", token);
         observed.UnionWith(gates);
@@ -365,6 +370,7 @@ public sealed class DesktopSpeedSession : IAsyncDisposable
 internal sealed class SpeedCdp : IAsyncDisposable
 {
     internal sealed record Notification(JsonElement Message, long Pause);
+    internal sealed class PauseEndedException(string message) : IOException("Codex 调试命令未被客户端接受：" + message);
     private readonly ClientWebSocket socket = new();
     private readonly ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> pending = new();
     private readonly Channel<Notification> events = Channel.CreateUnbounded<Notification>();
@@ -373,6 +379,7 @@ internal sealed class SpeedCdp : IAsyncDisposable
     private Task? receiving; private int next; private long pauseSequence; private long activePause;
     internal ChannelReader<Notification> Events => events.Reader;
     internal bool IsCurrentPause(long pause) => pause != 0 && Volatile.Read(ref activePause) == pause;
+    internal void ForgetPause(long pause) => Interlocked.CompareExchange(ref activePause, 0, pause);
     internal static async Task<SpeedCdp> ConnectAsync(Uri uri, CancellationToken token)
     {
         var client = new SpeedCdp(); client.socket.Options.Proxy = null;
@@ -411,7 +418,13 @@ internal sealed class SpeedCdp : IAsyncDisposable
                 using var document = JsonDocument.Parse(stream.ToArray()); var message = document.RootElement;
                 if (message.TryGetProperty("id", out var id) && pending.TryGetValue(id.GetInt32(), out var completion))
                 {
-                    if (message.TryGetProperty("error", out var error)) completion.TrySetException(new IOException("Codex 调试命令未被客户端接受：" + error.GetProperty("message").GetString()));
+                    if (message.TryGetProperty("error", out var error))
+                    {
+                        var detail = error.GetProperty("message").GetString();
+                        completion.TrySetException(detail == "Can only perform operation while paused."
+                            ? new PauseEndedException(detail)
+                            : new IOException("Codex 调试命令未被客户端接受：" + detail));
+                    }
                     else completion.TrySetResult(message.GetProperty("result").Clone());
                 }
                 else if (message.TryGetProperty("method", out var method))
@@ -423,7 +436,9 @@ internal sealed class SpeedCdp : IAsyncDisposable
                             events.Writer.TryWrite(new(message.Clone(), pause)); break;
                         case "Debugger.resumed": Volatile.Write(ref activePause, 0); break;
                         case "Page.loadEventFired": events.Writer.TryWrite(new(message.Clone(), 0)); break;
-                        case "Runtime.executionContextsCleared": events.Writer.TryWrite(new(message.Clone(), 0)); break;
+                        case "Runtime.executionContextsCleared":
+                            Volatile.Write(ref activePause, 0);
+                            events.Writer.TryWrite(new(message.Clone(), 0)); break;
                         case "Runtime.bindingCalled": events.Writer.TryWrite(new(message.Clone(), 0)); break;
                     }
                 }
